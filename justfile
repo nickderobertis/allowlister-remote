@@ -6,7 +6,7 @@ default:
 bootstrap:
     npm ci
 
-check: fmt-check lint typecheck test build test-e2e
+check: fmt-check lint typecheck test rust-test build test-e2e
     @echo "check: ok"
 
 fmt-check:
@@ -24,7 +24,11 @@ typecheck:
 test:
     npm test -- --run
 
+rust-test:
+    cargo test
+
 build:
+    cargo build --bin allowlister-remote-plugin
     npm run build
 
 test-e2e:

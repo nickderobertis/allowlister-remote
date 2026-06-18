@@ -30,10 +30,11 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      - run: cargo build --release --bin allowlister-remote-plugin
       - run: npm run build
-      - name: Install packed artifact and smoke-test CLI
+      - name: Smoke-test Rust plugin static no-wait path
         run: |
-          package_file="$(npm pack --silent)"
-          install_dir="$(mktemp -d)"
-          npm install --global --prefix "$install_dir" "$package_file"
-          "$install_dir/bin/allowlister-remote" reset --state-dir "$RUNNER_TEMP/allowlister-remote-smoke"
+          printf '{"current_verdict":"allow","command":"git status","cwd":"/tmp"}' \
+            | ./target/release/allowlister-remote-plugin --server-url http://127.0.0.1:9 \
+            | tee /tmp/plugin.json
+          grep '"verdict":"defer"' /tmp/plugin.json

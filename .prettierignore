@@ -5,3 +5,5 @@ package-lock.json
 .e2e-state
 test-results
 playwright-report
+.next
+target

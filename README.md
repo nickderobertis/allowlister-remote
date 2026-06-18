@@ -14,27 +14,28 @@ for allowlister, not setup glue for agent sessions.
   reason, parsed fragments, matched rules, and risk signals.
 - Gives a full-screen installable approval experience with large allow/deny
   controls suitable for desktop and mobile.
-- Talks to any bridge that implements the HTTP contract below.
+- Runs as a Next.js app/server and talks to the Rust plugin over HTTP, so the UI can run on a different machine than the allowlister binary.
 
 ## allowlister plugin bridge
 
-The package ships an `allowlister-remote` executable with two real integration
-modes:
+The repository ships two pieces that communicate over the network:
 
-- `allowlister-remote plugin` is the dynamic allowlister plugin. It reads the
-  allowlister plugin JSON payload from stdin, writes a pending approval request
-  into the shared state directory, waits for the web app to write a decision,
-  and then returns the `allow` or `deny` verdict to the allowlister process. If
-  allowlister has already produced a static `allow` or `deny` verdict, the
-  plugin immediately defers so the binary does not wait for the app.
-- `allowlister-remote serve` serves the fully built `dist` PWA and the JSON API
-  from the same process, backed by the same state directory as the plugin.
+- `allowlister-remote-plugin` is the Rust dynamic allowlister plugin client. It
+  reads the allowlister plugin JSON payload from stdin, posts an approval request
+  to the remote Next.js server, polls for a decision, and then returns the
+  `allow` or `deny` verdict to the allowlister process. If allowlister has
+  already produced a static `allow` or `deny` verdict, the plugin immediately
+  defers so the binary does not wait for the app.
+- The Next.js app serves the PWA UI and API endpoints. It can run on another
+  host, desktop, phone-accessible LAN address, or tunneled URL while the Rust
+  plugin runs on the machine where the allowlister binary executes.
 
 Build and serve the production app:
 
 ```console
+cargo build --release --bin allowlister-remote-plugin
 npm run build
-npx allowlister-remote serve --app-dir dist --state-dir .allowlister-remote --host 127.0.0.1 --port 4173
+npm run start -- --hostname 0.0.0.0 --port 3000
 ```
 
 Configure allowlister to use the plugin process:
@@ -45,11 +46,9 @@ Configure allowlister to use the plugin process:
     {
       "name": "allowlister remote",
       "command": [
-        "npx",
-        "allowlister-remote",
-        "plugin",
-        "--state-dir",
-        ".allowlister-remote",
+        "/path/to/allowlister-remote-plugin",
+        "--server-url",
+        "https://allowlister-remote.example.com",
         "--timeout-ms",
         "120000",
       ],
@@ -59,11 +58,12 @@ Configure allowlister to use the plugin process:
 }
 ```
 
-With both processes pointing at the same state directory, `allowlister check`
+With the Rust plugin pointed at the Next.js server URL, `allowlister check`
 blocks only for `ask`/`defer` decisions, the PWA displays the important command
-fragments, and the selected button releases the original allowlister process.
+fragments, and the selected button releases the original allowlister process over
+the network.
 
-## HTTP bridge contract
+## HTTP server contract
 
 `GET /api/approval-requests` returns pending requests:
 

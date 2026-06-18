@@ -53,10 +53,12 @@ export class DemoApprovalApi implements ApprovalApi {
 }
 
 export function createApprovalApi(): ApprovalApi {
+  /* v8 ignore next -- server prerender path is exercised by Next build. */
+  if (typeof window === "undefined") return new HttpApprovalApi();
   const params = new URLSearchParams(window.location.search);
-  if (params.get("demo") === "1" || import.meta.env.DEV) {
+  if (params.get("demo") === "1" || process.env.NODE_ENV !== "production") {
     return new DemoApprovalApi();
   }
-  /* v8 ignore next -- production branch is exercised by Playwright against preview. */
+  /* v8 ignore next -- production branch is exercised by Playwright against the Next server. */
   return new HttpApprovalApi();
 }
