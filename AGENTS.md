@@ -9,8 +9,8 @@ allowlister dynamic approval requests.
   API endpoints plus a Rust allowlister dynamic plugin client.
 - **Languages:** TypeScript, React, and Next.js for the app/server; Rust for the
   allowlister plugin client; shell command surface via `just`.
-- **References composed:** `shapes/web-app.md`, `languages/typescript.md`, `ci.md`, and
-  `references/monorepo.md` from the create-repo skill.
+- **References composed:** `shapes/web-app.md`, `languages/typescript.md`, `ci.md`,
+  `references/releasing.md`, and `references/monorepo.md` from the create-repo skill.
 - **Excluded, and why:** Durable multi-user persistence, auth, and push-notification delivery are
   intentionally outside this first repo scaffold; the server keeps in-memory
   request state for local and CI-realistic approval journeys.
@@ -25,6 +25,7 @@ Use `just`; do not hand-roll equivalent commands.
 - `just test-e2e` runs Playwright against the built PWA and the real
   allowlister binary/plugin boundary in desktop and mobile Chromium.
 - `just dev` delegates to `nx run web:dev`.
+- Release helpers live behind `npm run release:*`; tags, GitHub Releases, and npm publishing run in Actions.
 
 ## Quality and tests
 
@@ -41,4 +42,15 @@ Use `just`; do not hand-roll equivalent commands.
 
 - `apps/web` is the Next.js PWA/server project and owns browser, route, and UI tests.
 - `crates/allowlister-remote-plugin` is the Rust allowlister dynamic plugin client.
+- `packages/allowlister-remote-plugin` is the npm carrier package for release-built plugin binaries.
 - Root commands must delegate to Nx affected/run targets; do not add bespoke root loops over projects.
+
+## Commits, releases, and merging
+
+- PR titles use Conventional Commits and are required because squash commits drive releases.
+- Pre-1.0 bump policy: `feat` and breaking changes create a minor; `fix`, `perf`,
+  `refactor`, and `build` create a patch; chores/docs/tests/styles do not release.
+- After the main `check` workflow passes, Release Please opens or updates a release PR with `RELEASE_TOKEN`; merging that PR tags `vX.Y.Z`, then the tag builds GitHub Release binaries and publishes `@nickderobertis/allowlister-remote-plugin` to npm with `NPM_TOKEN`.
+- GitHub should stay squash-only with auto-merge, branch deletion, required `check`,
+  `install-smoke`, and `pr-title` checks, linear history, conversation resolution, and admin override.
+- `gh-secrets.json` is the secret manifest; values stay in the local gh-secrets store or another configured source, never in git.

@@ -1,0 +1,52 @@
+{
+  "name": "allowlister-remote-plugin-npm",
+  "projectType": "application",
+  "root": "packages/allowlister-remote-plugin",
+  "sourceRoot": "packages/allowlister-remote-plugin/bin",
+  "tags": ["scope:plugin", "type:npm-package", "lang:javascript"],
+  "targets": {
+    "format": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "npx biome check --write packages/allowlister-remote-plugin",
+        "cwd": "."
+      }
+    },
+    "fmt-check": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "npx biome check --formatter-enabled=true --linter-enabled=false packages/allowlister-remote-plugin",
+        "cwd": "."
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "npx biome lint packages/allowlister-remote-plugin",
+        "cwd": "."
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node --check packages/allowlister-remote-plugin/bin/allowlister-remote-plugin.js",
+        "cwd": "."
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node packages/allowlister-remote-plugin/bin/allowlister-remote-plugin.test.mjs",
+        "cwd": "."
+      }
+    },
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "npm pack ./packages/allowlister-remote-plugin --dry-run",
+        "cwd": "."
+      },
+      "cache": false
+    }
+  }
+}

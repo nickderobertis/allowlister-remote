@@ -45,6 +45,11 @@ fn write_response(verdict: &str, reason: impl Into<String>) -> ! {
 }
 
 fn main() {
+    if env::args().any(|argument| argument == "--version" || argument == "-V") {
+        println!("{}", env!("CARGO_PKG_VERSION"));
+        return;
+    }
+
     let server_url = arg(
         "--server-url",
         &env::var("ALLOWLISTER_REMOTE_URL").unwrap_or_else(|_| "http://127.0.0.1:3000".to_string()),

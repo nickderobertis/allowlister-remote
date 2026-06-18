@@ -9,8 +9,13 @@
     "ignoreUnknown": false,
     "includes": [
       "apps/web/**/*.{ts,tsx,js,jsx,json,jsonc,css}",
+      "packages/allowlister-remote-plugin/**/*.{js,mjs,json}",
+      "scripts/**/*.mjs",
+      ".release-please-manifest.json",
+      "gh-secrets.json",
       "package.json",
       "package-lock.json",
+      "release-please-config.json",
       "nx.json",
       "biome.jsonc",
       "!apps/web/.next",
@@ -53,6 +58,22 @@
       "preset": "recommended"
     }
   },
+  "overrides": [
+    {
+      "includes": [
+        "packages/allowlister-remote-plugin/**/*.js",
+        "packages/allowlister-remote-plugin/**/*.mjs",
+        "scripts/**/*.mjs"
+      ],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noConsole": "off"
+          }
+        }
+      }
+    }
+  ],
   "javascript": {
     "formatter": {
       "quoteStyle": "double",

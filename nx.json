@@ -14,7 +14,12 @@
       "{workspaceRoot}/package-lock.json",
       "{workspaceRoot}/nx.json",
       "{workspaceRoot}/Cargo.toml",
-      "{workspaceRoot}/Cargo.lock"
+      "{workspaceRoot}/Cargo.lock",
+      "{workspaceRoot}/.github/workflows/**",
+      "{workspaceRoot}/.release-please-manifest.json",
+      "{workspaceRoot}/gh-secrets.json",
+      "{workspaceRoot}/release-please-config.json",
+      "{workspaceRoot}/scripts/**"
     ]
   },
   "targetDefaults": {

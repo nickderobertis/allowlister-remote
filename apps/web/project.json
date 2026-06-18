@@ -8,21 +8,21 @@
     "format": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "npx biome check --write apps/web package.json package-lock.json nx.json biome.jsonc",
+        "command": "npx biome check --write apps/web packages/allowlister-remote-plugin scripts package.json package-lock.json nx.json biome.jsonc .release-please-manifest.json release-please-config.json gh-secrets.json",
         "cwd": "."
       }
     },
     "fmt-check": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "npx biome check --formatter-enabled=true --linter-enabled=false apps/web package.json package-lock.json nx.json biome.jsonc",
+        "command": "npx biome check --formatter-enabled=true --linter-enabled=false apps/web packages/allowlister-remote-plugin scripts package.json package-lock.json nx.json biome.jsonc .release-please-manifest.json release-please-config.json gh-secrets.json",
         "cwd": "."
       }
     },
     "lint": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "npx biome lint apps/web && npx knip --production",
+        "command": "npx biome lint apps/web packages/allowlister-remote-plugin scripts && npx knip --production",
         "cwd": "."
       }
     },
