@@ -5,13 +5,14 @@ export default defineConfig({
   timeout: 30_000,
   expect: { timeout: 10_000 },
   use: {
-    baseURL: "http://127.0.0.1:4173",
+    baseURL: "http://127.0.0.1:4183",
     trace: "on-first-retry",
   },
   webServer: {
-    command: "npm run preview -- --host 127.0.0.1",
-    url: "http://127.0.0.1:4173",
-    reuseExistingServer: !process.env.CI,
+    command:
+      "node ./bin/allowlister-remote.mjs serve --app-dir dist --state-dir .e2e-state --host 127.0.0.1 --port 4183",
+    url: "http://127.0.0.1:4183",
+    reuseExistingServer: false,
   },
   projects: [
     {

@@ -15,6 +15,25 @@ jobs:
           node-version: 20
           cache: npm
       - uses: extractions/setup-just@v3
+      - name: Install allowlister
+        run: curl -fsSL https://raw.githubusercontent.com/nickderobertis/allowlister/main/scripts/install.sh | bash -s -- --bin-dir /usr/local/bin
       - run: just bootstrap
       - run: npx playwright install --with-deps chromium
       - run: just check
+
+  install-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Install packed artifact and smoke-test CLI
+        run: |
+          package_file="$(npm pack --silent)"
+          install_dir="$(mktemp -d)"
+          npm install --global --prefix "$install_dir" "$package_file"
+          "$install_dir/bin/allowlister-remote" reset --state-dir "$RUNNER_TEMP/allowlister-remote-smoke"

@@ -12,7 +12,8 @@
     "preview": "vite preview",
     "format": "prettier --write .",
     "fmt-check": "prettier --check .",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "bridge": "node ./bin/allowlister-remote.mjs"
   },
   "dependencies": {
     "react": "^19.2.6",
@@ -42,5 +43,8 @@
     "vite": "^8.0.12",
     "vite-plugin-pwa": "^1.3.0",
     "vitest": "^4.1.9"
+  },
+  "bin": {
+    "allowlister-remote": "./bin/allowlister-remote.mjs"
   }
 }
