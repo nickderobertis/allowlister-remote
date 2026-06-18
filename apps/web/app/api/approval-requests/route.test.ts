@@ -1,9 +1,9 @@
-import { describe, expect, it, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
+import { resetStore } from "../../../src/server/store";
 import { POST as decide } from "../approval-requests/[id]/decision/route";
 import { GET as listRequests } from "../approval-requests/route";
 import { GET as pollDecision } from "../plugin/requests/[id]/decision/route";
 import { POST as enqueue } from "../plugin/requests/route";
-import { resetStore } from "../../../src/server/store";
 
 function jsonRequest(body: unknown) {
   return new Request("http://localhost/api", {
@@ -44,10 +44,9 @@ describe("Next approval API routes", () => {
     expect(pending.status).toBe(202);
     expect(await pending.json()).toEqual({ status: "pending" });
 
-    const decided = await decide(
-      jsonRequest({ verdict: "allow", reason: "approved remotely" }),
-      { params: Promise.resolve({ id }) },
-    );
+    const decided = await decide(jsonRequest({ verdict: "allow", reason: "approved remotely" }), {
+      params: Promise.resolve({ id }),
+    });
     expect(decided.status).toBe(200);
 
     const decision = await pollDecision(new Request("http://localhost"), {

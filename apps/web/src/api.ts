@@ -46,9 +46,7 @@ export class DemoApprovalApi implements ApprovalApi {
 
   async decide(decision: ApprovalDecision): Promise<void> {
     this.decisions.push(decision);
-    this.requests = this.requests.filter(
-      (request) => request.id !== decision.requestId,
-    );
+    this.requests = this.requests.filter((request) => request.id !== decision.requestId);
   }
 }
 

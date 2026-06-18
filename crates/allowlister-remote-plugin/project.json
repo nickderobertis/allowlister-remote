@@ -3,8 +3,19 @@
   "projectType": "application",
   "root": "crates/allowlister-remote-plugin",
   "sourceRoot": "crates/allowlister-remote-plugin/src",
-  "tags": ["scope:plugin", "type:cli", "lang:rust"],
+  "tags": [
+    "scope:plugin",
+    "type:cli",
+    "lang:rust"
+  ],
   "targets": {
+    "format": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo fmt --manifest-path crates/allowlister-remote-plugin/Cargo.toml",
+        "cwd": "."
+      }
+    },
     "fmt-check": {
       "executor": "nx:run-commands",
       "options": {
@@ -39,7 +50,9 @@
         "command": "cargo build -p allowlister-remote-plugin",
         "cwd": "."
       },
-      "outputs": ["{workspaceRoot}/target/debug/allowlister-remote-plugin"],
+      "outputs": [
+        "{workspaceRoot}/target/debug/allowlister-remote-plugin"
+      ],
       "cache": false
     }
   }

@@ -14,9 +14,7 @@ const riskyTerms = new Map([
 
 export function importantCommands(request: ApprovalRequest): string[] {
   const actionable = request.fragments
-    .filter(
-      (fragment) => fragment.verdict === "ask" || fragment.verdict === "deny",
-    )
+    .filter((fragment) => fragment.verdict === "ask" || fragment.verdict === "deny")
     .map((fragment) => fragment.display);
 
   if (actionable.length > 0) {
@@ -41,9 +39,6 @@ export function riskSignals(request: ApprovalRequest): string[] {
   return [...signals];
 }
 
-export function secondsRemaining(
-  request: ApprovalRequest,
-  now = Date.now(),
-): number {
+export function secondsRemaining(request: ApprovalRequest, now = Date.now()): number {
   return Math.max(0, Math.ceil((Date.parse(request.expiresAt) - now) / 1000));
 }

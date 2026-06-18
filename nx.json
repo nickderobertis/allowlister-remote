@@ -18,9 +18,18 @@
     ]
   },
   "targetDefaults": {
-    "fmt-check": { "cache": true, "inputs": ["default"] },
-    "lint": { "cache": true, "inputs": ["default"] },
-    "typecheck": { "cache": true, "inputs": ["default"] },
+    "fmt-check": {
+      "cache": true,
+      "inputs": ["default"]
+    },
+    "lint": {
+      "cache": true,
+      "inputs": ["default"]
+    },
+    "typecheck": {
+      "cache": true,
+      "inputs": ["default"]
+    },
     "test": {
       "cache": true,
       "inputs": ["default"],
@@ -32,6 +41,13 @@
       "dependsOn": ["^build"],
       "outputs": ["{projectRoot}/.next", "{workspaceRoot}/target"]
     },
-    "test-e2e": { "cache": false, "dependsOn": ["build"] }
+    "test-e2e": {
+      "cache": false,
+      "dependsOn": ["build"]
+    },
+    "format": {
+      "cache": true,
+      "inputs": ["default"]
+    }
   }
 }

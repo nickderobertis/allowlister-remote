@@ -6,8 +6,7 @@ export const demoRequests: ApprovalRequest[] = [
     subject: "shell",
     harness: "codex",
     cwd: "/workspace/acme-api",
-    command:
-      "git diff --stat && npm test && gh pr merge 42 --squash --delete-branch",
+    command: "git diff --stat && npm test && gh pr merge 42 --squash --delete-branch",
     currentVerdict: "ask",
     currentReason:
       "`gh pr merge` matched allowlister rule 'GitHub write operations require approval'",

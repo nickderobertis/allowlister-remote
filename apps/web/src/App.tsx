@@ -22,8 +22,7 @@ function App() {
         setError(null);
       } catch (caught) {
         /* v8 ignore next 2 -- defensive fetch error rendering is covered through API tests. */
-        if (active)
-          setError(caught instanceof Error ? caught.message : "Unknown error");
+        if (active) setError(caught instanceof Error ? caught.message : "Unknown error");
       }
     }
     void refresh();
@@ -49,9 +48,7 @@ function App() {
       verdict,
       reason: `${verdict}ed in allowlister-remote`,
     });
-    setRequests((current) =>
-      current.filter((request) => request.id !== selected.id),
-    );
+    setRequests((current) => current.filter((request) => request.id !== selected.id));
     setSelectedId(null);
   }
 
@@ -61,8 +58,7 @@ function App() {
         <p className="eyebrow">allowlister remote</p>
         <h1>No pending approvals</h1>
         <p>
-          Install this PWA on your desktop or phone and keep it ready for the
-          next agent request.
+          Install this PWA on your desktop or phone and keep it ready for the next agent request.
         </p>
         {error ? <p role="alert">{error}</p> : null}
       </main>
@@ -84,6 +80,7 @@ function App() {
         </div>
         <div
           className="timer"
+          role="timer"
           aria-label={`${secondsRemaining(selected, now)} seconds remaining`}
         >
           <span>{secondsRemaining(selected, now)}</span>
@@ -157,18 +154,10 @@ function App() {
       </nav>
 
       <footer className="decision-bar">
-        <button
-          className="deny"
-          onClick={() => void decide("deny")}
-          type="button"
-        >
+        <button className="deny" onClick={() => void decide("deny")} type="button">
           Deny
         </button>
-        <button
-          className="allow"
-          onClick={() => void decide("allow")}
-          type="button"
-        >
+        <button className="allow" onClick={() => void decide("allow")} type="button">
           Allow once
         </button>
       </footer>

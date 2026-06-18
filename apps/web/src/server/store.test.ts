@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   decideRequest,
   enqueuePluginRequest,
@@ -39,12 +39,7 @@ describe("approval server store", () => {
       "gh pr merge 42 --delete-branch",
     ]);
     expect(request.riskSignals).toEqual(
-      expect.arrayContaining([
-        "network fetch",
-        "privileged command",
-        "merge action",
-        "deletion",
-      ]),
+      expect.arrayContaining(["network fetch", "privileged command", "merge action", "deletion"]),
     );
   });
 
@@ -60,9 +55,7 @@ describe("approval server store", () => {
       reason: "approved",
     });
 
-    expect(listPendingRequests().map((request) => request.id)).toEqual([
-      second.id,
-    ]);
+    expect(listPendingRequests().map((request) => request.id)).toEqual([second.id]);
 
     vi.setSystemTime(new Date("2026-06-18T00:00:12.000Z"));
     expect(listPendingRequests()).toEqual([]);

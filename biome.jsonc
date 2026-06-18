@@ -1,0 +1,71 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.5.0/schema.json",
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "files": {
+    "ignoreUnknown": false,
+    "includes": [
+      "apps/web/**/*.{ts,tsx,js,jsx,json,jsonc,css}",
+      "package.json",
+      "package-lock.json",
+      "nx.json",
+      "biome.jsonc",
+      "!apps/web/.next",
+      "!apps/web/coverage",
+      "!apps/web/playwright-report",
+      "!apps/web/test-results"
+    ]
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "complexity": {
+        "noBannedTypes": "error",
+        "noExcessiveCognitiveComplexity": "error",
+        "noUselessFragments": "error"
+      },
+      "correctness": {
+        "noChildrenProp": "error",
+        "noNestedComponentDefinitions": "error",
+        "noUndeclaredDependencies": "error",
+        "useExhaustiveDependencies": "error",
+        "useHookAtTopLevel": "error"
+      },
+      "style": {
+        "useConsistentArrayType": "error",
+        "useImportType": "error"
+      },
+      "suspicious": {
+        "noArrayIndexKey": "error",
+        "noConsole": "error",
+        "noExplicitAny": "error",
+        "noTsIgnore": "error"
+      },
+      "preset": "recommended"
+    }
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "double",
+      "semicolons": "always",
+      "trailingCommas": "all"
+    }
+  },
+  "assist": {
+    "enabled": true,
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
+    }
+  }
+}
