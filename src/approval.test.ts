@@ -49,3 +49,23 @@ it("returns an empty safe signal list", () => {
     }),
   ).toEqual([]);
 });
+
+it("falls back to allowed fragments and raw command", () => {
+  const allowed = { ...request, fragments: request.fragments.slice(0, 2) };
+
+  expect(importantCommands(allowed)).toEqual(["git diff --stat", "npm test"]);
+  expect(importantCommands({ ...allowed, fragments: [] })).toEqual([
+    request.command,
+  ]);
+});
+
+it("keeps safe requests signal-free", () => {
+  expect(
+    riskSignals({
+      ...request,
+      command: "npm test",
+      cwd: "/workspace/app",
+      riskSignals: [],
+    }),
+  ).toEqual([]);
+});

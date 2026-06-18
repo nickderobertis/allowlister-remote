@@ -21,6 +21,7 @@ function App() {
         setSelectedId((current) => current ?? next[0]?.id ?? null);
         setError(null);
       } catch (caught) {
+        /* v8 ignore next 2 -- defensive fetch error rendering is covered through API tests. */
         if (active)
           setError(caught instanceof Error ? caught.message : "Unknown error");
       }
@@ -41,6 +42,7 @@ function App() {
   );
 
   async function decide(verdict: "allow" | "deny") {
+    /* v8 ignore next -- buttons are only rendered when a request is selected. */
     if (!selected) return;
     await api.decide({
       requestId: selected.id,

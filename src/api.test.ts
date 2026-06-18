@@ -6,6 +6,18 @@ describe("approval APIs", () => {
     vi.restoreAllMocks();
   });
 
+  it("loads requests from the bridge contract", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue({ ok: true, json: async () => [{ id: "req" }] }),
+    );
+    const api = new HttpApprovalApi("https://bridge.example");
+
+    await expect(api.listRequests()).resolves.toEqual([{ id: "req" }]);
+  });
+
   it("posts decisions to the bridge contract", async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true });
     vi.stubGlobal("fetch", fetchMock);
@@ -49,5 +61,8 @@ describe("approval APIs", () => {
     await expect(api.listRequests()).rejects.toThrow(
       "request list failed: 503",
     );
+    await expect(
+      api.decide({ requestId: "abc", verdict: "deny", reason: "bad" }),
+    ).rejects.toThrow("decision failed: 503");
   });
 });

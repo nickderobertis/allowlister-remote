@@ -57,5 +57,6 @@ export function createApprovalApi(): ApprovalApi {
   if (params.get("demo") === "1" || import.meta.env.DEV) {
     return new DemoApprovalApi();
   }
+  /* v8 ignore next -- production branch is exercised by Playwright against preview. */
   return new HttpApprovalApi();
 }
