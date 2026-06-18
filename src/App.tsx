@@ -47,7 +47,7 @@ function App() {
     await api.decide({
       requestId: selected.id,
       verdict,
-      reason: `${verdict}ed in allowlister-remote`,
+      reason: `${verdict === "allow" ? "allowed" : "denied"} in allowlister-remote`,
     });
     setRequests((current) =>
       current.filter((request) => request.id !== selected.id),

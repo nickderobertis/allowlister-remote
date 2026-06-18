@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { DemoApprovalApi, HttpApprovalApi } from "./api";
+import { createApprovalApi, DemoApprovalApi, HttpApprovalApi } from "./api";
 
 describe("approval APIs", () => {
   beforeEach(() => {
@@ -32,6 +32,20 @@ describe("approval APIs", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       "https://bridge.example/api/approval-requests/abc/decision",
       expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("uses an explicit bridge URL from the query string", async () => {
+    window.history.pushState(null, "", "/?bridge=https%3A%2F%2Fbridge.example");
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue({ ok: true, json: async () => [] });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createApprovalApi().listRequests();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://bridge.example/api/approval-requests",
     );
   });
 
