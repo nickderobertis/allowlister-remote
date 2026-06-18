@@ -23,6 +23,7 @@ Use `just`; do not hand-roll equivalent commands.
 - `just check` runs formatting, linting, type checking, tests, and production
   build.
 - `just test` runs the deterministic Vitest suite.
+- `just test-e2e` runs Playwright against the built PWA in desktop and mobile Chromium.
 - `just dev` starts the Vite dev server.
 
 ## Quality and tests
@@ -33,3 +34,4 @@ Use `just`; do not hand-roll equivalent commands.
   60% branches because the PWA shell has responsive and error UI branches that
   are better guarded by focused component tests than brittle DOM branch counts.
 - The production build must include the PWA manifest and service worker.
+- E2E must exercise the real browser approval flow in both desktop and mobile viewports.

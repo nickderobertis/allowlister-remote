@@ -58,6 +58,7 @@ for allowlister, not setup glue for agent sessions.
 just bootstrap
 just dev
 just check
+just test-e2e
 ```
 
 Open the app with `?demo=1` for a built-in allowlister sample request when no

@@ -6,7 +6,7 @@ default:
 bootstrap:
     npm ci
 
-check: fmt-check lint typecheck test build
+check: fmt-check lint typecheck test build test-e2e
     @echo "check: ok"
 
 fmt-check:
@@ -26,6 +26,9 @@ test:
 
 build:
     npm run build
+
+test-e2e:
+    npm run test:e2e
 
 dev:
     npm run dev

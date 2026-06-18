@@ -16,4 +16,5 @@ jobs:
           cache: npm
       - uses: extractions/setup-just@v3
       - run: just bootstrap
+      - run: npx playwright install --with-deps chromium
       - run: just check
