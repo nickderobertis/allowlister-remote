@@ -17,12 +17,14 @@ const globalState = globalThis as typeof globalThis & {
   __allowlisterRemoteState?: State;
 };
 
-const state =
-  globalState.__allowlisterRemoteState ??
-  (globalState.__allowlisterRemoteState = {
+if (!globalState.__allowlisterRemoteState) {
+  globalState.__allowlisterRemoteState = {
     requests: new Map<string, ApprovalRequest>(),
     decisions: new Map<string, ApprovalDecision>(),
-  });
+  };
+}
+
+const state = globalState.__allowlisterRemoteState;
 
 function commandFragments(command: string) {
   return command
@@ -39,7 +41,7 @@ function commandFragments(command: string) {
 
 function riskSignals(command: string, cwd: string) {
   const haystack = `${command} ${cwd}`.toLowerCase();
-  return [
+  const signalTerms: Array<readonly [term: string, label: string]> = [
     ["rm", "destructive file operation"],
     ["sudo", "privileged command"],
     ["curl", "network fetch"],
@@ -49,15 +51,12 @@ function riskSignals(command: string, cwd: string) {
     ["delete", "deletion"],
     ["token", "secret-looking argument"],
     [".env", "secret-looking path"],
-  ]
-    .filter(([term]) => haystack.includes(term))
-    .map(([, label]) => label);
+  ];
+
+  return signalTerms.filter(([term]) => haystack.includes(term)).map(([, label]) => label);
 }
 
-export function enqueuePluginRequest(
-  input: PluginPayload,
-  timeoutMs: number,
-): ApprovalRequest {
+export function enqueuePluginRequest(input: PluginPayload, timeoutMs: number): ApprovalRequest {
   const now = Date.now();
   const command = String(input.command ?? "");
   const cwd = String(input.cwd ?? "");
@@ -84,10 +83,7 @@ export function enqueuePluginRequest(
 export function listPendingRequests() {
   const now = Date.now();
   return [...state.requests.values()]
-    .filter(
-      (request) =>
-        !state.decisions.has(request.id) && Date.parse(request.expiresAt) > now,
-    )
+    .filter((request) => !state.decisions.has(request.id) && Date.parse(request.expiresAt) > now)
     .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
 }
 

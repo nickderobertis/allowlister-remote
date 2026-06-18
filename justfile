@@ -15,7 +15,7 @@ fmt-check:
     if [[ -n "${NX_BASE:-}" ]]; then npx nx affected -t fmt-check --base "$NX_BASE" --head "${NX_HEAD:-HEAD}"; else npx nx affected -t fmt-check --uncommitted; fi
 
 format:
-    npx prettier --write . --ignore-unknown
+    npx biome check --write apps/web package.json package-lock.json nx.json biome.jsonc
     cargo fmt --all
 
 lint:

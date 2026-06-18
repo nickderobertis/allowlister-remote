@@ -8,14 +8,14 @@
     "fmt-check": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "npx prettier --check apps/web",
+        "command": "npx biome check --formatter-enabled=true --linter-enabled=false apps/web package.json package-lock.json nx.json biome.jsonc",
         "cwd": "."
       }
     },
     "lint": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "npx eslint apps/web/app apps/web/src apps/web/*.ts",
+        "command": "npx biome lint apps/web && npx knip --production",
         "cwd": "."
       }
     },

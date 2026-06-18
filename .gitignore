@@ -12,3 +12,7 @@ target
 tsconfig.tsbuildinfo
 
 .nx
+
+.local
+test-results
+playwright-report

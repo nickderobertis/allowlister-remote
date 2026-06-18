@@ -1,8 +1,8 @@
-import { expect, test } from "@playwright/test";
+import { spawn } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { spawn } from "node:child_process";
+import { expect, test } from "@playwright/test";
 
 const root = resolve(import.meta.dirname, "../../..");
 const plugin = join(root, "target", "debug", "allowlister-remote-plugin");
@@ -28,14 +28,10 @@ async function repoConfig(extraRules = "") {
 }
 
 function runAllowlister(cwd: string, command: string): Running {
-  const child = spawn(
-    "allowlister",
-    ["check", "--cwd", cwd, "--json", command],
-    {
-      cwd,
-      env: { ...process.env, NO_COLOR: "1" },
-    },
-  );
+  const child = spawn("allowlister", ["check", "--cwd", cwd, "--json", command], {
+    cwd,
+    env: { ...process.env, NO_COLOR: "1" },
+  });
   let stdout = "";
   let stderr = "";
   child.stdout.on("data", (chunk) => (stdout += String(chunk)));
@@ -52,27 +48,18 @@ async function expectStillRunning(running: Running) {
   const marker = Symbol("still-running");
   const result = await Promise.race([
     running.promise,
-    new Promise<typeof marker>((resolveMarker) =>
-      setTimeout(() => resolveMarker(marker), 1000),
-    ),
+    new Promise<typeof marker>((resolveMarker) => setTimeout(() => resolveMarker(marker), 1000)),
   ]);
   expect(result).toBe(marker);
 }
 
-test("allowlister waits for a remote allow decision from the built app", async ({
-  page,
-}) => {
+test("allowlister waits for a remote allow decision from the built app", async ({ page }) => {
   const { dir } = await repoConfig();
-  const running = runAllowlister(
-    dir,
-    "gh pr merge 42 --squash --delete-branch",
-  );
+  const running = runAllowlister(dir, "gh pr merge 42 --squash --delete-branch");
   try {
     await expectStillRunning(running);
     await page.goto("/");
-    await expect(page.getByLabel("Important commands")).toContainText(
-      "gh pr merge 42",
-    );
+    await expect(page.getByLabel("Important commands")).toContainText("gh pr merge 42");
 
     await page.getByRole("button", { name: "Allow once" }).click();
 
@@ -85,14 +72,9 @@ test("allowlister waits for a remote allow decision from the built app", async (
   }
 });
 
-test("allowlister waits for a remote deny decision from the built app", async ({
-  page,
-}) => {
+test("allowlister waits for a remote deny decision from the built app", async ({ page }) => {
   const { dir } = await repoConfig();
-  const running = runAllowlister(
-    dir,
-    "gh pr merge 42 --squash --delete-branch",
-  );
+  const running = runAllowlister(dir, "gh pr merge 42 --squash --delete-branch");
   try {
     await expectStillRunning(running);
     await page.goto("/");
@@ -125,9 +107,7 @@ test("allowlister does not wait for the app when a static allow rule applies", a
 });
 
 test("allowlister does not wait for the app when a static deny rule applies", async () => {
-  const { dir } = await repoConfig(
-    '{"name":"deny rm","match":"rm -rf *","action":"deny"}',
-  );
+  const { dir } = await repoConfig('{"name":"deny rm","match":"rm -rf *","action":"deny"}');
   const start = Date.now();
   const running = runAllowlister(dir, "rm -rf build");
   try {

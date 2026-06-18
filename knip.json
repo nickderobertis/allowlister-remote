@@ -1,0 +1,32 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": [
+    "apps/web/app/**/*.ts",
+    "apps/web/app/**/*.tsx",
+    "apps/web/src/**/*.ts",
+    "apps/web/src/**/*.tsx",
+    "apps/web/*.config.ts",
+    "apps/web/playwright.config.ts"
+  ],
+  "project": [
+    "apps/web/**/*.{ts,tsx}"
+  ],
+  "ignore": [
+    "apps/web/next-env.d.ts",
+    "apps/web/.next/**"
+  ],
+  "ignoreDependencies": [
+    "@playwright/test",
+    "@testing-library/user-event",
+    "jsdom",
+    "nx"
+  ],
+  "ignoreBinaries": [
+    "biome",
+    "knip",
+    "tsc",
+    "vitest",
+    "playwright",
+    "next"
+  ]
+}

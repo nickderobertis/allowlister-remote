@@ -7,9 +7,7 @@ describe("App", () => {
   it("shows the important allowlister command before the full script", async () => {
     render(<App />);
 
-    expect(
-      await screen.findAllByText("gh pr merge 42 --squash --delete-branch"),
-    ).toHaveLength(3);
+    expect(await screen.findAllByText("gh pr merge 42 --squash --delete-branch")).toHaveLength(3);
     expect(screen.getByText(/Approve the action/)).toBeInTheDocument();
     expect(screen.getByText("GitHub write")).toBeInTheDocument();
   });
