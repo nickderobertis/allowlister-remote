@@ -9,7 +9,6 @@ const vendorDir = join(packageDir, "vendor");
 
 const expectedArtifacts = [
   ["allowlister-remote-plugin-darwin-arm64", "darwin-arm64", "allowlister-remote-plugin"],
-  ["allowlister-remote-plugin-darwin-x64", "darwin-x64", "allowlister-remote-plugin"],
   ["allowlister-remote-plugin-linux-x64", "linux-x64", "allowlister-remote-plugin"],
   ["allowlister-remote-plugin-win32-x64.exe", "win32-x64", "allowlister-remote-plugin.exe"],
 ];
