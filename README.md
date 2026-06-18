@@ -33,8 +33,8 @@ The repository ships two pieces that communicate over the network:
 Build and serve the production app:
 
 ```console
-cargo build --release --bin allowlister-remote-plugin
-npm run build
+cargo build --release -p allowlister-remote-plugin
+npx nx run web:build
 npm run start -- --hostname 0.0.0.0 --port 3000
 ```
 

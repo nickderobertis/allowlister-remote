@@ -1,0 +1,37 @@
+{
+  "$schema": "./node_modules/nx/schemas/nx-schema.json",
+  "defaultBase": "main",
+  "namedInputs": {
+    "default": ["{projectRoot}/**/*", "sharedGlobals"],
+    "production": [
+      "default",
+      "!{projectRoot}/**/*.test.ts",
+      "!{projectRoot}/**/*.test.tsx",
+      "!{projectRoot}/tests/**/*"
+    ],
+    "sharedGlobals": [
+      "{workspaceRoot}/package.json",
+      "{workspaceRoot}/package-lock.json",
+      "{workspaceRoot}/nx.json",
+      "{workspaceRoot}/Cargo.toml",
+      "{workspaceRoot}/Cargo.lock"
+    ]
+  },
+  "targetDefaults": {
+    "fmt-check": { "cache": true, "inputs": ["default"] },
+    "lint": { "cache": true, "inputs": ["default"] },
+    "typecheck": { "cache": true, "inputs": ["default"] },
+    "test": {
+      "cache": true,
+      "inputs": ["default"],
+      "outputs": ["{projectRoot}/coverage"]
+    },
+    "build": {
+      "cache": true,
+      "inputs": ["production"],
+      "dependsOn": ["^build"],
+      "outputs": ["{projectRoot}/.next", "{workspaceRoot}/target"]
+    },
+    "test-e2e": { "cache": false, "dependsOn": ["build"] }
+  }
+}

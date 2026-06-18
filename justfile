@@ -5,37 +5,36 @@ default:
 
 bootstrap:
     npm ci
+    cargo fetch
 
-check: fmt-check lint typecheck test rust-test build test-e2e
+check: test
+    if [[ -n "${NX_BASE:-}" ]]; then npx nx affected -t fmt-check lint typecheck build test-e2e --base "$NX_BASE" --head "${NX_HEAD:-HEAD}"; else npx nx affected -t fmt-check lint typecheck build test-e2e --uncommitted; fi
     @echo "check: ok"
 
 fmt-check:
-    npx prettier --check .
+    if [[ -n "${NX_BASE:-}" ]]; then npx nx affected -t fmt-check --base "$NX_BASE" --head "${NX_HEAD:-HEAD}"; else npx nx affected -t fmt-check --uncommitted; fi
 
 format:
-    npx prettier --write .
+    npx prettier --write . --ignore-unknown
+    cargo fmt --all
 
 lint:
-    npm run lint
+    if [[ -n "${NX_BASE:-}" ]]; then npx nx affected -t lint --base "$NX_BASE" --head "${NX_HEAD:-HEAD}"; else npx nx affected -t lint --uncommitted; fi
 
 typecheck:
-    npm run typecheck
+    if [[ -n "${NX_BASE:-}" ]]; then npx nx affected -t typecheck --base "$NX_BASE" --head "${NX_HEAD:-HEAD}"; else npx nx affected -t typecheck --uncommitted; fi
 
 test:
-    npm test -- --run
-
-rust-test:
-    cargo test
+    if [[ -n "${NX_BASE:-}" ]]; then npx nx affected -t test --base "$NX_BASE" --head "${NX_HEAD:-HEAD}"; else npx nx affected -t test --uncommitted; fi
 
 build:
-    cargo build --bin allowlister-remote-plugin
-    npm run build
+    if [[ -n "${NX_BASE:-}" ]]; then npx nx affected -t build --base "$NX_BASE" --head "${NX_HEAD:-HEAD}"; else npx nx affected -t build --uncommitted; fi
 
 test-e2e:
-    npm run test:e2e
+    if [[ -n "${NX_BASE:-}" ]]; then npx nx affected -t test-e2e --base "$NX_BASE" --head "${NX_HEAD:-HEAD}"; else npx nx affected -t test-e2e --uncommitted; fi
 
 dev:
-    npm run dev
+    npx nx run web:dev
 
 upgrade:
     npm update

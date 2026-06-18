@@ -9,6 +9,7 @@ export default defineConfig([
   globalIgnores([
     ".next",
     "target",
+    ".nx",
     "coverage",
     "playwright-report",
     "test-results",
@@ -26,6 +27,9 @@ export default defineConfig([
     rules: {
       ...nextPlugin.configs.recommended.rules,
       ...nextPlugin.configs["core-web-vitals"].rules,
+    },
+    settings: {
+      next: { rootDir: "apps/web" },
     },
     languageOptions: {
       globals: { ...globals.browser, ...globals.node },

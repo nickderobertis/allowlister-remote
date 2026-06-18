@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { spawn } from "node:child_process";
 
-const root = resolve(import.meta.dirname, "..");
+const root = resolve(import.meta.dirname, "../../..");
 const plugin = join(root, "target", "debug", "allowlister-remote-plugin");
 const serverUrl = "http://127.0.0.1:4183";
 

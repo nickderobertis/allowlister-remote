@@ -1,16 +1,16 @@
 # AGENTS
 
-`allowlister-remote` is a standalone progressive web app for remote approval of
+`allowlister-remote` is an Nx monorepo for remote approval of
 allowlister dynamic approval requests.
 
 ## Stack and composition
 
-- **Product shape:** Next.js web app/PWA with server API endpoints plus a Rust allowlister
-  dynamic plugin client.
+- **Product shape:** Nx monorepo containing a Next.js web app/PWA with server
+  API endpoints plus a Rust allowlister dynamic plugin client.
 - **Languages:** TypeScript, React, and Next.js for the app/server; Rust for the
   allowlister plugin client; shell command surface via `just`.
-- **References composed:** `shapes/web-app.md`, `languages/typescript.md`, and
-  `ci.md` from the create-repo skill.
+- **References composed:** `shapes/web-app.md`, `languages/typescript.md`, `ci.md`, and
+  `references/monorepo.md` from the create-repo skill.
 - **Excluded, and why:** Durable multi-user persistence, auth, and push-notification delivery are
   intentionally outside this first repo scaffold; the server keeps in-memory
   request state for local and CI-realistic approval journeys.
@@ -19,13 +19,12 @@ allowlister dynamic approval requests.
 
 Use `just`; do not hand-roll equivalent commands.
 
-- `just bootstrap` installs JavaScript dependencies and prepares Rust dependencies via Cargo as needed.
-- `just check` runs formatting, linting, type checking, tests, and production
-  build.
+- `just bootstrap` installs JavaScript dependencies and fetches Rust workspace dependencies.
+- `just check` wraps `nx affected` for formatting, linting, type checking, tests, production builds, and e2e so only affected projects run.
 - `just test` runs the deterministic Vitest suite.
 - `just test-e2e` runs Playwright against the built PWA and the real
   allowlister binary/plugin boundary in desktop and mobile Chromium.
-- `just dev` starts the Next.js dev server.
+- `just dev` delegates to `nx run web:dev`.
 
 ## Quality and tests
 
@@ -37,3 +36,9 @@ Use `just`; do not hand-roll equivalent commands.
   viewports through the actual allowlister binary, Rust plugin process, Next.js app
   server over HTTP, remote allow/deny decisions, and static allow/deny no-wait
   paths.
+
+## Monorepo projects
+
+- `apps/web` is the Next.js PWA/server project and owns browser, route, and UI tests.
+- `crates/allowlister-remote-plugin` is the Rust allowlister dynamic plugin client.
+- Root commands must delegate to Nx affected/run targets; do not add bespoke root loops over projects.

@@ -10,7 +10,7 @@ export default defineConfig({
     trace: "on-first-retry",
   },
   webServer: {
-    command: "npm run start -- --hostname 127.0.0.1 --port 4183",
+    command: "npx next start --hostname 127.0.0.1 --port 4183",
     url: "http://127.0.0.1:4183",
     reuseExistingServer: false,
   },

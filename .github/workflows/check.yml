@@ -10,6 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v6
         with:
           node-version: 20
@@ -17,21 +19,28 @@ jobs:
       - uses: extractions/setup-just@v3
       - name: Install allowlister
         run: curl -fsSL https://raw.githubusercontent.com/nickderobertis/allowlister/main/scripts/install.sh | bash -s -- --bin-dir /usr/local/bin
+      - run: rustup component add clippy
       - run: just bootstrap
       - run: npx playwright install --with-deps chromium
-      - run: just check
+      - name: Run affected check
+        env:
+          NX_BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          NX_HEAD: ${{ github.sha }}
+        run: just check
 
   install-smoke:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v6
         with:
           node-version: 20
           cache: npm
       - run: npm ci
-      - run: cargo build --release --bin allowlister-remote-plugin
-      - run: npm run build
+      - run: cargo build --release -p allowlister-remote-plugin
+      - run: npx nx run web:build
       - name: Smoke-test Rust plugin static no-wait path
         run: |
           printf '{"current_verdict":"allow","command":"git status","cwd":"/tmp"}' \

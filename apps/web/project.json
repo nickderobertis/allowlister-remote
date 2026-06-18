@@ -1,0 +1,67 @@
+{
+  "name": "web",
+  "projectType": "application",
+  "root": "apps/web",
+  "sourceRoot": "apps/web/src",
+  "tags": ["scope:web", "type:app"],
+  "targets": {
+    "fmt-check": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "npx prettier --check apps/web",
+        "cwd": "."
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "npx eslint apps/web/app apps/web/src apps/web/*.ts",
+        "cwd": "."
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "npx tsc -p apps/web/tsconfig.json --noEmit",
+        "cwd": "."
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "npx vitest --config vitest.config.ts --coverage --run",
+        "cwd": "apps/web"
+      }
+    },
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "npx next build apps/web",
+        "cwd": "."
+      },
+      "cache": false
+    },
+    "test-e2e": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "npx playwright test --config playwright.config.ts",
+        "cwd": "apps/web"
+      },
+      "dependsOn": [
+        "build",
+        {
+          "target": "build",
+          "projects": ["allowlister-remote-plugin"]
+        }
+      ]
+    },
+    "dev": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "npx next dev apps/web",
+        "cwd": "."
+      }
+    }
+  },
+  "implicitDependencies": ["allowlister-remote-plugin"]
+}

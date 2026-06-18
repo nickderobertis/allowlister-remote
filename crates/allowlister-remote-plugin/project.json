@@ -1,0 +1,46 @@
+{
+  "name": "allowlister-remote-plugin",
+  "projectType": "application",
+  "root": "crates/allowlister-remote-plugin",
+  "sourceRoot": "crates/allowlister-remote-plugin/src",
+  "tags": ["scope:plugin", "type:cli", "lang:rust"],
+  "targets": {
+    "fmt-check": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo fmt --manifest-path crates/allowlister-remote-plugin/Cargo.toml --check",
+        "cwd": "."
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo clippy -p allowlister-remote-plugin --all-targets -- -D warnings",
+        "cwd": "."
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo check -p allowlister-remote-plugin",
+        "cwd": "."
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo test -p allowlister-remote-plugin",
+        "cwd": "."
+      }
+    },
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo build -p allowlister-remote-plugin",
+        "cwd": "."
+      },
+      "outputs": ["{workspaceRoot}/target/debug/allowlister-remote-plugin"],
+      "cache": false
+    }
+  }
+}
