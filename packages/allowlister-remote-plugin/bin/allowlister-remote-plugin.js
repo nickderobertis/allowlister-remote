@@ -7,7 +7,6 @@ import { fileURLToPath } from "node:url";
 
 const supportedPlatforms = new Map([
   ["darwin-arm64", "darwin-arm64/allowlister-remote-plugin"],
-  ["darwin-x64", "darwin-x64/allowlister-remote-plugin"],
   ["linux-x64", "linux-x64/allowlister-remote-plugin"],
   ["win32-x64", "win32-x64/allowlister-remote-plugin.exe"],
 ]);

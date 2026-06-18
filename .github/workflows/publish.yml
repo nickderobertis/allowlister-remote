@@ -22,11 +22,6 @@ jobs:
             target: x86_64-unknown-linux-gnu
             binary: allowlister-remote-plugin
             artifact: allowlister-remote-plugin-linux-x64
-          - platform: darwin-x64
-            os: macos-13
-            target: x86_64-apple-darwin
-            binary: allowlister-remote-plugin
-            artifact: allowlister-remote-plugin-darwin-x64
           - platform: darwin-arm64
             os: macos-14
             target: aarch64-apple-darwin
@@ -89,6 +84,8 @@ jobs:
           registry-url: https://registry.npmjs.org
           cache: npm
       - run: npm ci
+      - name: Set npm package version from tag
+        run: node scripts/set-npm-package-version.mjs "${GITHUB_REF_NAME#v}"
       - name: Stage npm package binaries
         run: npm run release:stage-npm -- dist/release-artifacts
       - name: Smoke-test packed npm package

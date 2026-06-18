@@ -7,29 +7,7 @@
   "group-pull-request-title-pattern": "chore: release ${branch}",
   "packages": {
     "crates/allowlister-remote-plugin": {
-      "release-type": "rust",
-      "extra-files": [
-        {
-          "type": "json",
-          "path": "package.json",
-          "jsonpath": "$.version"
-        },
-        {
-          "type": "json",
-          "path": "packages/allowlister-remote-plugin/package.json",
-          "jsonpath": "$.version"
-        },
-        {
-          "type": "json",
-          "path": "package-lock.json",
-          "jsonpath": "$.packages[''].version"
-        },
-        {
-          "type": "json",
-          "path": "package-lock.json",
-          "jsonpath": "$.packages['packages/allowlister-remote-plugin'].version"
-        }
-      ]
+      "release-type": "rust"
     }
   }
 }

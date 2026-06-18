@@ -50,7 +50,7 @@ Use `just`; do not hand-roll equivalent commands.
 - PR titles use Conventional Commits and are required because squash commits drive releases.
 - Pre-1.0 bump policy: `feat` and breaking changes create a minor; `fix`, `perf`,
   `refactor`, and `build` create a patch; chores/docs/tests/styles do not release.
-- After the main `check` workflow passes, Release Please opens or updates a release PR with `RELEASE_TOKEN`; merging that PR tags `vX.Y.Z`, then the tag builds GitHub Release binaries and publishes `@nickderobertis/allowlister-remote-plugin` to npm with `NPM_TOKEN`.
+- After the main `check` workflow passes, Release Please opens or updates a release PR with `RELEASE_TOKEN`; merging that PR tags `vX.Y.Z`, then the tag builds GitHub Release binaries, stamps the npm carrier package from the tag, and publishes `@nickderobertis/allowlister-remote-plugin` with `NPM_TOKEN`.
 - GitHub should stay squash-only with auto-merge, branch deletion, required `check`,
   `install-smoke`, and `pr-title` checks, linear history, conversation resolution, and admin override.
 - `gh-secrets.json` is the secret manifest; values stay in the local gh-secrets store or another configured source, never in git.
