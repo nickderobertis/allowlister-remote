@@ -38,6 +38,13 @@ npx nx run web:build
 npm run start -- --hostname 0.0.0.0 --port 3000
 ```
 
+Install the released plugin from npm:
+
+```console
+npm install -g @nickderobertis/allowlister-remote-plugin
+allowlister-remote-plugin --version
+```
+
 Configure allowlister to use the plugin process:
 
 ```jsonc
@@ -62,6 +69,23 @@ With the Rust plugin pointed at the Next.js server URL, `allowlister check`
 blocks only for `ask`/`defer` decisions, the PWA displays the important command
 fragments, and the selected button releases the original allowlister process over
 the network.
+
+## Releases
+
+PR titles use Conventional Commits. Once a PR is squash-merged to `main` and the
+main `check` workflow passes, Release Please opens or updates a release PR using
+`RELEASE_TOKEN`. Merging that release PR versions the Rust crate and npm package,
+writes the changelog, and creates a `vX.Y.Z` tag. The tag workflow builds native
+plugin binaries for Linux x64, macOS x64, macOS arm64, and Windows x64, uploads
+them to the GitHub Release with checksums, publishes
+`@nickderobertis/allowlister-remote-plugin` to npm with provenance, then installs
+the published package and smoke-tests the real plugin entry point.
+
+Repository secrets are declared in `gh-secrets.json` and synced with:
+
+```console
+gh-secrets sync
+```
 
 ## HTTP server contract
 

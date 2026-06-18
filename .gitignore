@@ -4,10 +4,12 @@ coverage
 .env
 .env.*
 !.env.example
+.gh-secrets-state.json
 .DS_Store
 
 .next
 target
+packages/allowlister-remote-plugin/vendor
 
 tsconfig.tsbuildinfo
 

@@ -41,9 +41,9 @@ jobs:
       - run: npm ci
       - run: cargo build --release -p allowlister-remote-plugin
       - run: npx nx run web:build
-      - name: Smoke-test Rust plugin static no-wait path
+      - name: Stage npm package binary
         run: |
-          printf '{"current_verdict":"allow","command":"git status","cwd":"/tmp"}' \
-            | ./target/release/allowlister-remote-plugin --server-url http://127.0.0.1:9 \
-            | tee /tmp/plugin.json
-          grep '"verdict":"defer"' /tmp/plugin.json
+          mkdir -p packages/allowlister-remote-plugin/vendor/linux-x64
+          cp target/release/allowlister-remote-plugin packages/allowlister-remote-plugin/vendor/linux-x64/allowlister-remote-plugin
+      - name: Smoke-test npm install path
+        run: npm run release:smoke-npm

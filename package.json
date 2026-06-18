@@ -3,6 +3,9 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "workspaces": [
+    "packages/allowlister-remote-plugin"
+  ],
   "scripts": {
     "dev": "nx run web:dev",
     "build": "nx affected -t build",
@@ -13,7 +16,9 @@
     "fmt-check": "nx affected -t fmt-check",
     "test:e2e": "nx affected -t test-e2e",
     "start": "next start apps/web",
-    "plugin": "cargo run --quiet -p allowlister-remote-plugin --"
+    "plugin": "cargo run --quiet -p allowlister-remote-plugin --",
+    "release:stage-npm": "node scripts/stage-npm-package.mjs",
+    "release:smoke-npm": "bash scripts/smoke-npm-package.sh"
   },
   "dependencies": {
     "next": "^16.2.9",

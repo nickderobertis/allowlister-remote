@@ -1,0 +1,22 @@
+{
+  "name": "@nickderobertis/allowlister-remote-plugin",
+  "version": "0.1.0",
+  "description": "npm installer for the allowlister remote dynamic approval plugin",
+  "type": "module",
+  "license": "UNLICENSED",
+  "bin": {
+    "allowlister-remote-plugin": "./bin/allowlister-remote-plugin.js"
+  },
+  "files": [
+    "README.md",
+    "bin/",
+    "vendor/"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
