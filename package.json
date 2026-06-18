@@ -9,7 +9,7 @@
     "lint": "nx affected -t lint",
     "typecheck": "nx affected -t typecheck",
     "test": "nx affected -t test",
-    "format": "biome check --write apps/web package.json package-lock.json nx.json biome.jsonc && cargo fmt --all",
+    "format": "nx affected -t format",
     "fmt-check": "nx affected -t fmt-check",
     "test:e2e": "nx affected -t test-e2e",
     "start": "next start apps/web",

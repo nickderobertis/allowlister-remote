@@ -5,6 +5,13 @@
   "sourceRoot": "apps/web/src",
   "tags": ["scope:web", "type:app"],
   "targets": {
+    "format": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "npx biome check --write apps/web package.json package-lock.json nx.json biome.jsonc",
+        "cwd": "."
+      }
+    },
     "fmt-check": {
       "executor": "nx:run-commands",
       "options": {
