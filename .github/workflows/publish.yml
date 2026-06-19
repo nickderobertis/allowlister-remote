@@ -105,12 +105,22 @@ jobs:
           version="$(node -e "console.log(JSON.parse(require('node:fs').readFileSync('packages/allowlister-remote-plugin/package.json', 'utf8')).version)")"
           tmp_dir="$(mktemp -d)"
           trap 'rm -rf "$tmp_dir"' EXIT
-          for attempt in {1..12}; do
-            if npm install --prefix "$tmp_dir/prefix" -g "@nickderobertis/allowlister-remote-plugin@$version"; then
+          # The registry can take a few minutes to make a freshly published
+          # version installable, so retry with --prefer-online (bypass stale
+          # cache) and fail loudly if it never propagates.
+          installed=0
+          for attempt in {1..30}; do
+            if npm install --prefer-online --prefix "$tmp_dir/prefix" -g "@nickderobertis/allowlister-remote-plugin@$version"; then
+              installed=1
               break
             fi
+            echo "install attempt $attempt failed; waiting for registry propagation"
             sleep 10
           done
+          if [[ "$installed" -ne 1 ]]; then
+            echo "published npm package $version did not become installable" >&2
+            exit 1
+          fi
           test "$("$tmp_dir/prefix/bin/allowlister-remote-plugin" --version)" = "$version"
           printf '{"current_verdict":"allow","command":"git status","cwd":"/tmp"}' \
             | "$tmp_dir/prefix/bin/allowlister-remote-plugin" --server-url http://127.0.0.1:9 \
