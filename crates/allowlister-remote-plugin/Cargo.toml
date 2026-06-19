@@ -2,6 +2,7 @@
 name = "allowlister-remote-plugin"
 version = "0.2.2"
 edition = "2021"
+repository = "https://github.com/nickderobertis/allowlister-remote"
 
 [[bin]]
 name = "allowlister-remote-plugin"
