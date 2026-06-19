@@ -61,6 +61,30 @@ function runAllowlister(cwd: string, command: string): Running {
   };
 }
 
+// Evaluate a non-shell tool call (`allowlister check --tool …`) instead of a
+// shell command, so the e2e drives the real protocol-v2 `tool` payload end to
+// end: the binary emits it, the plugin forwards it, and the app renders it.
+function runAllowlisterTool(cwd: string, tool: string, raw: string): Running {
+  const child = spawn(
+    "allowlister",
+    ["check", "--cwd", cwd, "--json", "--tool", tool, "--raw", raw],
+    {
+      cwd,
+      env: { ...process.env, NO_COLOR: "1" },
+    },
+  );
+  let stdout = "";
+  let stderr = "";
+  child.stdout.on("data", (chunk) => (stdout += String(chunk)));
+  child.stderr.on("data", (chunk) => (stderr += String(chunk)));
+  return {
+    promise: new Promise((resolveResult) => {
+      child.on("close", (code) => resolveResult({ code, stdout, stderr }));
+    }),
+    kill: () => child.kill(),
+  };
+}
+
 async function expectStillRunning(running: Running | TtyRunning) {
   const marker = Symbol("still-running");
   const result = await Promise.race([
@@ -77,6 +101,12 @@ async function expectStillRunning(running: Running | TtyRunning) {
 // projects sharing the same server).
 function uniqueCommand(base: string) {
   return `${base} ${randomUUID().slice(0, 8)}`;
+}
+
+// A unique MCP tool name per invocation so each test only ever matches its own
+// tool request in the process-wide store (the tool name is the inbox headline).
+function uniqueTool() {
+  return `mcp__github__create_issue_${randomUUID().slice(0, 8)}`;
 }
 
 function shellQuote(value: string): string {
@@ -146,6 +176,101 @@ test("allowlister waits for a remote allow decision from the expanded view", asy
     const result = await running.promise;
     expect(result.code).toBe(0);
     expect(JSON.parse(result.stdout).verdict).toBe("allow");
+  } finally {
+    running.kill();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("surfaces a real tool call and resolves it from the expanded view", async ({ page }) => {
+  const { dir } = await repoConfig();
+  const tool = uniqueTool();
+  const running = runAllowlisterTool(
+    dir,
+    tool,
+    JSON.stringify({ owner: "acme", repo: "app", title: "Production is down" }),
+  );
+  try {
+    await expectStillRunning(running);
+    await page.goto("/");
+    const open = page.getByRole("button", { name: `Open approval for ${tool}` });
+    await expect(open).toHaveCount(1);
+    await open.click();
+
+    await expect(page.getByRole("heading", { name: "Approve this tool call" })).toBeVisible();
+    // The formatted view shows allowlister's canonical capability mapping...
+    await expect(page.getByLabel("Tool call formatted view")).toContainText("capability: mcp");
+    // ...and the JSON view shows the verbatim raw input the real binary forwarded.
+    await page.getByRole("button", { name: "JSON" }).click();
+    await expect(page.getByLabel("Tool call JSON view")).toContainText(
+      '"title": "Production is down"',
+    );
+
+    await page.getByRole("button", { name: "Allow once" }).click();
+
+    const result = await running.promise;
+    expect(result.code).toBe(0);
+    expect(JSON.parse(result.stdout).verdict).toBe("allow");
+  } finally {
+    running.kill();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("renders a real multi-fragment script with mixed allow/ask verdicts", async ({ page }) => {
+  // Most fragments match static allow rules; only `npm publish` and `git push`
+  // trip an `ask`, so the engine's real per-fragment decomposition arrives with
+  // mixed verdicts rather than a single blob.
+  const rules = [
+    '{"name":"allow npm install","match":"npm ci","action":"allow"}',
+    '{"name":"allow npm build","match":"npm run build","action":"allow"}',
+    '{"name":"allow echo","match":"echo *","action":"allow"}',
+    '{"name":"ask before publishing a package","match":"npm publish*","action":"ask"}',
+    '{"name":"ask before pushing to a remote","match":"git push *","action":"ask"}',
+  ].join(",");
+  const { dir } = await repoConfig(rules);
+  const marker = randomUUID().slice(0, 8);
+  // The unique token rides on the first flagged fragment, so the inbox headline
+  // (the first ask) is unique per invocation.
+  const script = [
+    "npm ci",
+    "npm run build",
+    `npm publish --access public --tag ${marker}`,
+    "git push origin main --tags",
+    "echo done",
+  ].join("\n");
+  const headline = `npm publish --access public --tag ${marker}`;
+  const running = runAllowlister(dir, script);
+  try {
+    await expectStillRunning(running);
+    await page.goto("/");
+    const open = page.getByRole("button", { name: `Open approval for ${headline}` });
+    await expect(open).toHaveCount(1);
+    await open.click();
+
+    await expect(page.getByRole("heading", { name: /Approve the action/ })).toBeVisible();
+    // Only the two tripping fragments are surfaced for attention.
+    const flagged = page.getByLabel("Flagged commands");
+    await expect(flagged).toContainText(headline);
+    await expect(flagged).toContainText("git push origin main --tags");
+    // The full decomposition lists the allowed fragments with their rule names,
+    // proving mixed verdicts (allow + ask) came through from the real binary.
+    // Scoped to the fragments card so rule names that also appear in the flagged
+    // card above do not match twice.
+    const fragments = page.getByLabel("Allowlister fragments");
+    await expect(fragments).toContainText("npm ci");
+    await expect(fragments).toContainText("allow npm install");
+    await expect(fragments).toContainText("ask before publishing a package");
+    await expect(fragments).toContainText("ask before pushing to a remote");
+
+    // The script statically resolves to `ask` (rule-driven), and allowlister only
+    // lets a plugin `allow` upgrade a static `defer` — so the effective remote
+    // decision here is `deny`, which blocks and returns exit code 2.
+    await page.getByRole("button", { name: "Deny" }).click();
+
+    const result = await running.promise;
+    expect(result.code).toBe(2);
+    expect(JSON.parse(result.stdout).verdict).toBe("deny");
   } finally {
     running.kill();
     await rm(dir, { recursive: true, force: true });

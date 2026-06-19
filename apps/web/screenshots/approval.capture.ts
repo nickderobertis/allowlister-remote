@@ -96,3 +96,26 @@ test("tool-json", async ({ page }, testInfo) => {
   await expect(page.getByLabel("Tool call JSON view")).toBeVisible();
   await shoot(page, testInfo.project.name, "tool-json");
 });
+
+test("tool-capability", async ({ page }, testInfo) => {
+  // A capability tool call (a file write) rather than an MCP tool, in the
+  // formatted view — its canonical `path` param and verbatim raw input.
+  await page.getByRole("button", { name: "Open approval for write" }).click();
+  await expect(page.getByRole("heading", { name: "Approve this tool call" })).toBeVisible();
+  await expect(page.getByLabel("Tool call formatted view")).toBeVisible();
+  await shoot(page, testInfo.project.name, "tool-capability");
+});
+
+test("empty-state", async ({ page }, testInfo) => {
+  // The inbox after every pending request has been decided.
+  for (const name of [
+    "Deny gh pr merge 42 --squash --delete-branch",
+    "Deny npm publish --access public",
+    "Deny mcp__github__create_issue",
+    "Deny write",
+  ]) {
+    await page.getByRole("button", { name }).click();
+  }
+  await expect(page.getByRole("heading", { name: "No pending approvals" })).toBeVisible();
+  await shoot(page, testInfo.project.name, "empty-state");
+});
