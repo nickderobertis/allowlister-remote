@@ -33,6 +33,10 @@ jobs:
           registry-url: https://registry.npmjs.org
       - uses: extractions/setup-just@v3
       - name: Install allowlister
+        # Authenticate the install script's "resolve latest" GitHub API call:
+        # unauthenticated it is rate-limited (HTTP 403/504) on shared CI IPs.
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: curl -fsSL https://raw.githubusercontent.com/nickderobertis/allowlister/main/scripts/install.sh | bash -s -- --bin-dir /usr/local/bin
       - run: npm ci
       - run: npx playwright install --with-deps chromium
