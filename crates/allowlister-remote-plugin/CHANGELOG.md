@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.4](https://github.com/nickderobertis/allowlister-remote/compare/v0.2.3...v0.2.4) (2026-06-19)
+
+
+### Bug Fixes
+
+* return ask verdict on invalid plugin input instead of panicking ([#16](https://github.com/nickderobertis/allowlister-remote/issues/16)) ([7edb467](https://github.com/nickderobertis/allowlister-remote/commit/7edb4671836cb90e1daa0ccb6e482b77dbf6f255))
+
 ## [0.2.3](https://github.com/nickderobertis/allowlister-remote/compare/v0.2.2...v0.2.3) (2026-06-19)
 
 
