@@ -1,5 +1,5 @@
 use allowlister_remote_plugin::{
-    build_create_body, interpret_decision, is_static_decision, parse_local_input, request_summary,
+    build_create_body, interpret_decision, parse_local_input, request_summary, static_decision,
     LocalDecision, RemoteDecision,
 };
 use reqwest::blocking::Client;
@@ -24,8 +24,10 @@ struct PluginResponse<'a> {
     reason: String,
 }
 
-fn arg(name: &str, fallback: &str) -> String {
-    let args: Vec<String> = env::args().collect();
+/// Look up a `--name value` flag in a pre-collected argument list. The args are
+/// collected once by the caller (only on the network path) so the three flag
+/// lookups do not each re-walk and re-clone `env::args`.
+fn arg(args: &[String], name: &str, fallback: &str) -> String {
     args.windows(2)
         .find_map(|pair| (pair[0] == name).then(|| pair[1].clone()))
         .unwrap_or_else(|| fallback.to_string())
@@ -117,7 +119,32 @@ fn main() {
         return;
     }
 
+    let mut stdin = String::new();
+    io::stdin()
+        .read_to_string(&mut stdin)
+        .expect("read allowlister plugin stdin");
+
+    // Hot path: a static allow/deny verdict settles the command without remote
+    // approval. Probe `current_verdict` alone — no full `Value` tree, no arg
+    // collection — and exit before any of the request-opening setup below.
+    if static_decision(&stdin) == Some(true) {
+        write_response(
+            "defer",
+            "static allowlister verdict does not need remote approval",
+        );
+    }
+
+    // Non-static (or unparseable): now do the full parse, which also surfaces a
+    // precise error for a malformed payload.
+    let input: Value = serde_json::from_str(&stdin).unwrap_or_else(|error| {
+        write_response("ask", format!("invalid allowlister plugin input: {error}"))
+    });
+
+    // Only the network path reads CLI flags, so collect args once here rather
+    // than on every (mostly static) invocation.
+    let args: Vec<String> = env::args().collect();
     let server_url = arg(
+        &args,
         "--server-url",
         &env::var("ALLOWLISTER_REMOTE_URL").unwrap_or_else(|_| "http://127.0.0.1:3000".to_string()),
     )
@@ -125,23 +152,8 @@ fn main() {
     .to_string();
     // A timeout of 0 (the default) means wait indefinitely for a decision from
     // either the local terminal or the web app.
-    let timeout_ms: u64 = arg("--timeout-ms", "0").parse().unwrap_or(0);
-    let poll_ms: u64 = arg("--poll-ms", "150").parse().unwrap_or(150);
-
-    let mut stdin = String::new();
-    io::stdin()
-        .read_to_string(&mut stdin)
-        .expect("read allowlister plugin stdin");
-    let input: Value = serde_json::from_str(&stdin).unwrap_or_else(|error| {
-        write_response("ask", format!("invalid allowlister plugin input: {error}"))
-    });
-
-    if is_static_decision(&input) {
-        write_response(
-            "defer",
-            "static allowlister verdict does not need remote approval",
-        );
-    }
+    let timeout_ms: u64 = arg(&args, "--timeout-ms", "0").parse().unwrap_or(0);
+    let poll_ms: u64 = arg(&args, "--poll-ms", "150").parse().unwrap_or(150);
 
     let client = Client::builder()
         .user_agent(concat!(

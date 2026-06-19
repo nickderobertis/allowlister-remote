@@ -16,7 +16,7 @@ use std::alloc::{GlobalAlloc, Layout, System};
 use std::hint::black_box;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use allowlister_remote_plugin::{build_create_body, interpret_decision, triage};
+use allowlister_remote_plugin::{build_create_body, interpret_decision, static_decision, triage};
 use serde_json::Value;
 
 #[path = "support/mod.rs"]
@@ -73,6 +73,7 @@ fn main() {
     // Flush lazy one-time initialization out of the measured calls, so every row
     // reflects steady-state cost.
     for (_, body) in support::corpus() {
+        black_box(static_decision(&body));
         black_box(triage(&body, TIMEOUT_MS).ok());
     }
     for (_, body) in support::decision_bodies() {
@@ -82,6 +83,9 @@ fn main() {
     println!("| operation | case | allocator calls | bytes requested |");
     println!("|---|---|---:|---:|");
     for (name, body) in support::corpus() {
+        let (calls, bytes) = measure(|| static_decision(&body));
+        println!("| static_decision | {name} | {calls} | {bytes} |");
+
         let (calls, bytes) = measure(|| triage(&body, TIMEOUT_MS).ok());
         println!("| triage | {name} | {calls} | {bytes} |");
 
