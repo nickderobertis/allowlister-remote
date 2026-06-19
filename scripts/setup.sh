@@ -55,6 +55,54 @@ ensure_just() {
   ok "just installed ($(just --version 2>/dev/null || echo unknown))"
 }
 
+# screencomp powers the pre-push visual guard (.githooks/pre-push): it classifies
+# captured screenshots against the committed baseline. Best-effort like the
+# Playwright browsers — a restricted network must not fail setup, since the guard
+# simply skips when the CLI is absent and CI still gates visual drift.
+# Pinned to the same release the visual-docs CI workflow uses, so local captures
+# classify with the identical tool. Pinning also skips the install script's
+# "resolve latest" GitHub API call, which is rate-limited for unauthenticated
+# requests. Override with SCREENCOMP_VERSION.
+SCREENCOMP_VERSION="${SCREENCOMP_VERSION:-v0.3.0}"
+ensure_screencomp() {
+  if have screencomp; then
+    ok "screencomp present ($(screencomp --version 2>/dev/null || echo unknown))"
+    return
+  fi
+  mkdir -p "$HOME/.local/bin"
+  if have curl; then
+    say "installing screencomp ${SCREENCOMP_VERSION} into ~/.local/bin (prebuilt)"
+    curl -fsSL https://raw.githubusercontent.com/nickderobertis/screencomp/main/scripts/install.sh \
+      | sh -s -- --to "$HOME/.local/bin" --version "$SCREENCOMP_VERSION" 2>/dev/null || true
+    _load_tool_env
+  fi
+  if ! have screencomp && have cargo; then
+    say "prebuilt screencomp unreachable — building from source (cargo install --git)"
+    cargo install --git https://github.com/nickderobertis/screencomp --tag "$SCREENCOMP_VERSION" \
+      --locked screencomp 2>/dev/null || true
+    _load_tool_env
+  fi
+  if have screencomp; then
+    ok "screencomp installed ($(screencomp --version 2>/dev/null || echo unknown))"
+  else
+    printf '! screencomp not installed (the pre-push visual guard will skip); rerun setup with network access.\n'
+  fi
+}
+
+# Activate the repo's git hooks so the pre-push visual guard runs. Idempotent;
+# the guard itself only captures when screenshot-relevant files change and is a
+# no-op under CI. Bypass an individual push with `git push --no-verify`.
+enable_git_hooks() {
+  [ -d .githooks ] || return 0
+  if [ "$(git config core.hooksPath 2>/dev/null || true)" = ".githooks" ]; then
+    ok "git hooks already enabled (core.hooksPath=.githooks)"
+    return
+  fi
+  if git config core.hooksPath .githooks 2>/dev/null; then
+    ok "enabled git hooks (core.hooksPath=.githooks)"
+  fi
+}
+
 main() {
   require_bin node  "Install Node.js (the version targeted by package.json)."
   require_bin npm   "Install npm (ships with Node.js)."
@@ -77,6 +125,12 @@ main() {
   else
     printf '! Playwright not found in node_modules; skipping browser install.\n'
   fi
+
+  # Visual-regression guard: the screencomp CLI + the git hook that runs it on a
+  # screenshot-relevant push. The hook starts Docker lazily (remote env) only
+  # when a capture is actually needed.
+  ensure_screencomp
+  enable_git_hooks
 
   _write_stamp
   rm -f .dev/setup.failed 2>/dev/null || true
