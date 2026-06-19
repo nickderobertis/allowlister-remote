@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.0](https://github.com/nickderobertis/allowlister-remote/compare/v0.2.4...v0.3.0) (2026-06-19)
+
+
+### Features
+
+* approve at the local terminal and wait indefinitely ([#21](https://github.com/nickderobertis/allowlister-remote/issues/21)) ([1e1562c](https://github.com/nickderobertis/allowlister-remote/commit/1e1562c82f6df2e264950f9d7629f1425e94cd4b))
+
+
+### Performance Improvements
+
+* **plugin:** add performance profiling and benchmarking suite ([#26](https://github.com/nickderobertis/allowlister-remote/issues/26)) ([69a9479](https://github.com/nickderobertis/allowlister-remote/commit/69a9479fdfa3c4df9aa9109d0a162f0b3d8c09bd))
+
 ## [0.2.4](https://github.com/nickderobertis/allowlister-remote/compare/v0.2.3...v0.2.4) (2026-06-19)
 
 
