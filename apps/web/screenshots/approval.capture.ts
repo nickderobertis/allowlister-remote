@@ -51,22 +51,48 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("inbox", async ({ page }, testInfo) => {
-  // The default inbox view: every pending request as a triage card.
+  // The default inbox view: shell and tool requests as triage cards.
   await expect(page.getByRole("list", { name: "Pending approvals" })).toBeVisible();
   await shoot(page, testInfo.project.name, "inbox");
 });
 
-test("detail", async ({ page }, testInfo) => {
-  // Expand the first request into the full-screen approval view, with the full
-  // script disclosed. Open the disclosure by setting the attribute directly
-  // rather than clicking, so no interaction-driven scroll/animation varies bytes.
+test("shell-oneoff", async ({ page }, testInfo) => {
+  // A single one-off command that allowlister deferred to remote approval.
   await page
     .getByRole("button", { name: "Open approval for gh pr merge 42 --squash --delete-branch" })
     .click();
   await expect(page.getByRole("heading", { name: /Approve the action/ })).toBeVisible();
+  await shoot(page, testInfo.project.name, "shell-oneoff");
+});
+
+test("shell-script", async ({ page }, testInfo) => {
+  // A longer release script where only two of eight fragments (`npm publish`
+  // and `git push`) tripped the gate; the full script is disclosed. Open the
+  // disclosure by setting the attribute directly rather than clicking, so no
+  // interaction-driven scroll/animation varies bytes.
+  await page.getByRole("button", { name: "Open approval for npm publish --access public" }).click();
+  await expect(page.getByRole("heading", { name: /Approve the action/ })).toBeVisible();
   await page.locator("details").evaluate((el) => {
     (el as HTMLDetailsElement).open = true;
   });
-  await expect(page.getByText("git diff --stat && npm test && gh pr merge 42")).toBeVisible();
-  await shoot(page, testInfo.project.name, "detail");
+  await expect(page.getByLabel("Flagged commands")).toContainText("git push origin main --tags");
+  await shoot(page, testInfo.project.name, "shell-script");
+});
+
+test("tool-formatted", async ({ page }, testInfo) => {
+  // A non-shell tool call rendered in the formatted view (canonical params +
+  // raw input).
+  await page.getByRole("button", { name: "Open approval for mcp__github__create_issue" }).click();
+  await expect(page.getByRole("heading", { name: "Approve this tool call" })).toBeVisible();
+  await expect(page.getByLabel("Tool call formatted view")).toBeVisible();
+  await shoot(page, testInfo.project.name, "tool-formatted");
+});
+
+test("tool-json", async ({ page }, testInfo) => {
+  // The same tool call rendered as the verbatim protocol-v2 JSON.
+  await page.getByRole("button", { name: "Open approval for mcp__github__create_issue" }).click();
+  await expect(page.getByRole("heading", { name: "Approve this tool call" })).toBeVisible();
+  await page.getByRole("button", { name: "JSON" }).click();
+  await expect(page.getByLabel("Tool call JSON view")).toBeVisible();
+  await shoot(page, testInfo.project.name, "tool-json");
 });

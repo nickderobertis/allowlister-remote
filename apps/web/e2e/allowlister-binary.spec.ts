@@ -139,7 +139,7 @@ test("allowlister waits for a remote allow decision from the expanded view", asy
     const open = page.getByRole("button", { name: `Open approval for ${command}` });
     await expect(open).toHaveCount(1);
     await open.click();
-    await expect(page.getByLabel("Important commands")).toContainText("gh pr merge 42");
+    await expect(page.getByLabel("Flagged commands")).toContainText("gh pr merge 42");
 
     await page.getByRole("button", { name: "Allow once" }).click();
 

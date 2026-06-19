@@ -1,42 +1,46 @@
-import type { ApprovalRequest } from "./types";
+import {
+  type AllowlisterFragment,
+  type ApprovalRequest,
+  isToolRequest,
+  type ShellApprovalRequest,
+  type ToolApprovalRequest,
+} from "./types";
 
-const riskyTerms = new Map([
-  ["rm", "destructive file operation"],
-  ["sudo", "privileged command"],
-  ["curl", "network fetch"],
-  ["wget", "network fetch"],
-  ["push", "remote write"],
-  ["merge", "merge action"],
-  ["delete", "deletion"],
-  ["token", "secret-looking argument"],
-  [".env", "secret-looking path"],
-]);
-
-export function importantCommands(request: ApprovalRequest): string[] {
-  const actionable = request.fragments
-    .filter((fragment) => fragment.verdict === "ask" || fragment.verdict === "deny")
-    .map((fragment) => fragment.display);
-
-  if (actionable.length > 0) {
-    return actionable;
-  }
-
-  return request.fragments.length > 0
-    ? request.fragments.slice(0, 4).map((fragment) => fragment.display)
-    : [request.command];
+// The fragments that actually tripped the gate: allowlister already decided the
+// rest are `allow`, so anything else (ask/deny/defer) is what the operator needs
+// to weigh. Falls back to the full set if — unexpectedly — nothing is flagged.
+export function flaggedFragments(request: ShellApprovalRequest): AllowlisterFragment[] {
+  const flagged = request.fragments.filter((fragment) => fragment.verdict !== "allow");
+  return flagged.length > 0 ? flagged : request.fragments;
 }
 
-export function riskSignals(request: ApprovalRequest): string[] {
-  const signals = new Set(request.riskSignals);
-  const haystack = `${request.command} ${request.cwd}`.toLowerCase();
-
-  for (const [term, label] of riskyTerms) {
-    if (haystack.includes(term)) {
-      signals.add(label);
+// The named rules that flagged this request — allowlister's own rule names, not
+// inferred "risk" guesses. A `defer` fragment matched no rule, so it has none.
+export function triggeredRules(request: ShellApprovalRequest): string[] {
+  const rules = new Set<string>();
+  for (const fragment of flaggedFragments(request)) {
+    if (fragment.rule) {
+      rules.add(fragment.rule);
     }
   }
+  return [...rules];
+}
 
-  return [...signals];
+// A short identifier for the request, used for headings and accessible labels.
+export function requestHeadline(request: ApprovalRequest): string {
+  if (isToolRequest(request)) {
+    return request.tool.name;
+  }
+  const [first] = flaggedFragments(request);
+  return first?.display ?? request.command;
+}
+
+// A one-line, human-readable summary of a tool call's canonical parameters,
+// e.g. `path = /repo/deploy.yml` — empty when the adapter mapped none.
+export function toolParamSummary(request: ToolApprovalRequest): string {
+  return Object.entries(request.tool.params)
+    .map(([key, value]) => `${key} = ${String(value)}`)
+    .join(" · ");
 }
 
 export function secondsRemaining(request: ApprovalRequest, now = Date.now()): number | null {

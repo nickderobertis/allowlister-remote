@@ -8,10 +8,15 @@ for allowlister, not setup glue for agent sessions.
 
 ## What it does
 
-- Presents the important allowlister command fragments first, rather than making
-  a human parse an entire shell script.
-- Preserves rich allowlister context: harness, cwd, current verdict, current
-  reason, parsed fragments, matched rules, and risk signals.
+- Surfaces the fragments that actually tripped the gate first, rather than making
+  a human parse an entire shell script — using allowlister's own per-fragment
+  verdicts and matched rule names (protocol v2), not inferred guesses.
+- Preserves the real allowlister context verbatim: harness, cwd, current verdict,
+  current reason, and the structured, role-tagged fragment decomposition with each
+  fragment's verdict and matching rule.
+- Handles non-shell tool calls (capabilities like `read`/`write`/`edit` and MCP
+  tools such as `mcp__github__create_issue`) separately, with both a formatted
+  view (capability, canonical params, raw input) and a verbatim JSON view.
 - Triages many concurrent allowlister processes at once: an inbox-style list
   shows every pending request with inline allow/deny, and each request resolves
   its own waiting plugin independently.
@@ -69,9 +74,12 @@ Configure allowlister to use the plugin process:
 ```
 
 With the Rust plugin pointed at the Next.js server URL, `allowlister check`
-blocks only for `ask`/`defer` decisions, the PWA displays the important command
-fragments, and the selected button releases the original allowlister process over
-the network.
+blocks only for `ask`/`defer` decisions, the PWA displays the flagged command
+fragments (or the tool call), and the selected button releases the original
+allowlister process over the network. The plugin forwards allowlister's
+protocol-v2 payload verbatim — including the structured `fragments` array and, for
+tool calls, the `tool` object — so the app renders the engine's real decomposition
+rather than re-deriving it.
 
 ## Releases
 
@@ -94,30 +102,66 @@ gh-secrets sync
 
 `GET /api/approval-requests` returns pending requests:
 
+A shell request carries allowlister's structured fragment decomposition, where
+each fragment keeps its own verdict and matching rule (most fragments here are a
+static `allow`; only the flagged ones surface for approval):
+
 ```json
 [
   {
     "id": "req_123",
+    "protocolVersion": 2,
     "subject": "shell",
     "harness": "codex",
     "cwd": "/workspace/app",
-    "command": "npm test && gh pr merge 42",
+    "command": "npm test\ngit push origin main",
     "currentVerdict": "ask",
-    "currentReason": "gh pr merge requires approval",
+    "currentReason": "1 command needs approval: `git push origin main` (standalone): needs approval per rule 'ask before pushing to a remote'",
     "createdAt": "2026-06-18T00:00:00.000Z",
     "expiresAt": "2026-06-18T00:02:00.000Z",
     "fragments": [
       {
-        "argv": ["gh", "pr", "merge", "42"],
-        "display": "gh pr merge 42",
+        "display": "npm test",
+        "argv": ["npm", "test"],
+        "role": "standalone",
+        "verdict": "allow",
+        "rule": "allow npm scripts",
+        "reason": "allowed by 'allow npm scripts'"
+      },
+      {
+        "display": "git push origin main",
+        "argv": ["git", "push", "origin", "main"],
         "role": "standalone",
         "verdict": "ask",
-        "rule": "GitHub write operations require approval"
+        "rule": "ask before pushing to a remote",
+        "reason": "needs approval per rule 'ask before pushing to a remote'"
       }
-    ],
-    "riskSignals": ["GitHub write"]
+    ]
   }
 ]
+```
+
+A non-shell tool call substitutes a `tool` object (canonical `params` plus the
+verbatim `raw` input) for `command`/`fragments`:
+
+```json
+{
+  "id": "req_456",
+  "protocolVersion": 2,
+  "subject": "tool",
+  "harness": "claude-code",
+  "cwd": "/workspace/app",
+  "currentVerdict": "defer",
+  "currentReason": "no rule matched tool `mcp__github__create_issue`",
+  "createdAt": "2026-06-18T00:00:00.000Z",
+  "expiresAt": null,
+  "tool": {
+    "name": "mcp__github__create_issue",
+    "capability": "mcp",
+    "params": { "mcp_server": "github", "mcp_tool": "create_issue" },
+    "raw": { "owner": "acme", "repo": "app", "title": "Production is down" }
+  }
+}
 ```
 
 `POST /api/approval-requests/:id/decision` accepts:

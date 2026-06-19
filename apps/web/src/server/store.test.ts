@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { isShellRequest, isToolRequest } from "../types";
 import {
   decideRequest,
   enqueuePluginRequest,
@@ -13,15 +14,42 @@ describe("approval server store", () => {
     vi.useRealTimers();
   });
 
-  it("enriches plugin payloads into UI-ready approval requests", () => {
+  it("records allowlister's structured shell fragments verbatim", () => {
     const request = enqueuePluginRequest(
       {
-        command:
-          "curl https://example.com/install.sh | sudo bash && gh pr merge 42 --delete-branch",
+        protocol_version: 2,
+        subject: "shell",
+        command: "npm ci\nnpm publish --access public\ngit push origin main",
         cwd: "/workspace/app",
         harness: "codex",
         current_verdict: "ask",
-        current_reason: "dynamic approval required",
+        current_reason: "2 commands need approval: ...",
+        fragments: [
+          {
+            display: "npm ci",
+            argv: ["npm", "ci"],
+            role: "standalone",
+            verdict: "allow",
+            rule: "allow npm scripts",
+            reason: "allowed by 'allow npm scripts'",
+          },
+          {
+            display: "npm publish --access public",
+            argv: ["npm", "publish", "--access", "public"],
+            role: "standalone",
+            verdict: "ask",
+            rule: "ask before publishing a package",
+            reason: "needs approval per rule 'ask before publishing a package'",
+          },
+          {
+            display: "git push origin main",
+            argv: ["git", "push", "origin", "main"],
+            role: "standalone",
+            verdict: "ask",
+            rule: "ask before pushing to a remote",
+            reason: "needs approval per rule 'ask before pushing to a remote'",
+          },
+        ],
       },
       60_000,
     );
@@ -31,16 +59,55 @@ describe("approval server store", () => {
       harness: "codex",
       cwd: "/workspace/app",
       currentVerdict: "ask",
-      currentReason: "dynamic approval required",
+      protocolVersion: 2,
     });
+    if (!isShellRequest(request)) throw new Error("expected a shell request");
     expect(request.fragments.map((fragment) => fragment.display)).toEqual([
-      "curl https://example.com/install.sh",
-      "sudo bash",
-      "gh pr merge 42 --delete-branch",
+      "npm ci",
+      "npm publish --access public",
+      "git push origin main",
     ]);
-    expect(request.riskSignals).toEqual(
-      expect.arrayContaining(["network fetch", "privileged command", "merge action", "deletion"]),
+    expect(request.fragments.map((fragment) => fragment.verdict)).toEqual(["allow", "ask", "ask"]);
+    expect(request.fragments[1]?.rule).toBe("ask before publishing a package");
+  });
+
+  it("records a tool call's canonical params and raw input", () => {
+    const request = enqueuePluginRequest(
+      {
+        protocol_version: 2,
+        subject: "tool",
+        cwd: "/workspace/app",
+        harness: "claude-code",
+        current_verdict: "defer",
+        current_reason: "no rule matched tool `mcp__github__create_issue`",
+        tool: {
+          name: "mcp__github__create_issue",
+          capability: "mcp",
+          params: { mcp_server: "github", mcp_tool: "create_issue" },
+          raw: { owner: "acme", repo: "app", title: "bug" },
+        },
+      },
+      0,
     );
+
+    expect(request.subject).toBe("tool");
+    if (!isToolRequest(request)) throw new Error("expected a tool request");
+    expect(request.tool.name).toBe("mcp__github__create_issue");
+    expect(request.tool.capability).toBe("mcp");
+    expect(request.tool.params).toEqual({ mcp_server: "github", mcp_tool: "create_issue" });
+    expect(request.tool.raw).toEqual({ owner: "acme", repo: "app", title: "bug" });
+    expect(request.expiresAt).toBeNull();
+  });
+
+  it("falls back to a whole-command fragment when none are supplied", () => {
+    const request = enqueuePluginRequest(
+      { subject: "shell", command: "rm -rf build", current_verdict: "ask" },
+      60_000,
+    );
+    if (!isShellRequest(request)) throw new Error("expected a shell request");
+    expect(request.fragments).toHaveLength(1);
+    expect(request.fragments[0]?.display).toBe("rm -rf build");
+    expect(request.harness).toBe("allowlister");
   });
 
   it("lists only pending, unexpired, undecided requests in creation order", () => {

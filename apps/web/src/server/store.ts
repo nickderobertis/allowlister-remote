@@ -1,11 +1,24 @@
-import type { ApprovalDecision, ApprovalRequest } from "../types";
+import type {
+  AllowlisterFragment,
+  ApprovalDecision,
+  ApprovalRequest,
+  ApprovalVerdict,
+  ToolCall,
+} from "../types";
 
+// The plugin forwards allowlister's protocol-v2 payload verbatim (plus the
+// app's own timeoutMs), so this mirrors that wire shape. Everything is unknown
+// because it crosses a process boundary; we narrow it as we build the request.
 type PluginPayload = {
+  protocol_version?: unknown;
+  subject?: unknown;
   command?: unknown;
   cwd?: unknown;
   harness?: unknown;
   current_verdict?: unknown;
   current_reason?: unknown;
+  fragments?: unknown;
+  tool?: unknown;
 };
 
 type State = {
@@ -26,58 +39,87 @@ if (!globalState.__allowlisterRemoteState) {
 
 const state = globalState.__allowlisterRemoteState;
 
-function commandFragments(command: string) {
-  return command
-    .split(/\s*(?:&&|\|\||;|\|)\s*/u)
-    .map((piece) => piece.trim())
-    .filter(Boolean)
-    .map((display) => ({
-      argv: display.split(/\s+/u),
-      display,
-      role: "standalone",
-      verdict: "ask" as const,
-    }));
+function asRecord(value: unknown): Record<string, unknown> {
+  return value !== null && typeof value === "object" ? (value as Record<string, unknown>) : {};
 }
 
-function riskSignals(command: string, cwd: string) {
-  const haystack = `${command} ${cwd}`.toLowerCase();
-  const signalTerms: Array<readonly [term: string, label: string]> = [
-    ["rm", "destructive file operation"],
-    ["sudo", "privileged command"],
-    ["curl", "network fetch"],
-    ["wget", "network fetch"],
-    ["push", "remote write"],
-    ["merge", "merge action"],
-    ["delete", "deletion"],
-    ["token", "secret-looking argument"],
-    [".env", "secret-looking path"],
-  ];
+function asVerdict(value: unknown): ApprovalVerdict {
+  return value === "allow" || value === "deny" || value === "ask" || value === "defer"
+    ? value
+    : "defer";
+}
 
-  return signalTerms.filter(([term]) => haystack.includes(term)).map(([, label]) => label);
+// Map allowlister's structured fragments onto our typed shape. A v2 payload
+// always carries this array; we tolerate a missing/garbled one by falling back
+// to a single fragment for the whole command so the UI still renders.
+function readFragments(raw: unknown, command: string): AllowlisterFragment[] {
+  if (!Array.isArray(raw)) {
+    return command ? [wholeCommandFragment(command)] : [];
+  }
+  return raw.map((entry) => {
+    const fragment = asRecord(entry);
+    const argv = Array.isArray(fragment.argv) ? fragment.argv.map(String) : [];
+    const display = typeof fragment.display === "string" ? fragment.display : argv.join(" ");
+    return {
+      display,
+      argv,
+      role: typeof fragment.role === "string" ? fragment.role : "standalone",
+      verdict: asVerdict(fragment.verdict),
+      rule: typeof fragment.rule === "string" ? fragment.rule : null,
+      reason: typeof fragment.reason === "string" ? fragment.reason : "",
+    };
+  });
+}
+
+function wholeCommandFragment(command: string): AllowlisterFragment {
+  return {
+    display: command,
+    argv: command.split(/\s+/u).filter(Boolean),
+    role: "standalone",
+    verdict: "ask",
+    rule: null,
+    reason: "",
+  };
+}
+
+function readTool(raw: unknown): ToolCall {
+  const tool = asRecord(raw);
+  return {
+    name: typeof tool.name === "string" ? tool.name : "",
+    capability: typeof tool.capability === "string" ? tool.capability : "other",
+    params: asRecord(tool.params),
+    raw: asRecord(tool.raw),
+  };
 }
 
 export function enqueuePluginRequest(input: PluginPayload, timeoutMs: number): ApprovalRequest {
   const now = Date.now();
-  const command = String(input.command ?? "");
-  const cwd = String(input.cwd ?? "");
-  const request: ApprovalRequest = {
+  const base = {
     id: crypto.randomUUID(),
-    subject: "shell",
+    protocolVersion: Number(input.protocol_version ?? 2),
     harness: String(input.harness ?? "allowlister"),
-    cwd,
-    command,
-    currentVerdict:
-      input.current_verdict === "ask" || input.current_verdict === "defer"
-        ? input.current_verdict
-        : "defer",
+    cwd: String(input.cwd ?? ""),
+    currentVerdict: asVerdict(input.current_verdict),
     currentReason: String(input.current_reason ?? ""),
     createdAt: new Date(now).toISOString(),
     // A non-positive timeout means the request waits indefinitely for either a
     // remote or a local-terminal decision, so it never expires on its own.
     expiresAt: timeoutMs > 0 ? new Date(now + timeoutMs).toISOString() : null,
-    fragments: commandFragments(command),
-    riskSignals: riskSignals(command, cwd),
   };
+
+  const request: ApprovalRequest =
+    input.subject === "tool"
+      ? { ...base, subject: "tool", tool: readTool(input.tool) }
+      : (() => {
+          const command = String(input.command ?? "");
+          return {
+            ...base,
+            subject: "shell",
+            command,
+            fragments: readFragments(input.fragments, command),
+          };
+        })();
+
   state.requests.set(request.id, request);
   return request;
 }
