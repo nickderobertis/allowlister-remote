@@ -2,8 +2,8 @@ import { defineConfig, devices } from "@playwright/test";
 
 // Deterministic screenshot capture for screencomp's visual-docs gate. This is
 // intentionally separate from the functional e2e config (playwright.config.ts):
-// it renders byte-reproducible PNGs into SHOTS_OUT/<project>/<name>.png, which
-// screencomp then classifies, galleries, and comments on.
+// it renders byte-reproducible PNGs plus a captures.json index into SHOTS_OUT,
+// which screencomp then classifies, galleries, and comments on.
 //
 // The Chromium flags below are the *determinism* set from the screencomp README
 // ("Split the Chromium flags"): they pin the render path so the same build
@@ -28,6 +28,8 @@ const PORT = 4184;
 export default defineConfig({
   testDir: "./screenshots",
   testMatch: "**/*.capture.ts",
+  // Reset the capture root and seed an empty captures.json before any shots run.
+  globalSetup: "./screenshots/global-setup.ts",
   timeout: 60_000,
   expect: { timeout: 10_000 },
   // One browser process per viewport, single worker: reliable and still

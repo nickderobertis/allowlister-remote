@@ -1,20 +1,5 @@
-import { mkdir } from "node:fs/promises";
-import { dirname, isAbsolute, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import { expect, type Page, test } from "@playwright/test";
-
-// screencomp captures live at <SHOTS_OUT>/<project>/<name>.png. The visual-docs
-// workflow and the pre-push hook set SHOTS_OUT per arch lane (shots/current/<arch>);
-// when unset (a local `just capture`) we default to that same arch subtree so the
-// layout matches what screencomp expects with [capture].arches configured. Resolve
-// against the repo root (three levels up) so output is identical regardless of the
-// directory the capture is launched from.
-const HOST_ARCH: Record<string, string> = { x64: "x86_64", arm64: "arm64" };
-const arch = HOST_ARCH[process.arch] ?? process.arch;
-const here = dirname(fileURLToPath(import.meta.url));
-const repoRoot = resolve(here, "../../..");
-const shotsOut = process.env.SHOTS_OUT ?? `shots/current/${arch}`;
-const outRoot = isAbsolute(shotsOut) ? shotsOut : resolve(repoRoot, shotsOut);
+import { recordShot } from "./capture-index";
 
 // A fixed instant so the demo's live countdown timer and time-derived fixtures
 // render identical bytes on every run — screencomp's reproducibility gate
@@ -38,9 +23,7 @@ const FREEZE_MOTION =
 const PIN_FIXED_CHROME =
   "body { position: relative !important; } .fixed { position: absolute !important; }";
 
-async function shoot(page: Page, project: string, name: string): Promise<void> {
-  const file = resolve(outRoot, project, `${name}.png`);
-  await mkdir(dirname(file), { recursive: true });
+async function shoot(page: Page, viewport: string, name: string): Promise<void> {
   await page.addStyleTag({ content: `${FREEZE_MOTION}\n${PIN_FIXED_CHROME}` });
   // Settle before capturing: wait for webfonts and let layout/raster flush over
   // two animation frames, so nothing is caught mid-paint (the cause of otherwise
@@ -51,7 +34,10 @@ async function shoot(page: Page, project: string, name: string): Promise<void> {
       requestAnimationFrame(() => requestAnimationFrame(() => done())),
     );
   });
-  await page.screenshot({ path: file, fullPage: true, animations: "disabled", caret: "hide" });
+  const png = await page.screenshot({ fullPage: true, animations: "disabled", caret: "hide" });
+  // Each viewport is a `viewport` toggle on the same shot name; recordShot writes
+  // the PNG and upserts the entry into this lane's captures.json index.
+  await recordShot(name, { viewport }, png);
 }
 
 test.beforeEach(async ({ page }) => {

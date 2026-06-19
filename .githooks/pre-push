@@ -21,7 +21,7 @@ case "$(uname -m)" in
 esac
 
 # ---- adapt these to your repo -----------------------------------------------
-MANIFEST="shots/baseline/${ARCH}.sha256"  # committed baseline for this arch
+MANIFEST="shots/baseline/${ARCH}.json"    # committed baseline for this arch
 GALLERY="shots/review"                     # [guard].gallery (review output)
 CURRENT="shots/current"                    # capture root, mirrors visual-docs.yml
 # -----------------------------------------------------------------------------

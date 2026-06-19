@@ -1,0 +1,103 @@
+{
+  "schema": 1,
+  "shots": [
+    {
+      "name": "empty-state",
+      "toggles": {
+        "viewport": "desktop"
+      },
+      "hash": "0f34cd225ffce52e4cc6c50dba72c5760e6dabfbe6f5b9283929c2a89c8fc5f7"
+    },
+    {
+      "name": "empty-state",
+      "toggles": {
+        "viewport": "mobile"
+      },
+      "hash": "241899f36f6924809f492c5f9a0521263663245493633d928504a0d0353bc495"
+    },
+    {
+      "name": "inbox",
+      "toggles": {
+        "viewport": "desktop"
+      },
+      "hash": "af1a553a50974732c227544dbdffa901a34b711ef9192a3083548d0dfc7865d7"
+    },
+    {
+      "name": "inbox",
+      "toggles": {
+        "viewport": "mobile"
+      },
+      "hash": "85b2753a1203a66965b1693413e490826c952406537528e9527614aec058b44f"
+    },
+    {
+      "name": "shell-oneoff",
+      "toggles": {
+        "viewport": "desktop"
+      },
+      "hash": "9b916f5593b18034e572fadb793e9b9728705ea91e805f7f3644a859fe8293d5"
+    },
+    {
+      "name": "shell-oneoff",
+      "toggles": {
+        "viewport": "mobile"
+      },
+      "hash": "a8571bd720859eecbe1cbe89e68be7d7730e99e89b5e711d35f13594a28d6679"
+    },
+    {
+      "name": "shell-script",
+      "toggles": {
+        "viewport": "desktop"
+      },
+      "hash": "b030bcdee5e72b40a2eec51e05e601adf5aa708b41b7d64a35816c67772058cb"
+    },
+    {
+      "name": "shell-script",
+      "toggles": {
+        "viewport": "mobile"
+      },
+      "hash": "98ce03c0d8ce79543ed80a9cd699c3ca4dff9d91d125de8a9631e92a701fc698"
+    },
+    {
+      "name": "tool-capability",
+      "toggles": {
+        "viewport": "desktop"
+      },
+      "hash": "20d16e3f54a345770823199450467d289b3da118b9a407cca19cc62f9f6f266a"
+    },
+    {
+      "name": "tool-capability",
+      "toggles": {
+        "viewport": "mobile"
+      },
+      "hash": "617c862e00065893b81afc4e85e15d912d06811aff24d3fbd95eb31bce4d88bc"
+    },
+    {
+      "name": "tool-formatted",
+      "toggles": {
+        "viewport": "desktop"
+      },
+      "hash": "101581f9cc79d6796da28e080e8e7893027c49da3550c0ecaab80b770a4e93fe"
+    },
+    {
+      "name": "tool-formatted",
+      "toggles": {
+        "viewport": "mobile"
+      },
+      "hash": "2580f9096834ba0cafdaa34b1972bfc1f1309f91de88df18fed5d1ebe07a8b08"
+    },
+    {
+      "name": "tool-json",
+      "toggles": {
+        "viewport": "desktop"
+      },
+      "hash": "7686af5959bab162922531f96d61f41b58b429f19f00f62424be66d3867bb029"
+    },
+    {
+      "name": "tool-json",
+      "toggles": {
+        "viewport": "mobile"
+      },
+      "hash": "fa69d1f2f691ad1d959062e3d706880a0490215b25bb8f28667a6c4e9b254a43"
+    }
+  ]
+}

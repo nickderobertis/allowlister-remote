@@ -3,7 +3,7 @@
 [capture]
 # CPU architectures you maintain screenshots for. Captures run in a Linux
 # container, so only the arch varies. Each entry has its own committed baseline
-# (shots/baseline/<arch>.sha256) and gets a CI capture lane; local commands
+# (shots/baseline/<arch>.json) and gets a CI capture lane; local commands
 # default to your host arch and require it to be listed here. Add an arch (e.g.
 # "x86_64") to support it — note every entry adds a CI job to each run.
 arches = ["x86_64"]
@@ -12,6 +12,15 @@ arches = ["x86_64"]
 title = "Visual changes"
 marker = "screencomp"        # [A-Za-z0-9_-]; one sticky comment per marker
 embed_limit = 10             # embed images inline when <= N shots differ (0 disables)
+
+# Toggle dimensions the gallery renders controls for. A shot's `toggles` in
+# captures.json reference these keys, so each screen is one card you toggle
+# through its viewports instead of a separate card per size. The first value is
+# the gallery default. We capture every state at both desktop and mobile.
+[[toggle]]
+key = "viewport"
+label = "Viewport"
+values = ["desktop", "mobile"]
 
 [guard]
 # Local pre-push guard (.githooks/pre-push): re-capture only when these globs
