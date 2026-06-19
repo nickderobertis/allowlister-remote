@@ -6,7 +6,8 @@
 #   1. ensures `just` (the task runner) is installed,
 #   2. installs the JS + Rust workspace dependencies via `just bootstrap`,
 #   3. installs the Playwright browsers the e2e suite needs (best-effort),
-#   4. records a setup stamp for the fast session check.
+#   4. installs the `allowlister` host binary the e2e suite drives (best-effort),
+#   5. records a setup stamp for the fast session check.
 #
 # Node.js and the Rust toolchain (cargo) are assumed to be present already: this
 # repo pins neither via asdf, so the base image / your machine provides them.
@@ -53,6 +54,38 @@ ensure_just() {
   fi
   have just || { printf 'error: failed to install just\n' >&2; exit 1; }
   ok "just installed ($(just --version 2>/dev/null || echo unknown))"
+}
+
+# allowlister is the dynamic-approval host this repo plugs into: the e2e suite
+# spawns the real `allowlister` binary (see apps/web/e2e/allowlister-binary.spec.ts)
+# so the approval flow runs through the actual binary/plugin boundary, exactly as
+# the CI `check` and `e2e-smoke` workflows do. Install it the same way CI does —
+# via the upstream install script — but into ~/.local/bin (no root needed for the
+# local/remote dev container) rather than /usr/local/bin. Best-effort like the
+# Playwright browsers: a restricted network must not fail setup, since lint, unit
+# tests, and build all work without it; only the e2e suite needs it.
+# Pinned to a known release rather than "latest": pinning skips the install
+# script's "resolve latest" GitHub API call, which is rate-limited (HTTP 403) for
+# the unauthenticated requests this dev container makes (no GITHUB_TOKEN). CI
+# installs latest because it runs with a token. Override with ALLOWLISTER_VERSION.
+ALLOWLISTER_VERSION="${ALLOWLISTER_VERSION:-v0.5.0}"
+ensure_allowlister() {
+  if have allowlister; then
+    ok "allowlister present ($(allowlister --version 2>/dev/null || echo unknown))"
+    return
+  fi
+  mkdir -p "$HOME/.local/bin"
+  if have curl; then
+    say "installing allowlister ${ALLOWLISTER_VERSION} into ~/.local/bin (prebuilt)"
+    curl -fsSL https://raw.githubusercontent.com/nickderobertis/allowlister/main/scripts/install.sh \
+      | bash -s -- --bin-dir "$HOME/.local/bin" --version "$ALLOWLISTER_VERSION" 2>/dev/null || true
+    _load_tool_env
+  fi
+  if have allowlister; then
+    ok "allowlister installed ($(allowlister --version 2>/dev/null || echo unknown))"
+  else
+    printf '! allowlister not installed (the e2e suite will not run); rerun setup with network access.\n'
+  fi
 }
 
 # screencomp powers the pre-push visual guard (.githooks/pre-push): it classifies
@@ -125,6 +158,9 @@ main() {
   else
     printf '! Playwright not found in node_modules; skipping browser install.\n'
   fi
+
+  # The dynamic-approval host the e2e suite drives the approval flow through.
+  ensure_allowlister
 
   # Visual-regression guard: the screencomp CLI + the git hook that runs it on a
   # screenshot-relevant push. The hook starts Docker lazily (remote env) only
