@@ -37,7 +37,12 @@ case "$mode" in
 esac
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-bin="$repo_root/target/release/allowlister-remote-plugin"
+# Time the artifact that actually ships: the linux binary is a static musl build
+# (see .github/workflows/publish.yml), which skips the dynamic loader and so
+# starts faster than a glibc dev build. Override BENCH_TARGET to time a
+# different triple.
+target="${BENCH_TARGET:-x86_64-unknown-linux-musl}"
+bin="$repo_root/target/$target/release/allowlister-remote-plugin"
 out="${BENCH_OUT:-$repo_root/target/bench}"
 warmup="${BENCH_WARMUP:-10}"
 
@@ -59,8 +64,14 @@ if [[ "$mode" == "--dry-run" ]]; then
     runs_opt=(--runs 1)
 fi
 
-note "» building release binary"
-(cd "$repo_root" && cargo build --release --locked --quiet -p allowlister-remote-plugin)
+note "» building release binary ($target)"
+if [[ "$target" == *musl* ]] && ! command -v musl-gcc >/dev/null 2>&1; then
+    fail "musl-gcc not found, needed to build the $target binary (install 'musl-tools'). Set BENCH_TARGET to a non-musl triple to time a glibc build instead."
+fi
+# CC_<target> points ring's C build at musl-gcc when cross-building musl; the
+# var is musl-specific, so exporting it is harmless for other triples.
+(cd "$repo_root" && CC_x86_64_unknown_linux_musl="${CC_x86_64_unknown_linux_musl:-musl-gcc}" \
+    cargo build --release --locked --quiet --target "$target" -p allowlister-remote-plugin)
 [ -x "$bin" ] || fail "release binary not found at $bin"
 
 # Payload fixtures in a temp sandbox: a static allow verdict that defers without

@@ -20,14 +20,18 @@
 //! `rustc-link-arg-bins` scopes the flag to this crate's binary target only, so
 //! proc-macro and build-script `.so`s — which must stay `-shared` and reject
 //! `-no-pie` — are untouched, as are the lib, tests, and benches. Restricted to
-//! Linux: macOS and Windows mandate/expect position-independent images and have
-//! no equivalent `-no-pie` linker flag.
+//! the Linux **glibc** target: a glibc binary is dynamically linked and PIE, so
+//! `-no-pie` is what removes its load-time relocations. A static musl build is
+//! already non-PIE and relocation-free, and forcing `-no-pie` onto its static
+//! CRT crashes startup — so it is left alone. macOS and Windows mandate/expect
+//! position-independent images and have no equivalent flag.
 
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
 
     let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
-    if target_os == "linux" {
+    let target_env = std::env::var("CARGO_CFG_TARGET_ENV").unwrap_or_default();
+    if target_os == "linux" && target_env == "gnu" {
         println!("cargo::rustc-link-arg-bins=-no-pie");
     }
 }

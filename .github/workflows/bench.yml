@@ -46,9 +46,16 @@ jobs:
           tool: just,hyperfine,critcmp
 
       # cachegrind backs the deterministic instruction counts; a system package,
-      # not a cargo tool.
-      - name: Install valgrind
-        run: sudo apt-get update -q && sudo apt-get install -y -q valgrind
+      # not a cargo tool. musl-tools + the musl target let the CLI benches build
+      # the static musl binary that actually ships (scripts/bench.sh,
+      # bench-instructions.sh default to it), so the startup numbers track the
+      # published artifact rather than a glibc dev build.
+      - name: Install valgrind and musl toolchain
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q valgrind musl-tools
+      - name: Add musl target
+        run: rustup target add x86_64-unknown-linux-musl
 
       # Fresh baselines every run: rust-cache may carry a stale target/criterion
       # across runs, which would silently corrupt the base-vs-PR comparison.

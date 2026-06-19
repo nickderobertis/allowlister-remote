@@ -74,6 +74,13 @@ Use `just`; do not hand-roll equivalent commands.
   packages that each ship one release-built native binary, gated by `os`/`cpu`. The parent declares
   them as optional dependencies so npm installs only the one matching the host. These are published
   from their directories (not workspace members) so their `os`/`cpu` gates do not break dev installs.
+- The `linux-x64` binary is a fully static **musl** build (`x86_64-unknown-linux-musl`, see
+  `publish.yml`): it embeds libc so it carries no glibc version floor (runs on Alpine/distroless/old
+  distros) and skips the dynamic loader entirely. The plugin is spawned once per gated command, so
+  dropping `ld.so` cuts the no-network hot path ~75% in instruction count; the modest size cost
+  (~9%) is a favorable trade. The crate's `build.rs` instead links the glibc dev binary `-no-pie`,
+  which removes load-time relocations there; the static musl build is already relocation-light and
+  needs no such flag.
 - Native binaries are vendored into the per-platform packages only at release time and are never
   committed; `npm run release:stage-npm` stages them from the downloaded release artifacts.
 - Root commands must delegate to Nx affected/run targets; do not add bespoke root loops over projects.
