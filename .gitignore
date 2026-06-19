@@ -9,7 +9,10 @@ coverage
 
 .next
 target
-packages/allowlister-remote-plugin/vendor
+# Native binaries are vendored into the per-platform packages only at release
+# time; never commit them.
+packages/allowlister-remote-plugin-*/bin/allowlister-remote-plugin
+packages/allowlister-remote-plugin-*/bin/allowlister-remote-plugin.exe
 
 tsconfig.tsbuildinfo
 
