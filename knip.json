@@ -22,8 +22,11 @@
   "ignoreDependencies": [
     "@playwright/test",
     "@testing-library/user-event",
+    "class-variance-authority",
+    "clsx",
     "jsdom",
-    "nx"
+    "nx",
+    "tailwind-merge"
   ],
   "ignoreBinaries": [
     "biome",

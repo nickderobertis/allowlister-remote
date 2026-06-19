@@ -22,7 +22,9 @@
       "!apps/web/.next",
       "!apps/web/coverage",
       "!apps/web/playwright-report",
-      "!apps/web/test-results"
+      "!apps/web/test-results",
+      // Tailwind v4 entry stylesheet uses at-rules (@theme) Biome's CSS parser rejects.
+      "!apps/web/src/index.css"
     ]
   },
   "formatter": {
