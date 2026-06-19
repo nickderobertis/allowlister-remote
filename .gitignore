@@ -16,5 +16,6 @@ tsconfig.tsbuildinfo
 .nx
 
 .local
+.dev
 test-results
 playwright-report
