@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { cpSync, existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import { basename, join } from "node:path";
 
 const [, , artifactsDir = "dist/release-artifacts"] = process.argv;
@@ -19,7 +19,11 @@ for (const [artifactName, platformDir, outputName] of expectedArtifacts) {
   const artifactPath = findArtifact(artifactsDir, artifactName);
   const outputDir = join(vendorDir, platformDir);
   mkdirSync(outputDir, { recursive: true });
-  cpSync(artifactPath, join(outputDir, outputName));
+  const outputPath = join(outputDir, outputName);
+  cpSync(artifactPath, outputPath);
+  if (!outputName.endsWith(".exe")) {
+    chmodSync(outputPath, 0o755);
+  }
 }
 
 function findArtifact(root, name) {
