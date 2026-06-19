@@ -1,0 +1,63 @@
+name: e2e-smoke
+
+# Post-publish end-to-end smoke test. Runs after the publish workflow tags a
+# release and publishes the packages, then exercises the full browser approval
+# flow against the actual plugin package downloaded from the public npm
+# registry. Can also be dispatched manually to smoke an already-published
+# version.
+on:
+  workflow_run:
+    workflows: [publish]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Published plugin version to smoke test (defaults to latest on npm)
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  e2e-smoke:
+    # Only run for successful publish runs, or when dispatched manually.
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: npm
+          registry-url: https://registry.npmjs.org
+      - uses: extractions/setup-just@v3
+      - name: Install allowlister
+        run: curl -fsSL https://raw.githubusercontent.com/nickderobertis/allowlister/main/scripts/install.sh | bash -s -- --bin-dir /usr/local/bin
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Build web app
+        run: npx nx run web:build
+      - name: Resolve published plugin version
+        id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          TRIGGER_REF: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          version="${INPUT_VERSION:-}"
+          if [[ -z "$version" && "${TRIGGER_REF:-}" == v* ]]; then
+            version="${TRIGGER_REF#v}"
+          fi
+          if [[ -z "$version" ]]; then
+            version="$(npm view @nickderobertis/allowlister-remote-plugin version)"
+          fi
+          echo "Resolved published plugin version: $version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Run published-package e2e smoke
+        run: npm run release:smoke-e2e -- "${{ steps.version.outputs.version }}"
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: e2e-smoke-playwright-report
+          path: apps/web/playwright-report
+          if-no-files-found: ignore

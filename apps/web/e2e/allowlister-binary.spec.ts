@@ -5,7 +5,9 @@ import { join, resolve } from "node:path";
 import { expect, test } from "@playwright/test";
 
 const root = resolve(import.meta.dirname, "../../..");
-const plugin = join(root, "target", "debug", "allowlister-remote-plugin");
+const plugin =
+  process.env.ALLOWLISTER_REMOTE_PLUGIN_BIN ??
+  join(root, "target", "debug", "allowlister-remote-plugin");
 const serverUrl = "http://127.0.0.1:4183";
 
 type Running = {

@@ -19,7 +19,8 @@
     "plugin": "cargo run --quiet -p allowlister-remote-plugin --",
     "release:set-npm-version": "node scripts/set-npm-package-version.mjs",
     "release:stage-npm": "node scripts/stage-npm-package.mjs",
-    "release:smoke-npm": "bash scripts/smoke-npm-package.sh"
+    "release:smoke-npm": "bash scripts/smoke-npm-package.sh",
+    "release:smoke-e2e": "bash scripts/smoke-e2e-published.sh"
   },
   "dependencies": {
     "next": "^16.2.9",
