@@ -21,9 +21,11 @@ trap 'rm -rf "$tmp_dir"' EXIT
 export npm_config_cache="${npm_config_cache:-$tmp_dir/npm-cache}"
 
 echo "smoke-e2e: installing published $package@$version from the public npm registry"
+# A freshly published version can take a few minutes to become installable, so
+# retry with --prefer-online to bypass any stale registry cache.
 installed=0
-for attempt in {1..12}; do
-  if npm install --prefix "$tmp_dir/prefix" -g "$package@$version"; then
+for attempt in {1..30}; do
+  if npm install --prefer-online --prefix "$tmp_dir/prefix" -g "$package@$version"; then
     installed=1
     break
   fi
