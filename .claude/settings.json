@@ -1,7 +1,23 @@
 {
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR}/scripts/session-setup.sh\"",
+            "timeout": 600
+          }
+        ]
+      }
+    ]
+  },
   "permissions": {
     "allow": [
       "Bash(just bootstrap)",
+      "Bash(just setup)",
+      "Bash(just setup-check)",
       "Bash(just check)",
       "Bash(just test)",
       "Bash(just test-e2e)",
