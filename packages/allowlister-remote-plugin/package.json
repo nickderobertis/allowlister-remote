@@ -4,8 +4,12 @@
   "description": "npm installer for the allowlister remote dynamic approval plugin",
   "type": "module",
   "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nickderobertis/allowlister-remote.git"
+  },
   "bin": {
-    "allowlister-remote-plugin": "./bin/allowlister-remote-plugin.js"
+    "allowlister-remote-plugin": "bin/allowlister-remote-plugin.js"
   },
   "files": [
     "README.md",
