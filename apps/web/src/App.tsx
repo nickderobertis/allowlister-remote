@@ -232,7 +232,7 @@ function ShellDetail({
       </Card>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <Card>
+        <Card aria-label="Allowlister fragments">
           <CardHeader>
             <CardTitle>Parsed allowlister fragments</CardTitle>
           </CardHeader>
@@ -295,11 +295,11 @@ function ToolDetail({
       <DetailHero request={request} now={now} title="Approve this tool call" />
 
       <Card aria-label="Tool call">
-        <CardHeader className="flex flex-row items-center justify-between gap-2">
-          <CardTitle>
-            <code className="font-mono text-base">{request.tool.name}</code>
+        <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <CardTitle className="min-w-0">
+            <code className="font-mono text-base break-all">{request.tool.name}</code>
           </CardTitle>
-          <div className="flex gap-1">
+          <div className="flex shrink-0 gap-1">
             <Button
               variant={view === "formatted" ? "default" : "outline"}
               size="sm"
