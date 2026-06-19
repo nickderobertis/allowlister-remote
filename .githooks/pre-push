@@ -77,6 +77,17 @@ case "$scope_status" in
 esac
 
 # --- 3. Relevant change: capture requires Docker -----------------------------
+# In the managed remote dev environment (Claude Code on the web) the daemon is
+# not started for us. Start it lazily here — only on a UI-relevant push that
+# actually needs a capture — rather than paying for it every session. Locally we
+# leave Docker to the developer / Docker Desktop.
+if command -v docker >/dev/null 2>&1 && ! docker info >/dev/null 2>&1 \
+   && [ "${CLAUDE_CODE_REMOTE:-}" = "true" ] && command -v dockerd >/dev/null 2>&1; then
+  echo "pre-push: starting the docker daemon for the visual-capture guard..." >&2
+  mkdir -p .dev
+  sudo -n dockerd >.dev/dockerd.log 2>&1 &
+  n=0; until docker info >/dev/null 2>&1 || [ "$n" -ge 20 ]; do n=$((n + 1)); sleep 1; done
+fi
 if ! command -v docker >/dev/null 2>&1 || ! docker info >/dev/null 2>&1; then
   echo "pre-push: screenshot-relevant files changed but Docker is unavailable to" >&2
   echo "          re-capture. Refusing to push (a pass would be false assurance)." >&2
@@ -85,10 +96,20 @@ if ! command -v docker >/dev/null 2>&1 || ! docker info >/dev/null 2>&1; then
 fi
 
 # ---- same image/flags/capture as visual-docs.yml (keeps local bytes == CI) ---
+# Two adaptations vs a bare `docker run`, both harmless where they do not apply:
+#   * Mount the host CA dir read-only and trust it inside the container, so npm/
+#     Playwright/apt work behind a TLS-intercepting egress proxy (the managed
+#     remote dev environment). A no-op on machines whose host has no extra CAs.
+#   * Mask node_modules with an anonymous volume so `npm ci` installs clean (as
+#     CI does on a fresh checkout) instead of churning the host's bind-mounted
+#     tree.
 docker run --rm --platform="$DOCKER_PLATFORM" --ipc=host --shm-size=2g \
-  -v "$PWD:/work" -w /work \
+  -v "$PWD:/work" -v /work/node_modules \
+  -v /usr/local/share/ca-certificates:/host-ca:ro -w /work \
   mcr.microsoft.com/playwright:v1.60.0-noble \
-  bash -lc "npm ci && npx playwright install --with-deps chromium && npx next build apps/web && SHOTS_OUT=$CURRENT/$ARCH npx playwright test --config apps/web/playwright.capture.config.ts"
+  bash -lc "cp /host-ca/*.crt /usr/local/share/ca-certificates/ 2>/dev/null && update-ca-certificates >/dev/null 2>&1 || true
+    export NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
+    npm ci && npx playwright install --with-deps chromium && npx next build apps/web && SHOTS_OUT=$CURRENT/$ARCH npx playwright test --config apps/web/playwright.capture.config.ts"
 # ------------------------------------------------------------------------------
 
 # --- 4. Classify the capture against the committed baseline manifest ---------
