@@ -45,6 +45,11 @@ smoke-e2e version="":
     npx nx run web:build
     npm run release:smoke-e2e -- "{{version}}"
 
+# Capture deterministic screenshots into shots/current/<project>/<name>.png for
+# screencomp's visual-docs gate (builds the web app first).
+capture:
+    npx nx run web:capture
+
 upgrade:
     npm update
     npm install

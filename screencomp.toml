@@ -1,0 +1,27 @@
+# screencomp configuration. See https://github.com/nickderobertis/screencomp.
+
+[capture]
+# CPU architectures you maintain screenshots for. Captures run in a Linux
+# container, so only the arch varies. Each entry has its own committed baseline
+# (shots/baseline/<arch>.sha256) and gets a CI capture lane; local commands
+# default to your host arch and require it to be listed here. Add an arch (e.g.
+# "x86_64") to support it — note every entry adds a CI job to each run.
+arches = ["x86_64"]
+
+[comment]
+title = "Visual changes"
+marker = "screencomp"        # [A-Za-z0-9_-]; one sticky comment per marker
+embed_limit = 10             # embed images inline when <= N shots differ (0 disables)
+
+[guard]
+# Local pre-push guard (.githooks/pre-push): re-capture only when these globs
+# change. Adjust to the files that actually affect your screenshots.
+paths = [
+  "apps/web/app/**",
+  "apps/web/src/**",
+  "apps/web/public/**",
+  "apps/web/screenshots/**",
+  "apps/web/playwright.capture.config.ts",
+  "**/*.{css,scss,html}",
+]
+gallery = "shots/review"

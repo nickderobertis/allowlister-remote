@@ -6,7 +6,8 @@
     "apps/web/src/**/*.ts",
     "apps/web/src/**/*.tsx",
     "apps/web/*.config.ts",
-    "apps/web/playwright.config.ts"
+    "apps/web/playwright.config.ts",
+    "apps/web/screenshots/**/*.capture.ts"
   ],
   "project": [
     "apps/web/**/*.{ts,tsx}"
