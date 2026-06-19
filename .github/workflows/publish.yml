@@ -18,8 +18,14 @@ jobs:
       matrix:
         include:
           - platform: linux-x64
+            # Static musl build: the published linux binary links libc in, so it
+            # carries no glibc version floor (runs on Alpine/distroless/old
+            # distros) and skips the dynamic loader entirely — the plugin is
+            # spawned once per gated command, and dropping ld.so cuts the
+            # no-network hot path ~75% (cachegrind). `ring` needs a musl C
+            # compiler, installed below.
             os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
+            target: x86_64-unknown-linux-musl
             binary: allowlister-remote-plugin
             artifact: allowlister-remote-plugin-linux-x64
           - platform: darwin-arm64
@@ -36,8 +42,17 @@ jobs:
       - uses: actions/checkout@v6
       - name: Add Rust target
         run: rustup target add ${{ matrix.target }}
+      - name: Install musl C toolchain
+        # Only the linux-x64 (musl) build needs it; `ring` compiles C/asm against
+        # musl libc. No-op for the macOS/Windows matrix legs.
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
       - name: Build release binary
         shell: bash
+        # `CC_<target>` points `ring`'s `cc` build at musl-gcc when cross-building
+        # the musl target; it is unused (and harmless) for the other targets.
+        env:
+          CC_x86_64_unknown_linux_musl: musl-gcc
         run: cargo build --release --target "${{ matrix.target }}" -p allowlister-remote-plugin
       - name: Stage artifact
         shell: bash

@@ -61,7 +61,12 @@ fi
 [[ "${1:-}" == "" ]] || fail "usage: bench-instructions.sh [report BASE.tsv HEAD.tsv]"
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-bin="$repo_root/target/profiling/allowlister-remote-plugin"
+# Measure the artifact that actually ships: the linux binary is a static musl
+# build (see .github/workflows/publish.yml), whose startup cost differs sharply
+# from a glibc dev build (no dynamic loader). Override BENCH_TARGET to count a
+# different triple, e.g. the host glibc build.
+target="${BENCH_TARGET:-x86_64-unknown-linux-musl}"
+bin="$repo_root/target/$target/profiling/allowlister-remote-plugin"
 out="${BENCH_OUT:-$repo_root/target/bench}"
 
 note() { printf '%s\n' "$*"; }
@@ -69,8 +74,14 @@ note() { printf '%s\n' "$*"; }
 command -v valgrind >/dev/null 2>&1 ||
     fail "valgrind not found on PATH (Linux-only; install it with your package manager, e.g. 'apt-get install valgrind')."
 
-note "» building binary (profiling profile)"
-(cd "$repo_root" && cargo build --profile profiling --locked --quiet -p allowlister-remote-plugin)
+note "» building binary (profiling profile, $target)"
+if [[ "$target" == *musl* ]] && ! command -v musl-gcc >/dev/null 2>&1; then
+    fail "musl-gcc not found, needed to build the $target binary (install 'musl-tools'). Set BENCH_TARGET to a non-musl triple to count a glibc build instead."
+fi
+# CC_<target> points ring's C build at musl-gcc when cross-building musl; the
+# var is musl-specific, so exporting it is harmless for other triples.
+(cd "$repo_root" && CC_x86_64_unknown_linux_musl="${CC_x86_64_unknown_linux_musl:-musl-gcc}" \
+    cargo build --profile profiling --locked --quiet --target "$target" -p allowlister-remote-plugin)
 [ -x "$bin" ] || fail "profiling binary not found at $bin"
 
 # Payload fixtures, mirroring scripts/bench.sh: a static allow verdict that
