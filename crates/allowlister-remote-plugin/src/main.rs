@@ -1,3 +1,7 @@
+use allowlister_remote_plugin::{
+    build_create_body, interpret_decision, is_static_decision, parse_local_input, LocalDecision,
+    RemoteDecision,
+};
 use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -14,22 +18,9 @@ struct CreateResponse {
     id: String,
 }
 
-#[derive(Debug, Deserialize)]
-struct PendingOrDecision {
-    status: Option<String>,
-    verdict: Option<String>,
-    reason: Option<String>,
-}
-
 #[derive(Debug, Serialize)]
 struct PluginResponse<'a> {
     verdict: &'a str,
-    reason: String,
-}
-
-/// A decision captured from the operator at the local terminal.
-struct LocalDecision {
-    verdict: &'static str,
     reason: String,
 }
 
@@ -50,22 +41,6 @@ fn write_response(verdict: &str, reason: impl Into<String>) -> ! {
         serde_json::to_string(&response).expect("plugin response serializes")
     );
     process::exit(0);
-}
-
-/// Map a line typed at the terminal onto an allow/deny verdict, ignoring
-/// anything we do not recognize so the operator can simply retry.
-fn parse_local_input(line: &str) -> Option<LocalDecision> {
-    match line.trim().to_ascii_lowercase().as_str() {
-        "a" | "allow" | "y" | "yes" => Some(LocalDecision {
-            verdict: "allow",
-            reason: "approved at local terminal".to_string(),
-        }),
-        "d" | "deny" | "n" | "no" => Some(LocalDecision {
-            verdict: "deny",
-            reason: "denied at local terminal".to_string(),
-        }),
-        _ => None,
-    }
 }
 
 /// Start a local approval prompt on the controlling terminal, returning a
@@ -118,22 +93,13 @@ fn poll_remote(client: &Client, server_url: &str, id: &str) -> Option<(&'static 
     if response.status().as_u16() != 200 {
         return None;
     }
-    let decision: PendingOrDecision = response
-        .json()
-        .unwrap_or_else(|error| write_response("ask", format!("invalid remote decision: {error}")));
-    if decision.status.as_deref() == Some("pending") {
-        return None;
+    // A read error here is transport noise, not a decision; keep polling.
+    let body = response.text().ok()?;
+    match interpret_decision(&body) {
+        RemoteDecision::Pending => None,
+        RemoteDecision::Decided { verdict, reason } => Some((verdict, reason)),
+        RemoteDecision::Invalid(message) => write_response("ask", message),
     }
-    let verdict = match decision.verdict.as_deref() {
-        Some("deny") => "deny",
-        _ => "allow",
-    };
-    Some((
-        verdict,
-        decision
-            .reason
-            .unwrap_or_else(|| format!("remote {verdict}")),
-    ))
 }
 
 /// Record a local decision with the server so the pending web approval is
@@ -170,13 +136,11 @@ fn main() {
         write_response("ask", format!("invalid allowlister plugin input: {error}"))
     });
 
-    if let Some(verdict) = input.get("current_verdict").and_then(Value::as_str) {
-        if verdict != "defer" && verdict != "ask" {
-            write_response(
-                "defer",
-                "static allowlister verdict does not need remote approval",
-            );
-        }
+    if is_static_decision(&input) {
+        write_response(
+            "defer",
+            "static allowlister verdict does not need remote approval",
+        );
     }
 
     let client = Client::builder()
@@ -190,14 +154,7 @@ fn main() {
         .expect("build HTTP client");
     let create: CreateResponse = client
         .post(format!("{server_url}/api/plugin/requests"))
-        .json(&json!({
-            "command": input.get("command").cloned().unwrap_or(Value::Null),
-            "cwd": input.get("cwd").cloned().unwrap_or(Value::Null),
-            "harness": input.get("harness").cloned().unwrap_or(Value::Null),
-            "current_verdict": input.get("current_verdict").cloned().unwrap_or(Value::Null),
-            "current_reason": input.get("current_reason").cloned().unwrap_or(Value::Null),
-            "timeoutMs": timeout_ms,
-        }))
+        .json(&build_create_body(&input, timeout_ms))
         .send()
         .and_then(|response| response.error_for_status())
         .and_then(|response| response.json())

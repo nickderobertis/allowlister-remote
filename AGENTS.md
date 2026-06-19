@@ -27,6 +27,11 @@ Use `just`; do not hand-roll equivalent commands.
 - `just dev` delegates to `nx run web:dev`.
 - `just smoke-e2e [version]` builds the app and runs the approval-flow e2e against the
   plugin package installed from the public npm registry (defaults to the latest version).
+- `just bench` / `just bench-allocs` run the Rust plugin's informational performance
+  suite — Criterion micro-benchmarks and a deterministic allocation report over the
+  pure decision path — while `just bench-cli` (hyperfine) and `just profile` (samply /
+  callgrind) cover end-to-end CLI latency and sampling profiles. See the plugin's
+  `benches/` and `scripts/{bench,profile}.sh`.
 - Release helpers live behind `npm run release:*`; tags, GitHub Releases, and npm publishing run in Actions.
 
 ## Quality and tests
@@ -35,6 +40,11 @@ Use `just`; do not hand-roll equivalent commands.
 - Tests cover the approval decision flow, request summarization, API client, and
   offline/demo behavior. Coverage gates enforce 95% lines/statements, 90% functions, and 80% branches. Line coverage keeps the create-repo default bar while branch coverage stays focused on meaningful UI paths.
 - The production build must include the PWA manifest and service worker.
+- The plugin's performance suite is informational, not a gate: it benches the pure,
+  network-free decision surface (`triage`, `build_create_body`, `interpret_decision`,
+  `parse_local_input`) so the numbers track what the binary runs between stdin and the
+  network. `harness = false` keeps the bench targets out of the test runner and
+  coverage; `--all-targets` lint/typecheck keep them compiling.
 - E2E must exercise the real browser approval flow in both desktop and mobile
   viewports through the actual allowlister binary, Rust plugin process, Next.js app
   server over HTTP, remote allow/deny decisions, and static allow/deny no-wait

@@ -38,6 +38,11 @@ export default defineConfig({
   reporter: [["list"]],
   use: {
     baseURL: `http://127.0.0.1:${PORT}`,
+    // Block the PWA service worker during capture. Its async register/install/
+    // activate races with the screenshot (worst on the slow high-DPI mobile
+    // lane) and is irrelevant to the rendered UI, so it caused run-to-run byte
+    // drift on shots/<mobile>/detail. Blocking it keeps captures deterministic.
+    serviceWorkers: "block",
   },
   webServer: {
     // Serves the production build from apps/web/.next (run `next build` first;
