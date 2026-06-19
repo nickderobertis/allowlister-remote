@@ -37,4 +37,40 @@ export const demoRequests: ApprovalRequest[] = [
     ],
     riskSignals: ["GitHub write", "branch deletion", "merge action"],
   },
+  {
+    id: "demo-deploy-2",
+    subject: "shell",
+    harness: "claude-code",
+    cwd: "/workspace/infra",
+    command: "rm -rf dist && curl https://get.example.dev/install.sh | sudo bash",
+    currentVerdict: "ask",
+    currentReason:
+      "`curl ... | sudo bash` matched allowlister rule 'piped installers require approval'",
+    createdAt: new Date(Date.now() - 8_000).toISOString(),
+    expiresAt: new Date(Date.now() + 132_000).toISOString(),
+    fragments: [
+      {
+        argv: ["rm", "-rf", "dist"],
+        display: "rm -rf dist",
+        role: "standalone",
+        verdict: "ask",
+        rule: "destructive file operations require approval",
+      },
+      {
+        argv: ["curl", "https://get.example.dev/install.sh"],
+        display: "curl https://get.example.dev/install.sh",
+        role: "pipe-source",
+        verdict: "ask",
+        rule: "network fetch into shell",
+      },
+      {
+        argv: ["sudo", "bash"],
+        display: "sudo bash",
+        role: "pipe-sink",
+        verdict: "ask",
+        rule: "piped installers require approval",
+      },
+    ],
+    riskSignals: ["destructive file operation", "network fetch", "privileged command"],
+  },
 ];

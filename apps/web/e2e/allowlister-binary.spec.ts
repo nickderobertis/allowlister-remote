@@ -53,12 +53,15 @@ async function expectStillRunning(running: Running) {
   expect(result).toBe(marker);
 }
 
-test("allowlister waits for a remote allow decision from the built app", async ({ page }) => {
+test("allowlister waits for a remote allow decision from the expanded view", async ({ page }) => {
   const { dir } = await repoConfig();
   const running = runAllowlister(dir, "gh pr merge 42 --squash --delete-branch");
   try {
     await expectStillRunning(running);
     await page.goto("/");
+    await page
+      .getByRole("button", { name: "Open approval for gh pr merge 42 --squash --delete-branch" })
+      .click();
     await expect(page.getByLabel("Important commands")).toContainText("gh pr merge 42");
 
     await page.getByRole("button", { name: "Allow once" }).click();
@@ -72,19 +75,65 @@ test("allowlister waits for a remote allow decision from the built app", async (
   }
 });
 
-test("allowlister waits for a remote deny decision from the built app", async ({ page }) => {
+test("allowlister waits for a remote deny decision from the inbox list", async ({ page }) => {
   const { dir } = await repoConfig();
   const running = runAllowlister(dir, "gh pr merge 42 --squash --delete-branch");
   try {
     await expectStillRunning(running);
     await page.goto("/");
-    await page.getByRole("button", { name: "Deny" }).click();
+    await page
+      .getByRole("button", { name: "Deny gh pr merge 42 --squash --delete-branch" })
+      .click();
 
     const result = await running.promise;
     expect(result.code).toBe(2);
     expect(JSON.parse(result.stdout).verdict).toBe("deny");
   } finally {
     running.kill();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("resolves multiple concurrent allowlister processes independently from the inbox", async ({
+  page,
+}) => {
+  const { dir } = await repoConfig();
+  const allowProc = runAllowlister(dir, "gh pr merge 42 --squash --delete-branch");
+  const denyProc = runAllowlister(dir, "rm -rf build");
+  try {
+    // Both plugin processes block waiting on the same remote app concurrently.
+    await expectStillRunning(allowProc);
+    await expectStillRunning(denyProc);
+
+    await page.goto("/");
+    const list = page.getByRole("list", { name: "Pending approvals" });
+    await expect(list.getByRole("listitem")).toHaveCount(2);
+    await expect(list.getByText("gh pr merge 42 --squash --delete-branch")).toBeVisible();
+    await expect(list.getByText("rm -rf build")).toBeVisible();
+
+    // Deny one request from the list; the other must stay pending.
+    await page.getByRole("button", { name: "Deny rm -rf build" }).click();
+    await expect(list.getByText("rm -rf build")).toHaveCount(0);
+    await expect(list.getByText("gh pr merge 42 --squash --delete-branch")).toBeVisible();
+
+    const denyResult = await denyProc.promise;
+    expect(denyResult.code).toBe(2);
+    expect(JSON.parse(denyResult.stdout).verdict).toBe("deny");
+
+    // The remaining process is still blocked until its own decision arrives.
+    await expectStillRunning(allowProc);
+    await page
+      .getByRole("button", { name: "Allow gh pr merge 42 --squash --delete-branch" })
+      .click();
+
+    const allowResult = await allowProc.promise;
+    expect(allowResult.code).toBe(0);
+    expect(JSON.parse(allowResult.stdout).verdict).toBe("allow");
+
+    await expect(page.getByRole("heading", { name: "No pending approvals" })).toBeVisible();
+  } finally {
+    allowProc.kill();
+    denyProc.kill();
     await rm(dir, { recursive: true, force: true });
   }
 });
