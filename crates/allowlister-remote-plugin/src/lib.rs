@@ -43,17 +43,36 @@ pub fn is_static_decision(input: &Value) -> bool {
     )
 }
 
-/// Build the JSON body POSTed to open an approval request, forwarding the
-/// fields the server records from the harness payload.
+/// Build the JSON body POSTed to open an approval request. allowlister's
+/// protocol-v2 payload is forwarded verbatim — `protocol_version`, `subject`,
+/// `command`, `fragments`, `tool`, and the pre-plugin verdict/reason — so the
+/// server records the real structured decomposition instead of re-deriving it,
+/// and the app's own `timeoutMs` is layered on top.
 pub fn build_create_body(input: &Value, timeout_ms: u64) -> Value {
-    json!({
-        "command": input.get("command").cloned().unwrap_or(Value::Null),
-        "cwd": input.get("cwd").cloned().unwrap_or(Value::Null),
-        "harness": input.get("harness").cloned().unwrap_or(Value::Null),
-        "current_verdict": input.get("current_verdict").cloned().unwrap_or(Value::Null),
-        "current_reason": input.get("current_reason").cloned().unwrap_or(Value::Null),
-        "timeoutMs": timeout_ms,
-    })
+    let mut body = match input {
+        Value::Object(_) => input.clone(),
+        _ => Value::Object(serde_json::Map::new()),
+    };
+    if let Value::Object(map) = &mut body {
+        map.insert("timeoutMs".to_string(), json!(timeout_ms));
+    }
+    body
+}
+
+/// A short human label for the local-terminal prompt: the shell command when
+/// present, otherwise the tool name for a non-shell tool call, otherwise empty.
+pub fn request_summary(input: &Value) -> String {
+    if let Some(command) = input.get("command").and_then(Value::as_str) {
+        if !command.is_empty() {
+            return command.to_string();
+        }
+    }
+    input
+        .get("tool")
+        .and_then(|tool| tool.get("name"))
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string()
 }
 
 /// Outcome of [`triage`].
@@ -137,12 +156,16 @@ mod tests {
 
     #[test]
     fn static_allow_defers_but_defer_and_ask_reach_server() {
-        let body = r#"{"current_verdict":"defer","command":"gh pr merge 42"}"#;
+        // A protocol-v2 shell payload: the create body forwards the structured
+        // fragments verbatim, not just the flat command/verdict fields.
+        let body = r#"{"protocol_version":2,"subject":"shell","current_verdict":"defer","command":"gh pr merge 42","fragments":[{"display":"gh pr merge 42","verdict":"defer","role":"standalone","rule":null}]}"#;
         match triage(body, 0).expect("valid payload") {
             Triage::NeedsApproval(create) => {
                 assert_eq!(create["command"], "gh pr merge 42");
                 assert_eq!(create["timeoutMs"], 0);
-                assert!(create.get("harness").is_some());
+                assert_eq!(create["subject"], "shell");
+                assert_eq!(create["protocol_version"], 2);
+                assert_eq!(create["fragments"][0]["display"], "gh pr merge 42");
             }
             Triage::Defer => panic!("defer verdict must reach the server"),
         }
@@ -154,6 +177,32 @@ mod tests {
             triage(r#"{"current_verdict":"ask"}"#, 0).expect("valid"),
             Triage::NeedsApproval(_)
         ));
+    }
+
+    #[test]
+    fn create_body_forwards_tool_calls_verbatim() {
+        let body = r#"{"protocol_version":2,"subject":"tool","current_verdict":"defer","tool":{"name":"mcp__github__create_issue","capability":"mcp","params":{},"raw":{"repo":"app"}}}"#;
+        let input: Value = serde_json::from_str(body).expect("valid");
+        let create = build_create_body(&input, 5000);
+        assert_eq!(create["subject"], "tool");
+        assert_eq!(create["tool"]["name"], "mcp__github__create_issue");
+        assert_eq!(create["tool"]["raw"]["repo"], "app");
+        assert_eq!(create["timeoutMs"], 5000);
+        // A non-object payload degrades to just the timeout rather than panicking.
+        assert_eq!(build_create_body(&Value::Null, 1)["timeoutMs"], 1);
+    }
+
+    #[test]
+    fn request_summary_prefers_command_then_tool_name() {
+        assert_eq!(
+            request_summary(&serde_json::json!({"command":"npm test"})),
+            "npm test"
+        );
+        assert_eq!(
+            request_summary(&serde_json::json!({"command":"","tool":{"name":"write"}})),
+            "write"
+        );
+        assert_eq!(request_summary(&serde_json::json!({})), "");
     }
 
     #[test]

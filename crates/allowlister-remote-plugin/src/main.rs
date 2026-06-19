@@ -1,6 +1,6 @@
 use allowlister_remote_plugin::{
-    build_create_body, interpret_decision, is_static_decision, parse_local_input, LocalDecision,
-    RemoteDecision,
+    build_create_body, interpret_decision, is_static_decision, parse_local_input, request_summary,
+    LocalDecision, RemoteDecision,
 };
 use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};
@@ -165,9 +165,11 @@ fn main() {
             )
         });
 
-    let command = input.get("command").and_then(Value::as_str).unwrap_or("");
+    // For a shell payload this is the command; for a tool call it is the tool
+    // name, so the local prompt always names the action awaiting approval.
+    let summary = request_summary(&input);
     let cwd = input.get("cwd").and_then(Value::as_str).unwrap_or("");
-    let (mut local_rx, mut status_writer) = start_local_prompt(command, cwd);
+    let (mut local_rx, mut status_writer) = start_local_prompt(&summary, cwd);
 
     // A zero timeout waits indefinitely; a positive timeout keeps the legacy
     // bounded behavior for callers that opt into it.

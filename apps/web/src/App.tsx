@@ -1,10 +1,22 @@
-import { useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { createApprovalApi } from "./api";
-import { importantCommands, remainingDisplay, riskSignals } from "./approval";
+import {
+  flaggedFragments,
+  remainingDisplay,
+  requestHeadline,
+  toolParamSummary,
+  triggeredRules,
+} from "./approval";
 import { Badge } from "./components/ui/badge";
 import { Button } from "./components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./components/ui/card";
-import type { ApprovalRequest } from "./types";
+import {
+  type ApprovalRequest,
+  type ApprovalVerdict,
+  isToolRequest,
+  type ShellApprovalRequest,
+  type ToolApprovalRequest,
+} from "./types";
 
 type Verdict = "allow" | "deny";
 
@@ -14,18 +26,20 @@ interface RequestProps {
   onDecide: (id: string, verdict: Verdict) => void;
 }
 
-function RiskBadges({ risks }: { risks: string[] }) {
-  if (risks.length === 0) {
-    return <Badge variant="outline">No high-risk signal detected</Badge>;
-  }
+// ask/deny demand attention (red); allow and the unmatched `defer` stay neutral.
+function verdictVariant(verdict: ApprovalVerdict): "destructive" | "outline" {
+  return verdict === "ask" || verdict === "deny" ? "destructive" : "outline";
+}
+
+function VerdictBadge({ verdict }: { verdict: ApprovalVerdict }) {
+  return <Badge variant={verdictVariant(verdict)}>{verdict}</Badge>;
+}
+
+function Eyebrow({ request }: { request: ApprovalRequest }) {
   return (
-    <>
-      {risks.map((risk) => (
-        <Badge variant="destructive" key={risk}>
-          {risk}
-        </Badge>
-      ))}
-    </>
+    <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+      {request.harness} · allowlister {request.currentVerdict} · {request.subject}
+    </span>
   );
 }
 
@@ -35,10 +49,10 @@ function InboxItem({
   onOpen,
   onDecide,
 }: RequestProps & { onOpen: (id: string) => void }) {
-  const commands = importantCommands(request);
-  const headline = commands[0];
-  const risks = riskSignals(request);
+  const headline = requestHeadline(request);
   const remaining = remainingDisplay(request, now);
+  const flaggedCount = request.subject === "shell" ? flaggedFragments(request).length : 0;
+  const rules = request.subject === "shell" ? triggeredRules(request) : [];
 
   return (
     <li>
@@ -49,18 +63,26 @@ function InboxItem({
           aria-label={`Open approval for ${headline}`}
           onClick={() => onOpen(request.id)}
         >
-          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            {request.harness} · allowlister {request.currentVerdict}
-          </span>
+          <Eyebrow request={request} />
           <code className="font-mono text-base text-foreground">{headline}</code>
-          {commands.length > 1 ? (
+          {flaggedCount > 1 ? (
             <span className="text-xs text-muted-foreground">
-              +{commands.length - 1} more command(s)
+              +{flaggedCount - 1} more flagged command(s)
             </span>
           ) : null}
           <span className="text-sm text-muted-foreground">{request.currentReason}</span>
           <span className="flex flex-wrap gap-1.5">
-            <RiskBadges risks={risks} />
+            {request.subject === "tool" ? (
+              <Badge variant="outline">{request.tool.capability}</Badge>
+            ) : rules.length === 0 ? (
+              <Badge variant="outline">deferred to remote approval</Badge>
+            ) : (
+              rules.map((rule) => (
+                <Badge variant="destructive" key={rule}>
+                  {rule}
+                </Badge>
+              ))
+            )}
           </span>
         </button>
 
@@ -95,10 +117,95 @@ function InboxItem({
   );
 }
 
-function ApprovalDetail({ request, now, onBack, onDecide }: RequestProps & { onBack: () => void }) {
-  const commands = importantCommands(request);
-  const risks = riskSignals(request);
+function DetailHero({
+  request,
+  now,
+  title,
+}: {
+  request: ApprovalRequest;
+  now: number;
+  title: string;
+}) {
   const remaining = remainingDisplay(request, now);
+  return (
+    <section
+      className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"
+      aria-labelledby="approval-title"
+    >
+      <div className="flex flex-col gap-2">
+        <Eyebrow request={request} />
+        <h1 id="approval-title" className="text-2xl font-semibold tracking-tight">
+          {title}
+        </h1>
+        <p className="text-muted-foreground">{request.currentReason}</p>
+      </div>
+      <div
+        className="flex shrink-0 flex-col items-center rounded-lg border border-border px-4 py-3"
+        role="timer"
+        aria-label={remaining.label}
+      >
+        <span className="font-mono text-2xl">{remaining.value}</span>
+        <small className="text-xs text-muted-foreground">{remaining.unit}</small>
+      </div>
+    </section>
+  );
+}
+
+function ContextCard({ request, children }: { request: ApprovalRequest; children?: ReactNode }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Context</CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        <dl className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1">
+            <dt className="text-xs uppercase tracking-wide text-muted-foreground">Harness</dt>
+            <dd className="font-mono text-sm">{request.harness}</dd>
+          </div>
+          <div className="flex flex-col gap-1">
+            <dt className="text-xs uppercase tracking-wide text-muted-foreground">
+              Working directory
+            </dt>
+            <dd className="font-mono text-sm">{request.cwd}</dd>
+          </div>
+          <div className="flex flex-col gap-1">
+            <dt className="text-xs uppercase tracking-wide text-muted-foreground">Request id</dt>
+            <dd className="font-mono text-sm">{request.id}</dd>
+          </div>
+        </dl>
+        {children}
+      </CardContent>
+    </Card>
+  );
+}
+
+function DecisionBar({
+  request,
+  onDecide,
+}: {
+  request: ApprovalRequest;
+  onDecide: RequestProps["onDecide"];
+}) {
+  return (
+    <footer className="flex gap-3">
+      <Button variant="outline" className="flex-1" onClick={() => onDecide(request.id, "deny")}>
+        Deny
+      </Button>
+      <Button className="flex-1" onClick={() => onDecide(request.id, "allow")}>
+        Allow once
+      </Button>
+    </footer>
+  );
+}
+
+function ShellDetail({
+  request,
+  now,
+  onBack,
+  onDecide,
+}: { request: ShellApprovalRequest } & Omit<RequestProps, "request"> & { onBack: () => void }) {
+  const flagged = flaggedFragments(request);
 
   return (
     <main className="mx-auto flex max-w-3xl flex-col gap-6 p-4 sm:p-8">
@@ -106,45 +213,23 @@ function ApprovalDetail({ request, now, onBack, onDecide }: RequestProps & { onB
         ← All approvals
       </Button>
 
-      <section
-        className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"
-        aria-labelledby="approval-title"
-      >
-        <div className="flex flex-col gap-2">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            {request.harness} · allowlister {request.currentVerdict}
-          </p>
-          <h1 id="approval-title" className="text-2xl font-semibold tracking-tight">
-            Approve the action, not the wall of shell
-          </h1>
-          <p className="text-muted-foreground">{request.currentReason}</p>
-        </div>
-        <div
-          className="flex shrink-0 flex-col items-center rounded-lg border border-border px-4 py-3"
-          role="timer"
-          aria-label={remaining.label}
-        >
-          <span className="font-mono text-2xl">{remaining.value}</span>
-          <small className="text-xs text-muted-foreground">{remaining.unit}</small>
-        </div>
-      </section>
+      <DetailHero request={request} now={now} title="Approve the action, not the wall of shell" />
 
-      <Card aria-label="Important commands">
+      <Card aria-label="Flagged commands">
         <CardContent className="flex flex-col gap-2 p-4">
           <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
             Needs your attention
           </span>
-          {commands.map((command) => (
-            <code className="font-mono text-base text-foreground" key={command}>
-              {command}
-            </code>
+          {flagged.map((fragment) => (
+            <div className="flex flex-col gap-1" key={`flagged-${fragment.display}`}>
+              <code className="font-mono text-base text-foreground">{fragment.display}</code>
+              {fragment.rule ? (
+                <small className="text-xs text-muted-foreground">{fragment.rule}</small>
+              ) : null}
+            </div>
           ))}
         </CardContent>
       </Card>
-
-      <section className="flex flex-wrap gap-1.5" aria-label="Risk signals">
-        <RiskBadges risks={risks} />
-      </section>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <Card>
@@ -154,56 +239,143 @@ function ApprovalDetail({ request, now, onBack, onDecide }: RequestProps & { onB
           <CardContent>
             <ul className="flex flex-col gap-3">
               {request.fragments.map((fragment) => (
-                <li className="flex flex-col gap-1" key={`${fragment.role}-${fragment.display}`}>
-                  <code className="font-mono text-sm text-foreground">{fragment.display}</code>
-                  <span className="text-xs text-muted-foreground">{fragment.verdict}</span>
-                  {fragment.rule ? (
-                    <small className="text-xs text-muted-foreground">{fragment.rule}</small>
-                  ) : null}
+                <li
+                  className={
+                    fragment.verdict === "allow"
+                      ? "flex flex-col gap-1 rounded-md border border-transparent p-2"
+                      : "flex flex-col gap-1 rounded-md border border-destructive/40 bg-destructive/5 p-2"
+                  }
+                  key={`${fragment.role}-${fragment.display}`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <code className="font-mono text-sm text-foreground">{fragment.display}</code>
+                    <VerdictBadge verdict={fragment.verdict} />
+                  </div>
+                  <small className="text-xs text-muted-foreground">
+                    {fragment.role}
+                    {fragment.rule ? ` · ${fragment.rule}` : ""}
+                  </small>
                 </li>
               ))}
             </ul>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Context</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <dl className="flex flex-col gap-3">
-              <div className="flex flex-col gap-1">
-                <dt className="text-xs uppercase tracking-wide text-muted-foreground">
-                  Working directory
-                </dt>
-                <dd className="font-mono text-sm">{request.cwd}</dd>
-              </div>
-              <div className="flex flex-col gap-1">
-                <dt className="text-xs uppercase tracking-wide text-muted-foreground">
-                  Request id
-                </dt>
-                <dd className="font-mono text-sm">{request.id}</dd>
-              </div>
-            </dl>
-            <details className="text-sm">
-              <summary className="cursor-pointer text-muted-foreground">Show full script</summary>
-              <pre className="mt-2 overflow-x-auto rounded-md border border-border bg-background p-3 text-xs">
-                {request.command}
-              </pre>
-            </details>
-          </CardContent>
-        </Card>
+        <ContextCard request={request}>
+          <details className="text-sm">
+            <summary className="cursor-pointer text-muted-foreground">Show full script</summary>
+            <pre className="mt-2 overflow-x-auto rounded-md border border-border bg-background p-3 text-xs">
+              {request.command}
+            </pre>
+          </details>
+        </ContextCard>
       </div>
 
-      <footer className="flex gap-3">
-        <Button variant="outline" className="flex-1" onClick={() => onDecide(request.id, "deny")}>
-          Deny
-        </Button>
-        <Button className="flex-1" onClick={() => onDecide(request.id, "allow")}>
-          Allow once
-        </Button>
-      </footer>
+      <DecisionBar request={request} onDecide={onDecide} />
     </main>
   );
+}
+
+function ToolDetail({
+  request,
+  now,
+  onBack,
+  onDecide,
+}: { request: ToolApprovalRequest } & Omit<RequestProps, "request"> & { onBack: () => void }) {
+  const [view, setView] = useState<"formatted" | "json">("formatted");
+  const params = Object.entries(request.tool.params);
+  const raw = Object.entries(request.tool.raw);
+  const paramSummary = toolParamSummary(request);
+
+  return (
+    <main className="mx-auto flex max-w-3xl flex-col gap-6 p-4 sm:p-8">
+      <Button variant="ghost" size="sm" className="self-start" onClick={onBack}>
+        ← All approvals
+      </Button>
+
+      <DetailHero request={request} now={now} title="Approve this tool call" />
+
+      <Card aria-label="Tool call">
+        <CardHeader className="flex flex-row items-center justify-between gap-2">
+          <CardTitle>
+            <code className="font-mono text-base">{request.tool.name}</code>
+          </CardTitle>
+          <div className="flex gap-1">
+            <Button
+              variant={view === "formatted" ? "default" : "outline"}
+              size="sm"
+              aria-pressed={view === "formatted"}
+              onClick={() => setView("formatted")}
+            >
+              Formatted
+            </Button>
+            <Button
+              variant={view === "json" ? "default" : "outline"}
+              size="sm"
+              aria-pressed={view === "json"}
+              onClick={() => setView("json")}
+            >
+              JSON
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {view === "formatted" ? (
+            <section className="flex flex-col gap-4" aria-label="Tool call formatted view">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="outline">capability: {request.tool.capability}</Badge>
+                {paramSummary ? (
+                  <span className="text-sm text-muted-foreground">{paramSummary}</span>
+                ) : null}
+              </div>
+              <ToolKeyValues title="Canonical parameters" entries={params} />
+              <ToolKeyValues title="Raw tool input" entries={raw} />
+            </section>
+          ) : (
+            <section aria-label="Tool call JSON view">
+              <pre className="overflow-x-auto rounded-md border border-border bg-background p-3 text-xs">
+                {JSON.stringify(request.tool, null, 2)}
+              </pre>
+            </section>
+          )}
+        </CardContent>
+      </Card>
+
+      <ContextCard request={request} />
+
+      <DecisionBar request={request} onDecide={onDecide} />
+    </main>
+  );
+}
+
+function ToolKeyValues({ title, entries }: { title: string; entries: [string, unknown][] }) {
+  return (
+    <div className="flex flex-col gap-2">
+      <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        {title}
+      </span>
+      {entries.length === 0 ? (
+        <span className="text-sm text-muted-foreground">none</span>
+      ) : (
+        <dl className="flex flex-col gap-2">
+          {entries.map(([key, value]) => (
+            <div className="flex flex-col gap-0.5" key={key}>
+              <dt className="font-mono text-xs text-muted-foreground">{key}</dt>
+              <dd className="font-mono text-sm text-foreground">
+                {typeof value === "string" ? value : JSON.stringify(value)}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      )}
+    </div>
+  );
+}
+
+function ApprovalDetail({ request, now, onBack, onDecide }: RequestProps & { onBack: () => void }) {
+  if (isToolRequest(request)) {
+    return <ToolDetail request={request} now={now} onBack={onBack} onDecide={onDecide} />;
+  }
+  return <ShellDetail request={request} now={now} onBack={onBack} onDecide={onDecide} />;
 }
 
 function App() {
