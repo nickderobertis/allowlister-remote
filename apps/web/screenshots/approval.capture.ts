@@ -26,10 +26,22 @@ const FIXED_TIME = new Date("2024-01-01T00:00:00Z");
 const FREEZE_MOTION =
   "*, *::before, *::after { transition: none !important; animation: none !important; caret-color: transparent !important; }";
 
+// position:fixed chrome (the floating "Shortcuts" hint) paints relative to the
+// viewport, which races Playwright's beyond-viewport fullPage capture on any page
+// taller than the viewport (today only desktop/shell-script, where the disclosed
+// script overflows): the hint lands at the viewport bottom in one run and the
+// document bottom in the next, drifting bytes run-to-run. Re-anchor that chrome to
+// the document (the only fixed element in a captured state is the floating hint;
+// the shortcuts overlay is never open during capture) so it paints at one
+// deterministic spot every run. body becomes the containing block; nothing else is
+// absolutely positioned, so this moves only the hint.
+const PIN_FIXED_CHROME =
+  "body { position: relative !important; } .fixed { position: absolute !important; }";
+
 async function shoot(page: Page, project: string, name: string): Promise<void> {
   const file = resolve(outRoot, project, `${name}.png`);
   await mkdir(dirname(file), { recursive: true });
-  await page.addStyleTag({ content: FREEZE_MOTION });
+  await page.addStyleTag({ content: `${FREEZE_MOTION}\n${PIN_FIXED_CHROME}` });
   // Settle before capturing: wait for webfonts and let layout/raster flush over
   // two animation frames, so nothing is caught mid-paint (the cause of otherwise
   // byte-level run-to-run drift, especially on the high-DPI mobile viewport).
