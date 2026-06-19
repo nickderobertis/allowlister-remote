@@ -129,7 +129,10 @@ fn posts_request_and_returns_remote_decision() {
 
     let (create_headers, create_body) = requests.recv().expect("create captured");
     assert!(create_headers.starts_with("POST /api/plugin/requests HTTP/1.1"));
-    assert!(create_headers.contains("user-agent: allowlister-remote-plugin/0.1"));
+    assert!(create_headers.contains(&format!(
+        "user-agent: allowlister-remote-plugin/{}",
+        env!("CARGO_PKG_VERSION")
+    )));
     let create_json: serde_json::Value = serde_json::from_str(&create_body).expect("create JSON");
     assert_eq!(create_json["command"], "gh pr merge 42");
     assert_eq!(create_json["current_verdict"], "defer");

@@ -75,7 +75,10 @@ fn main() {
     }
 
     let client = Client::builder()
-        .user_agent("allowlister-remote-plugin/0.1")
+        .user_agent(concat!(
+            "allowlister-remote-plugin/",
+            env!("CARGO_PKG_VERSION")
+        ))
         .no_proxy()
         .timeout(Duration::from_millis(timeout_ms.min(30_000)))
         .build()
