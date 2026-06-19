@@ -37,6 +37,7 @@ describe("approval helpers", () => {
       value: "∞",
       unit: "waiting",
       label: "waiting for a decision",
+      compact: "∞",
     });
   });
 
@@ -45,6 +46,7 @@ describe("approval helpers", () => {
       value: "5",
       unit: "sec",
       label: "5 seconds remaining",
+      compact: "5s",
     });
   });
 });

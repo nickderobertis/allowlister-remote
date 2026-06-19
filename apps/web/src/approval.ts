@@ -50,12 +50,19 @@ export interface RemainingDisplay {
   value: string;
   unit: string;
   label: string;
+  // Single-token form for tight spots like the inbox row timer.
+  compact: string;
 }
 
 export function remainingDisplay(request: ApprovalRequest, now = Date.now()): RemainingDisplay {
   const remaining = secondsRemaining(request, now);
   if (remaining === null) {
-    return { value: "∞", unit: "waiting", label: "waiting for a decision" };
+    return { value: "∞", unit: "waiting", label: "waiting for a decision", compact: "∞" };
   }
-  return { value: String(remaining), unit: "sec", label: `${remaining} seconds remaining` };
+  return {
+    value: String(remaining),
+    unit: "sec",
+    label: `${remaining} seconds remaining`,
+    compact: `${remaining}s`,
+  };
 }
