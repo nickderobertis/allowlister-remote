@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/nickderobertis/allowlister-remote/compare/v0.2.1...v0.2.2) (2026-06-19)
+
+
+### Bug Fixes
+
+* use current plugin version in user agent ([c2a8773](https://github.com/nickderobertis/allowlister-remote/commit/c2a8773503eba24a14f1c4c00679bc65e12dff18))
+
 ## [0.2.1](https://github.com/nickderobertis/allowlister-remote/compare/v0.2.0...v0.2.1) (2026-06-19)
 
 
