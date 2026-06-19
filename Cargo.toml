@@ -1,3 +1,22 @@
 [workspace]
 members = ["crates/allowlister-remote-plugin"]
 resolver = "2"
+
+# Small, fast-starting release binary: thin LTO + a single codegen unit for
+# cross-function inlining, stripped symbols, and abort-on-panic to drop the
+# unwinding tables. Profiles live at the workspace root because cargo only
+# honors `[profile.*]` in the root manifest.
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
+panic = "abort"
+
+# Profiling builds: the shipped release artifact exactly, but with symbols kept
+# so `samply` (see `scripts/profile.sh`) can attribute time to functions. This
+# never affects the published binary — `scripts/profile.sh` builds `--profile
+# profiling` into `target/profiling/` while `[profile.release]` stays stripped.
+[profile.profiling]
+inherits = "release"
+debug = true
+strip = false

@@ -4,6 +4,10 @@ version = "0.2.4"
 edition = "2021"
 repository = "https://github.com/nickderobertis/allowlister-remote"
 
+[lib]
+name = "allowlister_remote_plugin"
+path = "src/lib.rs"
+
 [[bin]]
 name = "allowlister-remote-plugin"
 path = "src/main.rs"
@@ -12,3 +16,24 @@ path = "src/main.rs"
 reqwest = { version = "0.12.28", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.150"
+
+[dev-dependencies]
+# Statistical micro-benchmarks of the pure decision path (see `benches/`).
+# Default features (plotters HTML reports, rayon) are dropped to keep the
+# dependency tree small; `cargo_bench_support` is the only feature `cargo bench`
+# needs, and it still emits the per-bench `estimates.json` that `critcmp` diffs.
+criterion = { version = "0.5", default-features = false, features = ["cargo_bench_support"] }
+
+# Statistical micro-benchmarks of the pure decision path. `harness = false`
+# hands `main` to Criterion instead of libtest, so `cargo nextest`/coverage
+# never pick this target up — it is measured, not gated.
+[[bench]]
+name = "engine"
+harness = false
+
+# Deterministic allocation tallies for the same hot paths: a plain `main` with a
+# counting global allocator, no Criterion. Exact counts compare across runs and
+# commits without statistics; informational like every bench target.
+[[bench]]
+name = "engine_allocs"
+harness = false

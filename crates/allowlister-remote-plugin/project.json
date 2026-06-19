@@ -33,7 +33,7 @@
     "typecheck": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "cargo check -p allowlister-remote-plugin",
+        "command": "cargo check -p allowlister-remote-plugin --all-targets",
         "cwd": "."
       }
     },
@@ -53,6 +53,22 @@
       "outputs": [
         "{workspaceRoot}/target/debug/allowlister-remote-plugin"
       ],
+      "cache": false
+    },
+    "bench": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo bench --locked -p allowlister-remote-plugin --bench engine",
+        "cwd": "."
+      },
+      "cache": false
+    },
+    "bench-allocs": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo bench --locked --quiet -p allowlister-remote-plugin --bench engine_allocs",
+        "cwd": "."
+      },
       "cache": false
     }
   }
