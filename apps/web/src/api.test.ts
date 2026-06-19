@@ -33,9 +33,10 @@ describe("approval APIs", () => {
     );
   });
 
-  it("removes demo requests after a decision", async () => {
+  it("removes only the decided demo request and keeps the rest pending", async () => {
     const api = new DemoApprovalApi();
-    const [request] = await api.listRequests();
+    const initial = await api.listRequests();
+    const [request] = initial;
     if (!request) {
       throw new Error("expected demo request fixture");
     }
@@ -46,7 +47,9 @@ describe("approval APIs", () => {
       reason: "nope",
     });
 
-    await expect(api.listRequests()).resolves.toEqual([]);
+    const remaining = await api.listRequests();
+    expect(remaining).toHaveLength(initial.length - 1);
+    expect(remaining.some((entry) => entry.id === request.id)).toBe(false);
     expect(api.decisions).toEqual([{ requestId: request.id, verdict: "deny", reason: "nope" }]);
   });
 
