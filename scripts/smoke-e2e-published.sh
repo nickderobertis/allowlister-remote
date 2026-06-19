@@ -21,26 +21,25 @@ trap 'rm -rf "$tmp_dir"' EXIT
 export npm_config_cache="${npm_config_cache:-$tmp_dir/npm-cache}"
 
 echo "smoke-e2e: installing published $package@$version from the public npm registry"
-# A freshly published version can take a few minutes to become installable, so
-# retry with --prefer-online to bypass any stale registry cache.
+plugin_bin="$tmp_dir/prefix/bin/allowlister-remote-plugin"
+# A fresh release registers the brand-new per-platform packages a little after
+# the parent (which already exists), and npm silently skips an unresolved
+# OPTIONAL dependency — so the parent can install before its matching platform
+# package has propagated. Retry until the install actually yields a working
+# binary (`--version` needs the native binary), bypassing stale cache.
 installed=0
 for attempt in {1..30}; do
-  if npm install --prefer-online --prefix "$tmp_dir/prefix" -g "$package@$version"; then
+  rm -rf "$tmp_dir/prefix"
+  if npm install --prefer-online --prefix "$tmp_dir/prefix" -g "$package@$version" >/dev/null 2>&1 \
+    && [[ "$("$plugin_bin" --version 2>/dev/null)" == "$version" ]]; then
     installed=1
     break
   fi
-  echo "smoke-e2e: install attempt $attempt failed; waiting for registry propagation"
+  echo "smoke-e2e: attempt $attempt: parent or per-platform package not fully propagated yet; retrying"
   sleep 10
 done
 if [[ "$installed" -ne 1 ]]; then
-  echo "smoke-e2e: failed to install $package@$version" >&2
-  exit 1
-fi
-
-plugin_bin="$tmp_dir/prefix/bin/allowlister-remote-plugin"
-actual="$("$plugin_bin" --version)"
-if [[ "$actual" != "$version" ]]; then
-  echo "smoke-e2e: published binary reports version '$actual', expected '$version'" >&2
+  echo "smoke-e2e: published $package@$version did not become fully installable" >&2
   exit 1
 fi
 
