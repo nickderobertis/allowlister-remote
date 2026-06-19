@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { createApprovalApi } from "./api";
-import { importantCommands, riskSignals, secondsRemaining } from "./approval";
+import { importantCommands, remainingDisplay, riskSignals } from "./approval";
 import type { ApprovalRequest } from "./types";
 import "./App.css";
 
@@ -67,6 +67,7 @@ function App() {
 
   const commands = importantCommands(selected);
   const risks = riskSignals(selected);
+  const remaining = remainingDisplay(selected, now);
 
   return (
     <main className="shell">
@@ -78,13 +79,9 @@ function App() {
           <h1 id="approval-title">Approve the action, not the wall of shell</h1>
           <p className="reason">{selected.currentReason}</p>
         </div>
-        <div
-          className="timer"
-          role="timer"
-          aria-label={`${secondsRemaining(selected, now)} seconds remaining`}
-        >
-          <span>{secondsRemaining(selected, now)}</span>
-          <small>sec</small>
+        <div className="timer" role="timer" aria-label={remaining.label}>
+          <span>{remaining.value}</span>
+          <small>{remaining.unit}</small>
         </div>
       </section>
 

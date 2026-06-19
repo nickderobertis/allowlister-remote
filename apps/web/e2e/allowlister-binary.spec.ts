@@ -21,7 +21,7 @@ async function repoConfig(extraRules = "") {
     "rules": [${extraRules}],
     "plugins": [{
       "name": "allowlister remote",
-      "command": ["${plugin}", "--server-url", "${serverUrl}", "--timeout-ms", "30000", "--poll-ms", "100"],
+      "command": ["${plugin}", "--server-url", "${serverUrl}", "--poll-ms", "100"],
       "timeout_ms": 35000
     }]
   }`;

@@ -39,6 +39,23 @@ export function riskSignals(request: ApprovalRequest): string[] {
   return [...signals];
 }
 
-export function secondsRemaining(request: ApprovalRequest, now = Date.now()): number {
+export function secondsRemaining(request: ApprovalRequest, now = Date.now()): number | null {
+  if (request.expiresAt === null) {
+    return null;
+  }
   return Math.max(0, Math.ceil((Date.parse(request.expiresAt) - now) / 1000));
+}
+
+export interface RemainingDisplay {
+  value: string;
+  unit: string;
+  label: string;
+}
+
+export function remainingDisplay(request: ApprovalRequest, now = Date.now()): RemainingDisplay {
+  const remaining = secondsRemaining(request, now);
+  if (remaining === null) {
+    return { value: "∞", unit: "waiting", label: "waiting for a decision" };
+  }
+  return { value: String(remaining), unit: "sec", label: `${remaining} seconds remaining` };
 }
