@@ -25,6 +25,8 @@ Use `just`; do not hand-roll equivalent commands.
 - `just test-e2e` runs Playwright against the built PWA and the real
   allowlister binary/plugin boundary in desktop and mobile Chromium.
 - `just dev` delegates to `nx run web:dev`.
+- `just smoke-e2e [version]` builds the app and runs the approval-flow e2e against the
+  plugin package installed from the public npm registry (defaults to the latest version).
 - Release helpers live behind `npm run release:*`; tags, GitHub Releases, and npm publishing run in Actions.
 
 ## Quality and tests
@@ -37,6 +39,10 @@ Use `just`; do not hand-roll equivalent commands.
   viewports through the actual allowlister binary, Rust plugin process, Next.js app
   server over HTTP, remote allow/deny decisions, and static allow/deny no-wait
   paths.
+- After a release publishes, the `e2e-smoke` workflow re-runs the approval-flow e2e
+  against the plugin package downloaded from the public npm registry (rather than a
+  locally built binary), so the published artifact is verified end-to-end. The e2e
+  spec honors `ALLOWLISTER_REMOTE_PLUGIN_BIN` to point at that published binary.
 
 ## Monorepo projects
 

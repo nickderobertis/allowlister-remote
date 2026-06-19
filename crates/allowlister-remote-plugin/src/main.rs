@@ -63,7 +63,9 @@ fn main() {
     io::stdin()
         .read_to_string(&mut stdin)
         .expect("read allowlister plugin stdin");
-    let input: Value = serde_json::from_str(&stdin).expect("parse allowlister plugin JSON");
+    let input: Value = serde_json::from_str(&stdin).unwrap_or_else(|error| {
+        write_response("ask", format!("invalid allowlister plugin input: {error}"))
+    });
 
     if let Some(verdict) = input.get("current_verdict").and_then(Value::as_str) {
         if verdict != "defer" && verdict != "ask" {
