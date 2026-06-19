@@ -116,24 +116,28 @@ jobs:
           version="$(node -e "console.log(JSON.parse(require('node:fs').readFileSync('packages/allowlister-remote-plugin/package.json', 'utf8')).version)")"
           tmp_dir="$(mktemp -d)"
           trap 'rm -rf "$tmp_dir"' EXIT
-          # The registry can take a few minutes to make a freshly published
-          # version installable, so retry with --prefer-online (bypass stale
-          # cache) and fail loudly if it never propagates.
+          cmd="$tmp_dir/prefix/bin/allowlister-remote-plugin"
+          # A fresh release registers the brand-new per-platform packages a little
+          # after the parent (which already exists), and npm silently skips an
+          # unresolved OPTIONAL dependency — so the parent can install before its
+          # matching platform package has propagated. Retry until the install
+          # actually yields a working binary (`--version` needs the native binary),
+          # not merely until the parent resolves.
           installed=0
           for attempt in {1..30}; do
-            if npm install --prefer-online --prefix "$tmp_dir/prefix" -g "@nickderobertis/allowlister-remote-plugin@$version"; then
+            rm -rf "$tmp_dir/prefix"
+            if npm install --prefer-online --prefix "$tmp_dir/prefix" -g "@nickderobertis/allowlister-remote-plugin@$version" >/dev/null 2>&1 \
+              && [[ "$("$cmd" --version 2>/dev/null)" == "$version" ]]; then
               installed=1
               break
             fi
-            echo "install attempt $attempt failed; waiting for registry propagation"
+            echo "attempt $attempt: parent or per-platform package not fully propagated yet; retrying"
             sleep 10
           done
           if [[ "$installed" -ne 1 ]]; then
-            echo "published npm package $version did not become installable" >&2
+            echo "published npm package $version did not become fully installable" >&2
             exit 1
           fi
-          cmd="$tmp_dir/prefix/bin/allowlister-remote-plugin"
-          test "$("$cmd" --version)" = "$version"
           printf '{"current_verdict":"allow","command":"git status","cwd":"/tmp"}' \
             | "$cmd" --server-url http://127.0.0.1:9 \
             | grep '"verdict":"defer"' >/dev/null
