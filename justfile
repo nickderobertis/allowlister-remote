@@ -41,6 +41,10 @@ test-e2e:
 dev:
     npx nx run web:dev
 
+smoke-e2e version="":
+    npx nx run web:build
+    npm run release:smoke-e2e -- "{{version}}"
+
 upgrade:
     npm update
     npm install
