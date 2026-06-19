@@ -16,6 +16,9 @@
     "apps/web/next-env.d.ts",
     "apps/web/.next/**"
   ],
+  "ignoreWorkspaces": [
+    "packages/allowlister-remote-plugin"
+  ],
   "ignoreDependencies": [
     "@playwright/test",
     "@testing-library/user-event",

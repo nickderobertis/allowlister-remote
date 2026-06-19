@@ -1,0 +1,27 @@
+{
+  "name": "@nickderobertis/allowlister-remote-plugin-darwin-arm64",
+  "version": "0.1.0",
+  "description": "macOS arm64 native binary for @nickderobertis/allowlister-remote-plugin",
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nickderobertis/allowlister-remote.git"
+  },
+  "os": [
+    "darwin"
+  ],
+  "cpu": [
+    "arm64"
+  ],
+  "files": [
+    "README.md",
+    "bin/"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

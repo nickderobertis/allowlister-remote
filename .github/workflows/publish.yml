@@ -84,22 +84,33 @@ jobs:
           registry-url: https://registry.npmjs.org
           cache: npm
       - run: npm ci
-      - name: Set npm package version from tag
+      - name: Set npm package versions from tag
         run: node scripts/set-npm-package-version.mjs "${GITHUB_REF_NAME#v}"
       - name: Stage npm package binaries
         run: npm run release:stage-npm -- dist/release-artifacts
       - name: Smoke-test packed npm package
         run: npm run release:smoke-npm
-      - name: Publish npm package
+      - name: Publish npm packages
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          version="$(node -e "console.log(JSON.parse(require('node:fs').readFileSync('packages/allowlister-remote-plugin/package.json', 'utf8')).version)")"
-          if npm view "@nickderobertis/allowlister-remote-plugin@$version" version >/dev/null 2>&1; then
-            echo "npm package $version already published"
-            exit 0
-          fi
-          npm publish --workspace packages/allowlister-remote-plugin --access public --provenance
+          set -euo pipefail
+          publish_pkg() {
+            local dir="$1"
+            local name version
+            name="$(node -e "console.log(require('./packages/$dir/package.json').name)")"
+            version="$(node -e "console.log(require('./packages/$dir/package.json').version)")"
+            if npm view "$name@$version" version >/dev/null 2>&1; then
+              echo "$name@$version already published"
+              return 0
+            fi
+            npm publish "./packages/$dir" --access public --provenance
+          }
+          # Platform packages must publish before the parent that depends on them.
+          publish_pkg allowlister-remote-plugin-darwin-arm64
+          publish_pkg allowlister-remote-plugin-linux-x64
+          publish_pkg allowlister-remote-plugin-win32-x64
+          publish_pkg allowlister-remote-plugin
       - name: Smoke-test published npm package
         run: |
           version="$(node -e "console.log(JSON.parse(require('node:fs').readFileSync('packages/allowlister-remote-plugin/package.json', 'utf8')).version)")"
@@ -121,7 +132,16 @@ jobs:
             echo "published npm package $version did not become installable" >&2
             exit 1
           fi
-          test "$("$tmp_dir/prefix/bin/allowlister-remote-plugin" --version)" = "$version"
+          cmd="$tmp_dir/prefix/bin/allowlister-remote-plugin"
+          test "$("$cmd" --version)" = "$version"
           printf '{"current_verdict":"allow","command":"git status","cwd":"/tmp"}' \
-            | "$tmp_dir/prefix/bin/allowlister-remote-plugin" --server-url http://127.0.0.1:9 \
+            | "$cmd" --server-url http://127.0.0.1:9 \
             | grep '"verdict":"defer"' >/dev/null
+          # Confirm the install linked the native binary directly onto PATH (no
+          # Node launcher); the launcher fallback would start with a `#!` shebang.
+          resolved="$(node -e 'console.log(require("node:fs").realpathSync(process.argv[1]))' "$cmd")"
+          if [[ "$(head -c 2 "$resolved")" == "#!" ]]; then
+            echo "published command on PATH is the JS launcher, expected the native binary" >&2
+            exit 1
+          fi
+          echo "published command resolves directly to the native binary"

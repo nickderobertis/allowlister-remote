@@ -1,6 +1,15 @@
 #!/usr/bin/env node
 
-import { execFileSync } from "node:child_process";
+// Set the version on the parent npm package and every per-platform package, and
+// inject the parent's optional dependencies pinned to that exact version.
+//
+// The per-platform packages are kept out of the parent's committed package.json
+// so the development lockfile stays in sync (their versions are never published
+// at the placeholder 0.1.0). They are added here, at publish time, so the
+// published parent resolves the matching native binary package from the registry.
+
+import { readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 
 const version = process.argv[2] ?? process.env.ALLOWLISTER_REMOTE_VERSION;
 
@@ -9,14 +18,28 @@ if (!version || !/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(version)) {
   process.exit(1);
 }
 
-execFileSync(
-  "npm",
-  [
-    "version",
-    "--workspace",
-    "@nickderobertis/allowlister-remote-plugin",
-    "--no-git-tag-version",
-    version,
-  ],
-  { stdio: "inherit" },
-);
+const packagesDir = "packages";
+const parent = "allowlister-remote-plugin";
+const platformPackages = [
+  "allowlister-remote-plugin-darwin-arm64",
+  "allowlister-remote-plugin-linux-x64",
+  "allowlister-remote-plugin-win32-x64",
+];
+
+for (const dir of [parent, ...platformPackages]) {
+  const path = join(packagesDir, dir, "package.json");
+  const manifest = JSON.parse(readFileSync(path, "utf8"));
+  manifest.version = version;
+
+  if (dir === parent) {
+    // Drop the documentation placeholder and pin the real optional deps.
+    delete manifest["//optionalDependencies"];
+    manifest.optionalDependencies = Object.fromEntries(
+      platformPackages.map((name) => [`@nickderobertis/${name}`, version]),
+    );
+  }
+
+  writeFileSync(path, `${JSON.stringify(manifest, null, 2)}\n`);
+}
+
+console.log(`set version ${version} across ${platformPackages.length + 1} packages`);
