@@ -44,7 +44,19 @@ if [[ "$actual" != "$version" ]]; then
   exit 1
 fi
 
-export ALLOWLISTER_REMOTE_PLUGIN_BIN="$plugin_bin"
+# The published package must link the native Rust binary directly onto the
+# command path, with no Node launcher in between. The JS launcher fallback would
+# begin with a `#!` shebang; the native executable does not.
+resolved="$(node -e 'console.log(require("node:fs").realpathSync(process.argv[1]))' "$plugin_bin")"
+if [[ "$(head -c 2 "$resolved")" == "#!" ]]; then
+  echo "smoke-e2e: command on PATH is the JS launcher, expected the native Rust binary" >&2
+  exit 1
+fi
+echo "smoke-e2e: command resolves directly to the native binary at $resolved"
+
+# Point allowlister at the resolved native binary so the e2e exercises the Rust
+# plugin process directly, exactly as a hot-path invocation would.
+export ALLOWLISTER_REMOTE_PLUGIN_BIN="$resolved"
 echo "smoke-e2e: running Playwright approval flow against the published plugin binary"
 (cd apps/web && npx playwright test --config playwright.config.ts)
 

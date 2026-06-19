@@ -1,0 +1,27 @@
+{
+  "name": "@nickderobertis/allowlister-remote-plugin-linux-x64",
+  "version": "0.1.0",
+  "description": "Linux x64 native binary for @nickderobertis/allowlister-remote-plugin",
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nickderobertis/allowlister-remote.git"
+  },
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "files": [
+    "README.md",
+    "bin/"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

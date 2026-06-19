@@ -1,27 +1,44 @@
 #!/usr/bin/env node
 
+// Stage the release-built native binaries into the per-platform npm packages.
+//
+// Each platform package ships exactly one native binary at `bin/`. At publish
+// time the parent `@nickderobertis/allowlister-remote-plugin` package declares
+// these as optional dependencies, so npm installs only the one matching the
+// host and links its binary directly onto the command path.
+
 import { chmodSync, cpSync, existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
-import { basename, join } from "node:path";
+import { join } from "node:path";
 
 const [, , artifactsDir = "dist/release-artifacts"] = process.argv;
-const packageDir = "packages/allowlister-remote-plugin";
-const vendorDir = join(packageDir, "vendor");
+const packagesDir = "packages";
 
-const expectedArtifacts = [
-  ["allowlister-remote-plugin-darwin-arm64", "darwin-arm64", "allowlister-remote-plugin"],
-  ["allowlister-remote-plugin-linux-x64", "linux-x64", "allowlister-remote-plugin"],
-  ["allowlister-remote-plugin-win32-x64.exe", "win32-x64", "allowlister-remote-plugin.exe"],
+const platforms = [
+  {
+    artifact: "allowlister-remote-plugin-darwin-arm64",
+    pkg: "allowlister-remote-plugin-darwin-arm64",
+    binary: "allowlister-remote-plugin",
+  },
+  {
+    artifact: "allowlister-remote-plugin-linux-x64",
+    pkg: "allowlister-remote-plugin-linux-x64",
+    binary: "allowlister-remote-plugin",
+  },
+  {
+    artifact: "allowlister-remote-plugin-win32-x64.exe",
+    pkg: "allowlister-remote-plugin-win32-x64",
+    binary: "allowlister-remote-plugin.exe",
+  },
 ];
 
-rmSync(vendorDir, { force: true, recursive: true });
-
-for (const [artifactName, platformDir, outputName] of expectedArtifacts) {
-  const artifactPath = findArtifact(artifactsDir, artifactName);
-  const outputDir = join(vendorDir, platformDir);
-  mkdirSync(outputDir, { recursive: true });
-  const outputPath = join(outputDir, outputName);
+for (const { artifact, pkg, binary } of platforms) {
+  const artifactPath = findArtifact(artifactsDir, artifact);
+  const binDir = join(packagesDir, pkg, "bin");
+  rmSync(binDir, { force: true, recursive: true });
+  mkdirSync(binDir, { recursive: true });
+  const outputPath = join(binDir, binary);
   cpSync(artifactPath, outputPath);
-  if (!outputName.endsWith(".exe")) {
+  if (!binary.endsWith(".exe")) {
     chmodSync(outputPath, 0o755);
   }
 }
@@ -46,4 +63,4 @@ function findArtifact(root, name) {
   throw new Error(`Missing release artifact ${name} under ${root}`);
 }
 
-console.log(`staged ${expectedArtifacts.length} native binaries in ${basename(vendorDir)}`);
+console.log(`staged ${platforms.length} native binaries into per-platform packages`);

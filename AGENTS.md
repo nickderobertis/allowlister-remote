@@ -59,14 +59,23 @@ Use `just`; do not hand-roll equivalent commands.
   `--timeout-ms` opts back into bounded waiting.
 - After a release publishes, the `e2e-smoke` workflow re-runs the approval-flow e2e
   against the plugin package downloaded from the public npm registry (rather than a
-  locally built binary), so the published artifact is verified end-to-end. The e2e
-  spec honors `ALLOWLISTER_REMOTE_PLUGIN_BIN` to point at that published binary.
+  locally built binary), so the published artifact is verified end-to-end. It first
+  asserts the installed `allowlister-remote-plugin` command resolves directly to the
+  native Rust binary (no Node launcher in the hot path), then points
+  `ALLOWLISTER_REMOTE_PLUGIN_BIN` at that resolved binary so the e2e drives Rust directly.
 
 ## Monorepo projects
 
 - `apps/web` is the Next.js PWA/server project and owns browser, route, and UI tests.
 - `crates/allowlister-remote-plugin` is the Rust allowlister dynamic plugin client.
-- `packages/allowlister-remote-plugin` is the npm carrier package for release-built plugin binaries.
+- `packages/allowlister-remote-plugin` is the parent npm package users install; it carries
+  only a small JS launcher plus an `install.mjs` that links the native binary onto the command path.
+- `packages/allowlister-remote-plugin-{darwin-arm64,linux-x64,win32-x64}` are the per-platform npm
+  packages that each ship one release-built native binary, gated by `os`/`cpu`. The parent declares
+  them as optional dependencies so npm installs only the one matching the host. These are published
+  from their directories (not workspace members) so their `os`/`cpu` gates do not break dev installs.
+- Native binaries are vendored into the per-platform packages only at release time and are never
+  committed; `npm run release:stage-npm` stages them from the downloaded release artifacts.
 - Root commands must delegate to Nx affected/run targets; do not add bespoke root loops over projects.
 
 ## Commits, releases, and merging
@@ -74,7 +83,7 @@ Use `just`; do not hand-roll equivalent commands.
 - PR titles use Conventional Commits and are required because squash commits drive releases.
 - Pre-1.0 bump policy: `feat` and breaking changes create a minor; `fix`, `perf`,
   `refactor`, and `build` create a patch; chores/docs/tests/styles do not release.
-- After the main `check` workflow passes, Release Please opens or updates a release PR with `RELEASE_TOKEN`; merging that PR tags `vX.Y.Z`, then the tag builds GitHub Release binaries, stamps the npm carrier package from the tag, and publishes `@nickderobertis/allowlister-remote-plugin` with `NPM_TOKEN`.
+- After the main `check` workflow passes, Release Please opens or updates a release PR with `RELEASE_TOKEN`; merging that PR tags `vX.Y.Z`, then the tag builds GitHub Release binaries, stamps every npm package from the tag, and publishes the per-platform packages followed by the parent `@nickderobertis/allowlister-remote-plugin` (which depends on them) with `NPM_TOKEN`.
 - GitHub should stay squash-only with auto-merge, branch deletion, required `check`,
   `install-smoke`, and `pr-title` checks, linear history, conversation resolution, and admin override.
 - `gh-secrets.json` is the secret manifest; values stay in the local gh-secrets store or another configured source, never in git.
