@@ -16,7 +16,9 @@
 
 use std::hint::black_box;
 
-use allowlister_remote_plugin::{build_create_body, interpret_decision, parse_local_input, triage};
+use allowlister_remote_plugin::{
+    build_create_body, interpret_decision, parse_local_input, static_decision, triage,
+};
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use serde_json::Value;
 
@@ -34,6 +36,21 @@ fn bench_triage(c: &mut Criterion) {
     for (name, body) in corpus() {
         group.bench_with_input(BenchmarkId::from_parameter(name), &body, |b, body| {
             b.iter(|| triage(black_box(body), black_box(TIMEOUT_MS)));
+        });
+    }
+    group.finish();
+}
+
+/// The hot, no-UI path: the binary probes `current_verdict` on every invocation
+/// and short-circuits a static allow/deny to `defer` without building the full
+/// payload tree. Benched over the whole corpus so the static case (the
+/// short-circuit) and the defer cases (the probe that then falls through to the
+/// network path) are both visible.
+fn bench_static_decision(c: &mut Criterion) {
+    let mut group = c.benchmark_group("static_decision");
+    for (name, body) in corpus() {
+        group.bench_with_input(BenchmarkId::from_parameter(name), &body, |b, body| {
+            b.iter(|| static_decision(black_box(body)));
         });
     }
     group.finish();
@@ -86,6 +103,7 @@ fn bench_triage_scaling(c: &mut Criterion) {
 
 criterion_group!(
     benches,
+    bench_static_decision,
     bench_triage,
     bench_build_create_body,
     bench_interpret_decision,

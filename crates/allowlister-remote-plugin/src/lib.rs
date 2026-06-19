@@ -33,14 +33,40 @@ pub fn parse_local_input(line: &str) -> Option<LocalDecision> {
     }
 }
 
+/// The shared predicate behind [`is_static_decision`] and [`static_decision`]:
+/// a present verdict that is neither `defer` nor `ask` settled the command, so
+/// only those two (or a missing verdict) reach the server.
+fn is_static_verdict(verdict: Option<&str>) -> bool {
+    matches!(verdict, Some(v) if v != "defer" && v != "ask")
+}
+
 /// Whether the harness already settled this command with a static allow/deny
 /// verdict, so no remote approval is needed. Only `defer`/`ask` (or a missing
 /// verdict) reach the server.
 pub fn is_static_decision(input: &Value) -> bool {
-    matches!(
-        input.get("current_verdict").and_then(Value::as_str),
-        Some(verdict) if verdict != "defer" && verdict != "ask"
-    )
+    is_static_verdict(input.get("current_verdict").and_then(Value::as_str))
+}
+
+/// A zero-copy probe over the harness payload that reads only `current_verdict`
+/// and skips every other field without allocating it — `&str` borrows straight
+/// out of the input buffer when the verdict has no escapes (it never does).
+#[derive(Deserialize)]
+struct StaticProbe<'a> {
+    #[serde(borrow, default)]
+    current_verdict: Option<&'a str>,
+}
+
+/// The hot path's cheap front door: decide whether a payload carries a static
+/// verdict that settles the command without remote approval, reading only
+/// `current_verdict` rather than building the whole [`Value`] tree. The binary
+/// runs this on every invocation, so the common static-allow/deny case
+/// short-circuits to `defer` without parsing the rest of the payload or
+/// collecting CLI args. Returns `None` when the payload does not parse, so the
+/// caller falls back to a full parse that surfaces the precise error.
+/// [`is_static_decision`] is the same predicate over an already-parsed value.
+pub fn static_decision(stdin: &str) -> Option<bool> {
+    let probe: StaticProbe = serde_json::from_str(stdin).ok()?;
+    Some(is_static_verdict(probe.current_verdict))
 }
 
 /// Build the JSON body POSTed to open an approval request. allowlister's
@@ -177,6 +203,29 @@ mod tests {
             triage(r#"{"current_verdict":"ask"}"#, 0).expect("valid"),
             Triage::NeedsApproval(_)
         ));
+    }
+
+    #[test]
+    fn static_decision_probe_matches_value_predicate_and_tolerates_garbage() {
+        // The cheap stdin probe agrees with the Value-based predicate across the
+        // verdicts the harness sends.
+        for (payload, expected) in [
+            (
+                r#"{"current_verdict":"allow","command":"git status"}"#,
+                true,
+            ),
+            (r#"{"current_verdict":"deny"}"#, true),
+            (r#"{"current_verdict":"defer","command":"x"}"#, false),
+            (r#"{"current_verdict":"ask"}"#, false),
+            (r#"{"command":"git status"}"#, false),
+        ] {
+            let input: Value = serde_json::from_str(payload).expect("valid");
+            assert_eq!(static_decision(payload), Some(expected));
+            assert_eq!(is_static_decision(&input), expected);
+        }
+        // Unparseable input yields None so the caller can fall back to a full
+        // parse that surfaces the precise error.
+        assert_eq!(static_decision("not json"), None);
     }
 
     #[test]
