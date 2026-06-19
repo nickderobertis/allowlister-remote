@@ -21,30 +21,41 @@ trap 'rm -rf "$tmp_dir"' EXIT
 export npm_config_cache="${npm_config_cache:-$tmp_dir/npm-cache}"
 
 echo "smoke-e2e: installing published $package@$version from the public npm registry"
-# A freshly published version can take a few minutes to become installable, so
-# retry with --prefer-online to bypass any stale registry cache.
+plugin_bin="$tmp_dir/prefix/bin/allowlister-remote-plugin"
+# A fresh release registers the brand-new per-platform packages a little after
+# the parent (which already exists), and npm silently skips an unresolved
+# OPTIONAL dependency — so the parent can install before its matching platform
+# package has propagated. Retry until the install actually yields a working
+# binary (`--version` needs the native binary), bypassing stale cache.
 installed=0
 for attempt in {1..30}; do
-  if npm install --prefer-online --prefix "$tmp_dir/prefix" -g "$package@$version"; then
+  rm -rf "$tmp_dir/prefix"
+  if npm install --prefer-online --prefix "$tmp_dir/prefix" -g "$package@$version" >/dev/null 2>&1 \
+    && [[ "$("$plugin_bin" --version 2>/dev/null)" == "$version" ]]; then
     installed=1
     break
   fi
-  echo "smoke-e2e: install attempt $attempt failed; waiting for registry propagation"
+  echo "smoke-e2e: attempt $attempt: parent or per-platform package not fully propagated yet; retrying"
   sleep 10
 done
 if [[ "$installed" -ne 1 ]]; then
-  echo "smoke-e2e: failed to install $package@$version" >&2
+  echo "smoke-e2e: published $package@$version did not become fully installable" >&2
   exit 1
 fi
 
-plugin_bin="$tmp_dir/prefix/bin/allowlister-remote-plugin"
-actual="$("$plugin_bin" --version)"
-if [[ "$actual" != "$version" ]]; then
-  echo "smoke-e2e: published binary reports version '$actual', expected '$version'" >&2
+# The published package must link the native Rust binary directly onto the
+# command path, with no Node launcher in between. The JS launcher fallback would
+# begin with a `#!` shebang; the native executable does not.
+resolved="$(node -e 'console.log(require("node:fs").realpathSync(process.argv[1]))' "$plugin_bin")"
+if [[ "$(head -c 2 "$resolved")" == "#!" ]]; then
+  echo "smoke-e2e: command on PATH is the JS launcher, expected the native Rust binary" >&2
   exit 1
 fi
+echo "smoke-e2e: command resolves directly to the native binary at $resolved"
 
-export ALLOWLISTER_REMOTE_PLUGIN_BIN="$plugin_bin"
+# Point allowlister at the resolved native binary so the e2e exercises the Rust
+# plugin process directly, exactly as a hot-path invocation would.
+export ALLOWLISTER_REMOTE_PLUGIN_BIN="$resolved"
 echo "smoke-e2e: running Playwright approval flow against the published plugin binary"
 (cd apps/web && npx playwright test --config playwright.config.ts)
 

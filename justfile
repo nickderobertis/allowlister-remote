@@ -74,6 +74,10 @@ bench-compare:
 bench-allocs:
     cargo bench --locked --quiet -p allowlister-remote-plugin --bench engine_allocs
 
+# Deterministic end-to-end CLI instruction counts (valgrind cachegrind).
+bench-instructions:
+    @bash scripts/bench-instructions.sh
+
 # End-to-end CLI latency with hyperfine (no-network fast paths).
 bench-cli:
     @bash scripts/bench.sh

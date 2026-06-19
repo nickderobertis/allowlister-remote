@@ -10,6 +10,7 @@
     "includes": [
       "apps/web/**/*.{ts,tsx,js,jsx,json,jsonc,css}",
       "packages/allowlister-remote-plugin/**/*.{js,mjs,json}",
+      "packages/allowlister-remote-plugin-*/package.json",
       "scripts/**/*.mjs",
       ".release-please-manifest.json",
       "gh-secrets.json",

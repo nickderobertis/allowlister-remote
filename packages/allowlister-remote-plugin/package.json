@@ -9,13 +9,18 @@
     "url": "git+https://github.com/nickderobertis/allowlister-remote.git"
   },
   "bin": {
-    "allowlister-remote-plugin": "bin/allowlister-remote-plugin.js"
+    "allowlister-remote-plugin": "bin/allowlister-remote-plugin"
+  },
+  "scripts": {
+    "postinstall": "node install.mjs"
   },
   "files": [
     "README.md",
     "bin/",
-    "vendor/"
+    "lib/",
+    "install.mjs"
   ],
+  "//optionalDependencies": "The per-platform native binary packages are injected as optionalDependencies at publish time by scripts/set-npm-package-version.mjs. They are kept out of source so the dev lockfile stays in sync (their versions are never published at 0.1.0).",
   "publishConfig": {
     "access": "public",
     "provenance": true
