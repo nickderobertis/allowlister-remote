@@ -54,3 +54,34 @@ upgrade:
     npm update
     npm install
     @just check
+
+# Performance suite (informational — measured, not gated). See
+# crates/allowlister-remote-plugin/benches/ and scripts/{bench,profile}.sh.
+
+# Criterion micro-benchmarks of the pure decision path; saves a "current" baseline.
+bench:
+    cargo bench --locked -p allowlister-remote-plugin --bench engine -- --save-baseline current
+
+# Save a "base" baseline to diff against later with `just bench-compare`.
+bench-base:
+    cargo bench --locked -p allowlister-remote-plugin --bench engine -- --save-baseline base
+
+# Diff the saved baselines (needs critcmp: `cargo install --locked critcmp`).
+bench-compare:
+    critcmp base current
+
+# Deterministic allocator tallies for the same hot paths (markdown table).
+bench-allocs:
+    cargo bench --locked --quiet -p allowlister-remote-plugin --bench engine_allocs
+
+# End-to-end CLI latency with hyperfine (no-network fast paths).
+bench-cli:
+    @bash scripts/bench.sh
+
+# Fast smoke check that the CLI bench harness still works (one run, no warmup).
+bench-cli-smoke:
+    @bash scripts/bench.sh --dry-run
+
+# Sampling/instruction profiler (samply or callgrind). E.g. `just profile cli`.
+profile *args:
+    @bash scripts/profile.sh {{args}}
