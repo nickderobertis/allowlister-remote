@@ -62,6 +62,15 @@
         }
       ]
     },
+    "capture": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "npx playwright test --config apps/web/playwright.capture.config.ts",
+        "cwd": "."
+      },
+      "dependsOn": ["build"],
+      "cache": false
+    },
     "dev": {
       "executor": "nx:run-commands",
       "options": {

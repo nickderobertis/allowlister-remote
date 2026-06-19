@@ -19,3 +19,9 @@ tsconfig.tsbuildinfo
 .dev
 test-results
 playwright-report
+
+# screencomp: commit the digest baselines (shots/baseline/*.sha256), not the generated PNGs.
+shots/current/
+shots/verify/
+shots/review/
+/site/
