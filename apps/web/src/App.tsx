@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { createApprovalApi } from "./api";
 import { importantCommands, remainingDisplay, riskSignals } from "./approval";
+import { Badge } from "./components/ui/badge";
+import { Button } from "./components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "./components/ui/card";
 import type { ApprovalRequest } from "./types";
-import "./App.css";
 
 type Verdict = "allow" | "deny";
 
@@ -10,6 +12,21 @@ interface RequestProps {
   request: ApprovalRequest;
   now: number;
   onDecide: (id: string, verdict: Verdict) => void;
+}
+
+function RiskBadges({ risks }: { risks: string[] }) {
+  if (risks.length === 0) {
+    return <Badge variant="outline">No high-risk signal detected</Badge>;
+  }
+  return (
+    <>
+      {risks.map((risk) => (
+        <Badge variant="destructive" key={risk}>
+          {risk}
+        </Badge>
+      ))}
+    </>
+  );
 }
 
 function InboxItem({
@@ -24,61 +41,56 @@ function InboxItem({
   const remaining = remainingDisplay(request, now);
 
   return (
-    <li className="inbox-item">
-      <button
-        className="inbox-open"
-        type="button"
-        aria-label={`Open approval for ${headline}`}
-        onClick={() => onOpen(request.id)}
-      >
-        <span className="inbox-eyebrow">
-          {request.harness} · allowlister {request.currentVerdict}
-        </span>
-        <code className="inbox-command">{headline}</code>
-        {commands.length > 1 ? (
-          <span className="inbox-more">+{commands.length - 1} more command(s)</span>
-        ) : null}
-        <span className="inbox-reason">{request.currentReason}</span>
-        <span className="inbox-risks">
-          {risks.length === 0 ? (
-            <span className="safe-chip">No high-risk signal detected</span>
-          ) : (
-            risks.map((risk) => (
-              <span className="risk-chip" key={risk}>
-                {risk}
-              </span>
-            ))
-          )}
-        </span>
-      </button>
-
-      <div className="inbox-side">
-        <span
-          className="inbox-timer"
-          role="timer"
-          aria-label={`${remaining.label} for ${headline}`}
+    <li>
+      <Card className="flex flex-col gap-4 p-4 sm:flex-row sm:items-stretch sm:justify-between">
+        <button
+          type="button"
+          className="flex flex-1 flex-col items-start gap-2 rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          aria-label={`Open approval for ${headline}`}
+          onClick={() => onOpen(request.id)}
         >
-          {remaining.compact}
-        </span>
-        <div className="inbox-actions">
-          <button
-            className="deny"
-            type="button"
-            aria-label={`Deny ${headline}`}
-            onClick={() => onDecide(request.id, "deny")}
+          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {request.harness} · allowlister {request.currentVerdict}
+          </span>
+          <code className="font-mono text-base text-foreground">{headline}</code>
+          {commands.length > 1 ? (
+            <span className="text-xs text-muted-foreground">
+              +{commands.length - 1} more command(s)
+            </span>
+          ) : null}
+          <span className="text-sm text-muted-foreground">{request.currentReason}</span>
+          <span className="flex flex-wrap gap-1.5">
+            <RiskBadges risks={risks} />
+          </span>
+        </button>
+
+        <div className="flex items-center justify-between gap-3 sm:flex-col sm:items-end sm:justify-center">
+          <span
+            className="font-mono text-sm text-muted-foreground"
+            role="timer"
+            aria-label={`${remaining.label} for ${headline}`}
           >
-            Deny
-          </button>
-          <button
-            className="allow"
-            type="button"
-            aria-label={`Allow ${headline}`}
-            onClick={() => onDecide(request.id, "allow")}
-          >
-            Allow
-          </button>
+            {remaining.compact}
+          </span>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              aria-label={`Deny ${headline}`}
+              onClick={() => onDecide(request.id, "deny")}
+            >
+              Deny
+            </Button>
+            <Button
+              size="sm"
+              aria-label={`Allow ${headline}`}
+              onClick={() => onDecide(request.id, "allow")}
+            >
+              Allow
+            </Button>
+          </div>
         </div>
-      </div>
+      </Card>
     </li>
   );
 }
@@ -89,84 +101,106 @@ function ApprovalDetail({ request, now, onBack, onDecide }: RequestProps & { onB
   const remaining = remainingDisplay(request, now);
 
   return (
-    <main className="shell detail">
-      <button className="back-button" type="button" onClick={onBack}>
+    <main className="mx-auto flex max-w-3xl flex-col gap-6 p-4 sm:p-8">
+      <Button variant="ghost" size="sm" className="self-start" onClick={onBack}>
         ← All approvals
-      </button>
+      </Button>
 
-      <section className="hero" aria-labelledby="approval-title">
-        <div>
-          <p className="eyebrow">
+      <section
+        className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"
+        aria-labelledby="approval-title"
+      >
+        <div className="flex flex-col gap-2">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
             {request.harness} · allowlister {request.currentVerdict}
           </p>
-          <h1 id="approval-title">Approve the action, not the wall of shell</h1>
-          <p className="reason">{request.currentReason}</p>
+          <h1 id="approval-title" className="text-2xl font-semibold tracking-tight">
+            Approve the action, not the wall of shell
+          </h1>
+          <p className="text-muted-foreground">{request.currentReason}</p>
         </div>
-        <div className="timer" role="timer" aria-label={remaining.label}>
-          <span>{remaining.value}</span>
-          <small>{remaining.unit}</small>
+        <div
+          className="flex shrink-0 flex-col items-center rounded-lg border border-border px-4 py-3"
+          role="timer"
+          aria-label={remaining.label}
+        >
+          <span className="font-mono text-2xl">{remaining.value}</span>
+          <small className="text-xs text-muted-foreground">{remaining.unit}</small>
         </div>
       </section>
 
-      <section className="command-card" aria-label="Important commands">
-        <span className="card-label">Needs your attention</span>
-        {commands.map((command) => (
-          <code className="primary-command" key={command}>
-            {command}
-          </code>
-        ))}
-      </section>
-
-      <section className="risk-grid" aria-label="Risk signals">
-        {risks.length === 0 ? (
-          <span className="safe-chip">No high-risk signal detected</span>
-        ) : null}
-        {risks.map((risk) => (
-          <span className="risk-chip" key={risk}>
-            {risk}
+      <Card aria-label="Important commands">
+        <CardContent className="flex flex-col gap-2 p-4">
+          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Needs your attention
           </span>
-        ))}
+          {commands.map((command) => (
+            <code className="font-mono text-base text-foreground" key={command}>
+              {command}
+            </code>
+          ))}
+        </CardContent>
+      </Card>
+
+      <section className="flex flex-wrap gap-1.5" aria-label="Risk signals">
+        <RiskBadges risks={risks} />
       </section>
 
-      <section className="details-grid">
-        <article>
-          <h2>Parsed allowlister fragments</h2>
-          <ul className="fragment-list">
-            {request.fragments.map((fragment) => (
-              <li key={`${fragment.role}-${fragment.display}`}>
-                <code>{fragment.display}</code>
-                <span>{fragment.verdict}</span>
-                {fragment.rule ? <small>{fragment.rule}</small> : null}
-              </li>
-            ))}
-          </ul>
-        </article>
-        <article>
-          <h2>Context</h2>
-          <dl>
-            <div>
-              <dt>Working directory</dt>
-              <dd>{request.cwd}</dd>
-            </div>
-            <div>
-              <dt>Request id</dt>
-              <dd>{request.id}</dd>
-            </div>
-          </dl>
-          <details>
-            <summary>Show full script</summary>
-            <pre>{request.command}</pre>
-          </details>
-        </article>
-      </section>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Parsed allowlister fragments</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ul className="flex flex-col gap-3">
+              {request.fragments.map((fragment) => (
+                <li className="flex flex-col gap-1" key={`${fragment.role}-${fragment.display}`}>
+                  <code className="font-mono text-sm text-foreground">{fragment.display}</code>
+                  <span className="text-xs text-muted-foreground">{fragment.verdict}</span>
+                  {fragment.rule ? (
+                    <small className="text-xs text-muted-foreground">{fragment.rule}</small>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Context</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <dl className="flex flex-col gap-3">
+              <div className="flex flex-col gap-1">
+                <dt className="text-xs uppercase tracking-wide text-muted-foreground">
+                  Working directory
+                </dt>
+                <dd className="font-mono text-sm">{request.cwd}</dd>
+              </div>
+              <div className="flex flex-col gap-1">
+                <dt className="text-xs uppercase tracking-wide text-muted-foreground">
+                  Request id
+                </dt>
+                <dd className="font-mono text-sm">{request.id}</dd>
+              </div>
+            </dl>
+            <details className="text-sm">
+              <summary className="cursor-pointer text-muted-foreground">Show full script</summary>
+              <pre className="mt-2 overflow-x-auto rounded-md border border-border bg-background p-3 text-xs">
+                {request.command}
+              </pre>
+            </details>
+          </CardContent>
+        </Card>
+      </div>
 
-      <footer className="decision-bar">
-        <button className="deny" type="button" onClick={() => onDecide(request.id, "deny")}>
+      <footer className="flex gap-3">
+        <Button variant="outline" className="flex-1" onClick={() => onDecide(request.id, "deny")}>
           Deny
-        </button>
-        <button className="allow" type="button" onClick={() => onDecide(request.id, "allow")}>
+        </Button>
+        <Button className="flex-1" onClick={() => onDecide(request.id, "allow")}>
           Allow once
-        </button>
+        </Button>
       </footer>
     </main>
   );
@@ -230,30 +264,42 @@ function App() {
 
   if (requests.length === 0) {
     return (
-      <main className="shell empty-state">
-        <p className="eyebrow">allowlister remote</p>
-        <h1>No pending approvals</h1>
-        <p>
+      <main className="mx-auto flex max-w-3xl flex-col gap-3 p-8">
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          allowlister remote
+        </p>
+        <h1 className="text-2xl font-semibold tracking-tight">No pending approvals</h1>
+        <p className="text-muted-foreground">
           Install this PWA on your desktop or phone and keep it ready for the next agent request.
         </p>
-        {error ? <p role="alert">{error}</p> : null}
+        {error ? (
+          <p className="text-destructive" role="alert">
+            {error}
+          </p>
+        ) : null}
       </main>
     );
   }
 
   return (
-    <main className="shell inbox">
-      <header className="inbox-header">
-        <p className="eyebrow">allowlister remote</p>
-        <h1>Approvals inbox</h1>
-        <p className="inbox-count">
+    <main className="mx-auto flex max-w-3xl flex-col gap-6 p-4 sm:p-8">
+      <header className="flex flex-col gap-1">
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          allowlister remote
+        </p>
+        <h1 className="text-2xl font-semibold tracking-tight">Approvals inbox</h1>
+        <p className="text-sm text-muted-foreground">
           {requests.length} pending {requests.length === 1 ? "approval" : "approvals"} · tap a card
           to expand
         </p>
-        {error ? <p role="alert">{error}</p> : null}
+        {error ? (
+          <p className="text-destructive" role="alert">
+            {error}
+          </p>
+        ) : null}
       </header>
 
-      <ul className="inbox-list" aria-label="Pending approvals">
+      <ul className="flex flex-col gap-3" aria-label="Pending approvals">
         {requests.map((request) => (
           <InboxItem
             key={request.id}
