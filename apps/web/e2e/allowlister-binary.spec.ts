@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -53,15 +54,25 @@ async function expectStillRunning(running: Running) {
   expect(result).toBe(marker);
 }
 
+// The Next.js server keeps approval requests in a process-wide in-memory store
+// that lives for the whole Playwright run, so every test must use a unique
+// command. That way each test only ever matches its own request and is immune
+// to undecided requests left behind by other tests (or the desktop/mobile
+// projects sharing the same server).
+function uniqueCommand(base: string) {
+  return `${base} ${randomUUID().slice(0, 8)}`;
+}
+
 test("allowlister waits for a remote allow decision from the expanded view", async ({ page }) => {
   const { dir } = await repoConfig();
-  const running = runAllowlister(dir, "gh pr merge 42 --squash --delete-branch");
+  const command = uniqueCommand("gh pr merge 42 --squash --delete-branch");
+  const running = runAllowlister(dir, command);
   try {
     await expectStillRunning(running);
     await page.goto("/");
-    await page
-      .getByRole("button", { name: "Open approval for gh pr merge 42 --squash --delete-branch" })
-      .click();
+    const open = page.getByRole("button", { name: `Open approval for ${command}` });
+    await expect(open).toHaveCount(1);
+    await open.click();
     await expect(page.getByLabel("Important commands")).toContainText("gh pr merge 42");
 
     await page.getByRole("button", { name: "Allow once" }).click();
@@ -77,13 +88,14 @@ test("allowlister waits for a remote allow decision from the expanded view", asy
 
 test("allowlister waits for a remote deny decision from the inbox list", async ({ page }) => {
   const { dir } = await repoConfig();
-  const running = runAllowlister(dir, "gh pr merge 42 --squash --delete-branch");
+  const command = uniqueCommand("gh pr merge 42 --squash --delete-branch");
+  const running = runAllowlister(dir, command);
   try {
     await expectStillRunning(running);
     await page.goto("/");
-    await page
-      .getByRole("button", { name: "Deny gh pr merge 42 --squash --delete-branch" })
-      .click();
+    const deny = page.getByRole("button", { name: `Deny ${command}` });
+    await expect(deny).toHaveCount(1);
+    await deny.click();
 
     const result = await running.promise;
     expect(result.code).toBe(2);
@@ -98,23 +110,25 @@ test("resolves multiple concurrent allowlister processes independently from the 
   page,
 }) => {
   const { dir } = await repoConfig();
-  const allowProc = runAllowlister(dir, "gh pr merge 42 --squash --delete-branch");
-  const denyProc = runAllowlister(dir, "rm -rf build");
+  const allowCommand = uniqueCommand("gh pr merge 42 --squash --delete-branch");
+  const denyCommand = uniqueCommand("rm -rf build");
+  const allowProc = runAllowlister(dir, allowCommand);
+  const denyProc = runAllowlister(dir, denyCommand);
   try {
     // Both plugin processes block waiting on the same remote app concurrently.
     await expectStillRunning(allowProc);
     await expectStillRunning(denyProc);
 
     await page.goto("/");
-    const list = page.getByRole("list", { name: "Pending approvals" });
-    await expect(list.getByRole("listitem")).toHaveCount(2);
-    await expect(list.getByText("gh pr merge 42 --squash --delete-branch")).toBeVisible();
-    await expect(list.getByText("rm -rf build")).toBeVisible();
+    const allowOpen = page.getByRole("button", { name: `Open approval for ${allowCommand}` });
+    const denyOpen = page.getByRole("button", { name: `Open approval for ${denyCommand}` });
+    await expect(allowOpen).toHaveCount(1);
+    await expect(denyOpen).toHaveCount(1);
 
     // Deny one request from the list; the other must stay pending.
-    await page.getByRole("button", { name: "Deny rm -rf build" }).click();
-    await expect(list.getByText("rm -rf build")).toHaveCount(0);
-    await expect(list.getByText("gh pr merge 42 --squash --delete-branch")).toBeVisible();
+    await page.getByRole("button", { name: `Deny ${denyCommand}` }).click();
+    await expect(denyOpen).toHaveCount(0);
+    await expect(allowOpen).toHaveCount(1);
 
     const denyResult = await denyProc.promise;
     expect(denyResult.code).toBe(2);
@@ -122,15 +136,12 @@ test("resolves multiple concurrent allowlister processes independently from the 
 
     // The remaining process is still blocked until its own decision arrives.
     await expectStillRunning(allowProc);
-    await page
-      .getByRole("button", { name: "Allow gh pr merge 42 --squash --delete-branch" })
-      .click();
+    await page.getByRole("button", { name: `Allow ${allowCommand}` }).click();
+    await expect(allowOpen).toHaveCount(0);
 
     const allowResult = await allowProc.promise;
     expect(allowResult.code).toBe(0);
     expect(JSON.parse(allowResult.stdout).verdict).toBe("allow");
-
-    await expect(page.getByRole("heading", { name: "No pending approvals" })).toBeVisible();
   } finally {
     allowProc.kill();
     denyProc.kill();
@@ -140,23 +151,24 @@ test("resolves multiple concurrent allowlister processes independently from the 
 
 test("surfaces a request that arrives after the inbox is already open", async ({ page }) => {
   const { dir } = await repoConfig();
-  const first = runAllowlister(dir, "gh pr merge 42 --squash --delete-branch");
+  const firstCommand = uniqueCommand("gh pr merge 42 --squash --delete-branch");
+  const first = runAllowlister(dir, firstCommand);
   try {
     await expectStillRunning(first);
     await page.goto("/");
-    const list = page.getByRole("list", { name: "Pending approvals" });
-    await expect(list.getByText("gh pr merge 42 --squash --delete-branch")).toBeVisible();
-    await expect(list.getByRole("listitem")).toHaveCount(1);
+    const firstOpen = page.getByRole("button", { name: `Open approval for ${firstCommand}` });
+    await expect(firstOpen).toHaveCount(1);
 
     // A second agent hits an approval gate while the operator is already watching
     // the inbox; the polling refresh must surface it without a manual reload.
-    const second = runAllowlister(dir, "rm -rf build");
+    const secondCommand = uniqueCommand("rm -rf build");
+    const second = runAllowlister(dir, secondCommand);
     try {
       await expectStillRunning(second);
-      await expect(list.getByText("rm -rf build")).toBeVisible();
-      await expect(list.getByRole("listitem")).toHaveCount(2);
+      const secondOpen = page.getByRole("button", { name: `Open approval for ${secondCommand}` });
+      await expect(secondOpen).toHaveCount(1);
 
-      await page.getByRole("button", { name: "Allow rm -rf build" }).click();
+      await page.getByRole("button", { name: `Allow ${secondCommand}` }).click();
       const secondResult = await second.promise;
       expect(secondResult.code).toBe(0);
       expect(JSON.parse(secondResult.stdout).verdict).toBe("allow");
@@ -166,9 +178,7 @@ test("surfaces a request that arrives after the inbox is already open", async ({
 
     // The originally-listed process is untouched and still waiting.
     await expectStillRunning(first);
-    await page
-      .getByRole("button", { name: "Allow gh pr merge 42 --squash --delete-branch" })
-      .click();
+    await page.getByRole("button", { name: `Allow ${firstCommand}` }).click();
     const firstResult = await first.promise;
     expect(firstResult.code).toBe(0);
     expect(JSON.parse(firstResult.stdout).verdict).toBe("allow");
@@ -182,22 +192,22 @@ test("resolves the correct process from the expanded view while others stay pend
   page,
 }) => {
   const { dir } = await repoConfig();
-  const expandedProc = runAllowlister(dir, "gh pr merge 42 --squash --delete-branch");
-  const pendingProc = runAllowlister(dir, "rm -rf build");
+  const expandedCommand = uniqueCommand("gh pr merge 42 --squash --delete-branch");
+  const pendingCommand = uniqueCommand("rm -rf build");
+  const expandedProc = runAllowlister(dir, expandedCommand);
+  const pendingProc = runAllowlister(dir, pendingCommand);
   try {
     await expectStillRunning(expandedProc);
     await expectStillRunning(pendingProc);
 
     await page.goto("/");
-    const list = page.getByRole("list", { name: "Pending approvals" });
-    await expect(list.getByRole("listitem")).toHaveCount(2);
+    const expandedOpen = page.getByRole("button", { name: `Open approval for ${expandedCommand}` });
+    const pendingOpen = page.getByRole("button", { name: `Open approval for ${pendingCommand}` });
+    await expect(expandedOpen).toHaveCount(1);
+    await expect(pendingOpen).toHaveCount(1);
 
     // Open one request full-screen and approve it from the detail view.
-    await page
-      .getByRole("button", {
-        name: "Open approval for gh pr merge 42 --squash --delete-branch",
-      })
-      .click();
+    await expandedOpen.click();
     await expect(page.getByRole("heading", { name: /Approve the action/ })).toBeVisible();
     await page.getByRole("button", { name: "Allow once" }).click();
 
@@ -209,7 +219,7 @@ test("resolves the correct process from the expanded view while others stay pend
     // Control returns to the inbox with the untouched request still pending and
     // its plugin still blocked.
     await expect(page.getByRole("heading", { name: "Approvals inbox" })).toBeVisible();
-    await expect(list.getByText("rm -rf build")).toBeVisible();
+    await expect(pendingOpen).toHaveCount(1);
     await expectStillRunning(pendingProc);
   } finally {
     expandedProc.kill();
