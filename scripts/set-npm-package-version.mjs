@@ -1,9 +1,12 @@
 #!/usr/bin/env node
 
 // Set the version on the parent npm package and every per-platform package, and
-// pin the parent's optional dependencies to that exact version. Editing the
-// package.json files directly (rather than `npm version`) keeps the parent's
-// optionalDependencies in lockstep with the platform packages they point at.
+// inject the parent's optional dependencies pinned to that exact version.
+//
+// The per-platform packages are kept out of the parent's committed package.json
+// so the development lockfile stays in sync (their versions are never published
+// at the placeholder 0.1.0). They are added here, at publish time, so the
+// published parent resolves the matching native binary package from the registry.
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -28,10 +31,12 @@ for (const dir of [parent, ...platformPackages]) {
   const manifest = JSON.parse(readFileSync(path, "utf8"));
   manifest.version = version;
 
-  if (dir === parent && manifest.optionalDependencies) {
-    for (const name of Object.keys(manifest.optionalDependencies)) {
-      manifest.optionalDependencies[name] = version;
-    }
+  if (dir === parent) {
+    // Drop the documentation placeholder and pin the real optional deps.
+    delete manifest["//optionalDependencies"];
+    manifest.optionalDependencies = Object.fromEntries(
+      platformPackages.map((name) => [`@nickderobertis/${name}`, version]),
+    );
   }
 
   writeFileSync(path, `${JSON.stringify(manifest, null, 2)}\n`);

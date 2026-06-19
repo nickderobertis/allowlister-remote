@@ -20,11 +20,7 @@
     "lib/",
     "install.mjs"
   ],
-  "optionalDependencies": {
-    "@nickderobertis/allowlister-remote-plugin-darwin-arm64": "0.1.0",
-    "@nickderobertis/allowlister-remote-plugin-linux-x64": "0.1.0",
-    "@nickderobertis/allowlister-remote-plugin-win32-x64": "0.1.0"
-  },
+  "//optionalDependencies": "The per-platform native binary packages are injected as optionalDependencies at publish time by scripts/set-npm-package-version.mjs. They are kept out of source so the dev lockfile stays in sync (their versions are never published at 0.1.0).",
   "publishConfig": {
     "access": "public",
     "provenance": true

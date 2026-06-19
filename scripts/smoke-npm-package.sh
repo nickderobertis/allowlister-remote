@@ -25,18 +25,22 @@ esac
 # Pack this host's platform package (it must already have its staged binary).
 plat_tgz="$(cd "$packages_root/$plat_pkg" && npm pack --silent --pack-destination "$tmp_dir")"
 
-# Copy the parent package and repoint this host's optional dependency at the
-# local platform tarball so the install does not reach for the registry.
+# Copy the parent package and point this host's optional dependency at the local
+# platform tarball so the install does not reach for the registry. The committed
+# parent has no optionalDependencies (they are injected at publish time), so add
+# just this host's entry here.
 cp -r "$packages_root/allowlister-remote-plugin" "$tmp_dir/parent"
 node -e '
   const fs = require("node:fs");
-  const [path, dep, tgz] = process.argv.slice(1);
+  const [path, name, tgz] = process.argv.slice(1);
   const manifest = JSON.parse(fs.readFileSync(path, "utf8"));
-  for (const name of Object.keys(manifest.optionalDependencies ?? {})) {
-    if (name.endsWith(dep)) manifest.optionalDependencies[name] = `file:${tgz}`;
-  }
+  delete manifest["//optionalDependencies"];
+  manifest.optionalDependencies = {
+    ...(manifest.optionalDependencies ?? {}),
+    [name]: `file:${tgz}`,
+  };
   fs.writeFileSync(path, `${JSON.stringify(manifest, null, 2)}\n`);
-' "$tmp_dir/parent/package.json" "$plat_pkg" "$tmp_dir/$plat_tgz"
+' "$tmp_dir/parent/package.json" "@nickderobertis/$plat_pkg" "$tmp_dir/$plat_tgz"
 
 parent_tgz="$(cd "$tmp_dir/parent" && npm pack --silent --pack-destination "$tmp_dir")"
 
