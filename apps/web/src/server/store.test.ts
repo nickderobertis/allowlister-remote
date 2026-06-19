@@ -61,6 +61,16 @@ describe("approval server store", () => {
     expect(listPendingRequests()).toEqual([]);
   });
 
+  it("keeps requests pending indefinitely when the timeout is zero", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-18T00:00:00.000Z"));
+    const request = enqueuePluginRequest({ command: "gh pr merge 42" }, 0);
+    expect(request.expiresAt).toBeNull();
+
+    vi.setSystemTime(new Date("2026-06-19T00:00:00.000Z"));
+    expect(listPendingRequests().map((entry) => entry.id)).toEqual([request.id]);
+  });
+
   it("stores and retrieves decisions for plugin polling", () => {
     const request = enqueuePluginRequest({ command: "rm -rf build" }, 60_000);
     expect(getDecision(request.id)).toBeNull();

@@ -72,7 +72,9 @@ export function enqueuePluginRequest(input: PluginPayload, timeoutMs: number): A
         : "defer",
     currentReason: String(input.current_reason ?? ""),
     createdAt: new Date(now).toISOString(),
-    expiresAt: new Date(now + timeoutMs).toISOString(),
+    // A non-positive timeout means the request waits indefinitely for either a
+    // remote or a local-terminal decision, so it never expires on its own.
+    expiresAt: timeoutMs > 0 ? new Date(now + timeoutMs).toISOString() : null,
     fragments: commandFragments(command),
     riskSignals: riskSignals(command, cwd),
   };
@@ -83,7 +85,11 @@ export function enqueuePluginRequest(input: PluginPayload, timeoutMs: number): A
 export function listPendingRequests() {
   const now = Date.now();
   return [...state.requests.values()]
-    .filter((request) => !state.decisions.has(request.id) && Date.parse(request.expiresAt) > now)
+    .filter(
+      (request) =>
+        !state.decisions.has(request.id) &&
+        (request.expiresAt === null || Date.parse(request.expiresAt) > now),
+    )
     .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
 }
 

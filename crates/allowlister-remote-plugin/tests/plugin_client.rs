@@ -81,6 +81,49 @@ fn spawn_server() -> (String, mpsc::Receiver<(String, String)>) {
     (url, rx)
 }
 
+/// A server that answers the create request, then replies `202 pending` to
+/// the first poll before delivering a decision on the second poll. This lets
+/// us prove the plugin keeps waiting (no timeout) instead of giving up.
+fn spawn_pending_then_decide_server() -> String {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind test server");
+    let url = format!("http://{}", listener.local_addr().expect("local addr"));
+    thread::spawn(move || {
+        let (mut create_stream, _) = listener.accept().expect("create request");
+        let _ = read_request(&mut create_stream);
+        respond(&mut create_stream, "200 OK", r#"{"id":"req_wait"}"#);
+
+        let (mut pending_stream, _) = listener.accept().expect("first poll");
+        let _ = read_request(&mut pending_stream);
+        respond(
+            &mut pending_stream,
+            "202 Accepted",
+            r#"{"status":"pending"}"#,
+        );
+
+        let (mut decide_stream, _) = listener.accept().expect("second poll");
+        let _ = read_request(&mut decide_stream);
+        respond(
+            &mut decide_stream,
+            "200 OK",
+            r#"{"requestId":"req_wait","verdict":"allow","reason":"remote allowed"}"#,
+        );
+    });
+    url
+}
+
+#[test]
+fn waits_through_pending_until_remote_decision() {
+    // No --timeout-ms, so the plugin defaults to waiting indefinitely.
+    let url = spawn_pending_then_decide_server();
+    let output = run_plugin(
+        r#"{"current_verdict":"defer","command":"gh pr merge 42","cwd":"/tmp"}"#,
+        &["--server-url", &url, "--poll-ms", "10"],
+    );
+
+    assert_eq!(output["verdict"], "allow");
+    assert_eq!(output["reason"], "remote allowed");
+}
+
 #[test]
 fn static_allow_verdict_defers_without_contacting_server() {
     let output = run_plugin(

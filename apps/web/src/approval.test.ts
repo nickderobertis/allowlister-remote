@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { importantCommands, riskSignals, secondsRemaining } from "./approval";
+import { importantCommands, remainingDisplay, riskSignals, secondsRemaining } from "./approval";
 import { demoRequests } from "./fixtures";
 
 function firstDemoRequest() {
@@ -27,7 +27,27 @@ describe("approval helpers", () => {
   });
 
   it("never returns a negative countdown", () => {
-    expect(secondsRemaining(request, Date.parse(request.expiresAt) + 1_000)).toBe(0);
+    expect(secondsRemaining(request, Date.parse(request.expiresAt ?? "") + 1_000)).toBe(0);
+  });
+
+  it("treats a request without an expiry as waiting indefinitely", () => {
+    const indefinite = { ...request, expiresAt: null };
+    expect(secondsRemaining(indefinite)).toBeNull();
+    expect(remainingDisplay(indefinite)).toEqual({
+      value: "∞",
+      unit: "waiting",
+      label: "waiting for a decision",
+      compact: "∞",
+    });
+  });
+
+  it("formats a live countdown for requests that expire", () => {
+    expect(remainingDisplay(request, Date.parse(request.expiresAt ?? "") - 5_000)).toEqual({
+      value: "5",
+      unit: "sec",
+      label: "5 seconds remaining",
+      compact: "5s",
+    });
   });
 });
 

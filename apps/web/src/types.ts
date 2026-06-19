@@ -18,7 +18,7 @@ export interface ApprovalRequest {
   currentVerdict: ApprovalVerdict;
   currentReason: string;
   createdAt: string;
-  expiresAt: string;
+  expiresAt: string | null;
   fragments: AllowlisterFragment[];
   riskSignals: string[];
 }

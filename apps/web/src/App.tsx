@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { createApprovalApi } from "./api";
-import { importantCommands, riskSignals, secondsRemaining } from "./approval";
+import { importantCommands, remainingDisplay, riskSignals } from "./approval";
 import type { ApprovalRequest } from "./types";
 import "./App.css";
 
@@ -21,6 +21,7 @@ function InboxItem({
   const commands = importantCommands(request);
   const headline = commands[0];
   const risks = riskSignals(request);
+  const remaining = remainingDisplay(request, now);
 
   return (
     <li className="inbox-item">
@@ -55,9 +56,9 @@ function InboxItem({
         <span
           className="inbox-timer"
           role="timer"
-          aria-label={`${secondsRemaining(request, now)} seconds remaining for ${headline}`}
+          aria-label={`${remaining.label} for ${headline}`}
         >
-          {secondsRemaining(request, now)}s
+          {remaining.compact}
         </span>
         <div className="inbox-actions">
           <button
@@ -85,6 +86,7 @@ function InboxItem({
 function ApprovalDetail({ request, now, onBack, onDecide }: RequestProps & { onBack: () => void }) {
   const commands = importantCommands(request);
   const risks = riskSignals(request);
+  const remaining = remainingDisplay(request, now);
 
   return (
     <main className="shell detail">
@@ -100,13 +102,9 @@ function ApprovalDetail({ request, now, onBack, onDecide }: RequestProps & { onB
           <h1 id="approval-title">Approve the action, not the wall of shell</h1>
           <p className="reason">{request.currentReason}</p>
         </div>
-        <div
-          className="timer"
-          role="timer"
-          aria-label={`${secondsRemaining(request, now)} seconds remaining`}
-        >
-          <span>{secondsRemaining(request, now)}</span>
-          <small>sec</small>
+        <div className="timer" role="timer" aria-label={remaining.label}>
+          <span>{remaining.value}</span>
+          <small>{remaining.unit}</small>
         </div>
       </section>
 
