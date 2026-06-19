@@ -26,8 +26,13 @@ permissions:
 
 jobs:
   visual-docs:
-    uses: nickderobertis/screencomp/.github/workflows/visual-docs-reusable.yml@v0.3.1
+    uses: nickderobertis/screencomp/.github/workflows/visual-docs-reusable.yml@v0.4.0
     with:
+      # Pin the screencomp CLI too: the reusable workflow's internal composite
+      # actions float on the `@v0` major tag, so pinning only the workflow ref
+      # still let the v0.4.0 CLI roll in unannounced. Pinning the version here
+      # keeps the gate's behaviour fixed until we deliberately bump it.
+      screencomp-version: v0.4.0
       # Strict gate (the safe default): CI FAILS if the capture drifts from the
       # committed baseline. Regenerate the baseline locally with the pre-push
       # guard (.githooks/pre-push) and commit it. To switch to CI auto-accept
@@ -44,11 +49,13 @@ jobs:
       # intact; older history is collapsed into one base commit. Default 20; set 0
       # to collapse to a single commit.
       gh-pages-history-versions: 20
-      # Capture writes $SHOTS_OUT/<project>/<name>.png ($SHOTS_OUT is exported as
-      # shots/current/<arch> per lane). playwright.capture.config.ts renders the
-      # demo PWA deterministically for the `desktop` and `mobile` projects. The
-      # browser install matches the @playwright/test version in package.json
-      # rather than the container's bundled one.
+      # Capture writes $SHOTS_OUT/captures.json plus the PNGs it references
+      # ($SHOTS_OUT is exported as shots/current/<arch> per lane).
+      # playwright.capture.config.ts renders the demo PWA deterministically and
+      # the capture script emits the index — each shot's name, its `viewport`
+      # toggle (desktop/mobile), content hash, and image path. The browser
+      # install matches the @playwright/test version in package.json rather than
+      # the container's bundled one.
       capture-command: |
         npm ci
         npx playwright install --with-deps chromium

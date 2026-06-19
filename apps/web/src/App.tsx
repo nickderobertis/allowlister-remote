@@ -176,7 +176,7 @@ function DetailHero({
         <p className="text-muted-foreground">{request.currentReason}</p>
       </div>
       <div
-        className="flex shrink-0 flex-col items-center rounded-lg border border-border px-4 py-3"
+        className="flex shrink-0 flex-col items-center rounded-lg border border-border bg-card px-4 py-3 shadow-sm"
         role="timer"
         aria-label={remaining.label}
       >
@@ -235,7 +235,7 @@ function DecisionBar({
   onDecide: RequestProps["onDecide"];
 }) {
   return (
-    <footer className="flex gap-3">
+    <footer className="flex gap-4">
       <Button
         variant="outline"
         className="flex-1"
