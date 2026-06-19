@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { createApprovalApi } from "./api";
 import {
   flaggedFragments,
@@ -10,6 +10,9 @@ import {
 import { Badge } from "./components/ui/badge";
 import { Button } from "./components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./components/ui/card";
+import { Kbd } from "./components/ui/kbd";
+import { SHORTCUT_GROUPS, useIsDesktop, useKeyboardShortcuts } from "./lib/keyboard";
+import { cn } from "./lib/utils";
 import {
   type ApprovalRequest,
   type ApprovalVerdict,
@@ -24,6 +27,13 @@ interface RequestProps {
   request: ApprovalRequest;
   now: number;
   onDecide: (id: string, verdict: Verdict) => void;
+}
+
+// Props shared by every detail view: whether to paint inline shortcut hints
+// (desktop only) and whether the view's own keyboard shortcuts are live.
+interface DetailChromeProps {
+  showHints: boolean;
+  keyboardEnabled: boolean;
 }
 
 // ask/deny demand attention (red); allow and the unmatched `defer` stay neutral.
@@ -46,21 +56,45 @@ function Eyebrow({ request }: { request: ApprovalRequest }) {
 function InboxItem({
   request,
   now,
+  focused,
+  showHints,
   onOpen,
+  onFocus,
   onDecide,
-}: RequestProps & { onOpen: (id: string) => void }) {
+}: RequestProps & {
+  focused: boolean;
+  showHints: boolean;
+  onOpen: (id: string) => void;
+  onFocus: () => void;
+}) {
   const headline = requestHeadline(request);
   const remaining = remainingDisplay(request, now);
   const flaggedCount = request.subject === "shell" ? flaggedFragments(request).length : 0;
   const rules = request.subject === "shell" ? triggeredRules(request) : [];
+  const itemRef = useRef<HTMLLIElement>(null);
+  // The keyboard cursor: keep the focused card visible as J/K walk the list.
+  const highlighted = focused && showHints;
+
+  useEffect(() => {
+    if (highlighted) {
+      itemRef.current?.scrollIntoView({ block: "nearest" });
+    }
+  }, [highlighted]);
 
   return (
-    <li>
-      <Card className="flex flex-col gap-4 p-4 sm:flex-row sm:items-stretch sm:justify-between">
+    <li ref={itemRef}>
+      <Card
+        onMouseEnter={onFocus}
+        className={cn(
+          "flex flex-col gap-4 p-4 sm:flex-row sm:items-stretch sm:justify-between",
+          highlighted ? "ring-2 ring-ring" : undefined,
+        )}
+      >
         <button
           type="button"
           className="flex flex-1 flex-col items-start gap-2 rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           aria-label={`Open approval for ${headline}`}
+          aria-current={highlighted ? "true" : undefined}
           onClick={() => onOpen(request.id)}
         >
           <Eyebrow request={request} />
@@ -102,6 +136,7 @@ function InboxItem({
               onClick={() => onDecide(request.id, "deny")}
             >
               Deny
+              {highlighted ? <Kbd>D</Kbd> : null}
             </Button>
             <Button
               size="sm"
@@ -109,6 +144,7 @@ function InboxItem({
               onClick={() => onDecide(request.id, "allow")}
             >
               Allow
+              {highlighted ? <Kbd>A</Kbd> : null}
             </Button>
           </div>
         </div>
@@ -180,20 +216,42 @@ function ContextCard({ request, children }: { request: ApprovalRequest; children
   );
 }
 
+function BackButton({ showHints, onBack }: { showHints: boolean; onBack: () => void }) {
+  return (
+    <Button variant="ghost" size="sm" className="self-start" onClick={onBack}>
+      <span>← All approvals</span>
+      {showHints ? <Kbd>Esc</Kbd> : null}
+    </Button>
+  );
+}
+
 function DecisionBar({
   request,
+  showHints,
   onDecide,
 }: {
   request: ApprovalRequest;
+  showHints: boolean;
   onDecide: RequestProps["onDecide"];
 }) {
   return (
     <footer className="flex gap-3">
-      <Button variant="outline" className="flex-1" onClick={() => onDecide(request.id, "deny")}>
+      <Button
+        variant="outline"
+        className="flex-1"
+        aria-label="Deny"
+        onClick={() => onDecide(request.id, "deny")}
+      >
         Deny
+        {showHints ? <Kbd>D</Kbd> : null}
       </Button>
-      <Button className="flex-1" onClick={() => onDecide(request.id, "allow")}>
+      <Button
+        className="flex-1"
+        aria-label="Allow once"
+        onClick={() => onDecide(request.id, "allow")}
+      >
         Allow once
+        {showHints ? <Kbd>A</Kbd> : null}
       </Button>
     </footer>
   );
@@ -202,16 +260,30 @@ function DecisionBar({
 function ShellDetail({
   request,
   now,
+  showHints,
+  keyboardEnabled,
   onBack,
   onDecide,
-}: { request: ShellApprovalRequest } & Omit<RequestProps, "request"> & { onBack: () => void }) {
+}: { request: ShellApprovalRequest } & Omit<RequestProps, "request"> &
+  DetailChromeProps & { onBack: () => void }) {
   const flagged = flaggedFragments(request);
+  // Leave the native <details> in charge of click toggling; the `S` shortcut
+  // flips its open state through the ref so both paths stay in sync.
+  const scriptRef = useRef<HTMLDetailsElement>(null);
+
+  useKeyboardShortcuts(
+    {
+      s: () => {
+        const details = scriptRef.current;
+        if (details) details.open = !details.open;
+      },
+    },
+    keyboardEnabled,
+  );
 
   return (
     <main className="mx-auto flex max-w-3xl flex-col gap-6 p-4 sm:p-8">
-      <Button variant="ghost" size="sm" className="self-start" onClick={onBack}>
-        ← All approvals
-      </Button>
+      <BackButton showHints={showHints} onBack={onBack} />
 
       <DetailHero request={request} now={now} title="Approve the action, not the wall of shell" />
 
@@ -261,8 +333,11 @@ function ShellDetail({
           </CardContent>
         </Card>
         <ContextCard request={request}>
-          <details className="text-sm">
-            <summary className="cursor-pointer text-muted-foreground">Show full script</summary>
+          <details className="text-sm" ref={scriptRef}>
+            <summary className="flex cursor-pointer items-center gap-2 text-muted-foreground">
+              <span>Show full script</span>
+              {showHints ? <Kbd>S</Kbd> : null}
+            </summary>
             <pre className="mt-2 overflow-x-auto rounded-md border border-border bg-background p-3 text-xs">
               {request.command}
             </pre>
@@ -270,7 +345,7 @@ function ShellDetail({
         </ContextCard>
       </div>
 
-      <DecisionBar request={request} onDecide={onDecide} />
+      <DecisionBar request={request} showHints={showHints} onDecide={onDecide} />
     </main>
   );
 }
@@ -278,19 +353,25 @@ function ShellDetail({
 function ToolDetail({
   request,
   now,
+  showHints,
+  keyboardEnabled,
   onBack,
   onDecide,
-}: { request: ToolApprovalRequest } & Omit<RequestProps, "request"> & { onBack: () => void }) {
+}: { request: ToolApprovalRequest } & Omit<RequestProps, "request"> &
+  DetailChromeProps & { onBack: () => void }) {
   const [view, setView] = useState<"formatted" | "json">("formatted");
   const params = Object.entries(request.tool.params);
   const raw = Object.entries(request.tool.raw);
   const paramSummary = toolParamSummary(request);
 
+  useKeyboardShortcuts(
+    { f: () => setView("formatted"), j: () => setView("json") },
+    keyboardEnabled,
+  );
+
   return (
     <main className="mx-auto flex max-w-3xl flex-col gap-6 p-4 sm:p-8">
-      <Button variant="ghost" size="sm" className="self-start" onClick={onBack}>
-        ← All approvals
-      </Button>
+      <BackButton showHints={showHints} onBack={onBack} />
 
       <DetailHero request={request} now={now} title="Approve this tool call" />
 
@@ -303,18 +384,22 @@ function ToolDetail({
             <Button
               variant={view === "formatted" ? "default" : "outline"}
               size="sm"
+              aria-label="Formatted"
               aria-pressed={view === "formatted"}
               onClick={() => setView("formatted")}
             >
               Formatted
+              {showHints ? <Kbd>F</Kbd> : null}
             </Button>
             <Button
               variant={view === "json" ? "default" : "outline"}
               size="sm"
+              aria-label="JSON"
               aria-pressed={view === "json"}
               onClick={() => setView("json")}
             >
               JSON
+              {showHints ? <Kbd>J</Kbd> : null}
             </Button>
           </div>
         </CardHeader>
@@ -342,7 +427,7 @@ function ToolDetail({
 
       <ContextCard request={request} />
 
-      <DecisionBar request={request} onDecide={onDecide} />
+      <DecisionBar request={request} showHints={showHints} onDecide={onDecide} />
     </main>
   );
 }
@@ -371,19 +456,210 @@ function ToolKeyValues({ title, entries }: { title: string; entries: [string, un
   );
 }
 
-function ApprovalDetail({ request, now, onBack, onDecide }: RequestProps & { onBack: () => void }) {
+function ApprovalDetail({
+  request,
+  now,
+  showHints,
+  keyboardEnabled,
+  onBack,
+  onDecide,
+}: RequestProps & DetailChromeProps & { onBack: () => void }) {
+  // Allow / deny / back work the same for both subjects, so bind them once here;
+  // each subject view binds its own extra keys (F/J for tools, S for shell).
+  useKeyboardShortcuts(
+    {
+      a: () => onDecide(request.id, "allow"),
+      d: () => onDecide(request.id, "deny"),
+      b: onBack,
+      Escape: onBack,
+    },
+    keyboardEnabled,
+  );
+
   if (isToolRequest(request)) {
-    return <ToolDetail request={request} now={now} onBack={onBack} onDecide={onDecide} />;
+    return (
+      <ToolDetail
+        request={request}
+        now={now}
+        showHints={showHints}
+        keyboardEnabled={keyboardEnabled}
+        onBack={onBack}
+        onDecide={onDecide}
+      />
+    );
   }
-  return <ShellDetail request={request} now={now} onBack={onBack} onDecide={onDecide} />;
+  return (
+    <ShellDetail
+      request={request}
+      now={now}
+      showHints={showHints}
+      keyboardEnabled={keyboardEnabled}
+      onBack={onBack}
+      onDecide={onDecide}
+    />
+  );
+}
+
+function ShortcutsHint({ onOpen }: { onOpen: () => void }) {
+  return (
+    <div className="fixed bottom-4 right-4 z-40">
+      <Button variant="outline" size="sm" onClick={onOpen} aria-label="Show keyboard shortcuts">
+        Shortcuts
+        <Kbd>?</Kbd>
+      </Button>
+    </div>
+  );
+}
+
+function ShortcutsOverlay({ onClose }: { onClose: () => void }) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="shortcuts-title"
+    >
+      <Card className="max-h-full w-full max-w-lg overflow-y-auto">
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle id="shortcuts-title">Keyboard shortcuts</CardTitle>
+          <Button variant="ghost" size="sm" aria-label="Close shortcuts" onClick={onClose}>
+            Close
+            <Kbd>Esc</Kbd>
+          </Button>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-5">
+          {SHORTCUT_GROUPS.map((group) => (
+            <section key={group.title} className="flex flex-col gap-2">
+              <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                {group.title}
+              </h3>
+              <dl className="flex flex-col gap-1.5">
+                {group.shortcuts.map((shortcut) => (
+                  <div
+                    key={shortcut.description}
+                    className="flex items-center justify-between gap-4"
+                  >
+                    <dt className="text-sm text-foreground">{shortcut.description}</dt>
+                    <dd className="flex shrink-0 items-center gap-1">
+                      {shortcut.keys.map((key) => (
+                        <Kbd key={key}>{key}</Kbd>
+                      ))}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </section>
+          ))}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function InboxHints() {
+  return (
+    <p className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+      <Kbd>J</Kbd>
+      <Kbd>K</Kbd>
+      <span>move</span>
+      <Kbd>Enter</Kbd>
+      <span>open</span>
+      <Kbd>A</Kbd>
+      <span>allow</span>
+      <Kbd>D</Kbd>
+      <span>deny</span>
+      <span aria-hidden="true">·</span>
+      <Kbd>?</Kbd>
+      <span>all shortcuts</span>
+    </p>
+  );
+}
+
+function ErrorBanner({ error }: { error: string | null }) {
+  if (!error) return null;
+  return (
+    <p className="text-destructive" role="alert">
+      {error}
+    </p>
+  );
+}
+
+function EmptyInbox({ error }: { error: string | null }) {
+  return (
+    <main className="mx-auto flex max-w-3xl flex-col gap-3 p-8">
+      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        allowlister remote
+      </p>
+      <h1 className="text-2xl font-semibold tracking-tight">No pending approvals</h1>
+      <p className="text-muted-foreground">
+        Install this PWA on your desktop or phone and keep it ready for the next agent request.
+      </p>
+      <ErrorBanner error={error} />
+    </main>
+  );
+}
+
+function InboxView({
+  requests,
+  now,
+  focusedIndex,
+  isDesktop,
+  error,
+  onOpen,
+  onFocus,
+  onDecide,
+}: {
+  requests: ApprovalRequest[];
+  now: number;
+  focusedIndex: number;
+  isDesktop: boolean;
+  error: string | null;
+  onOpen: (id: string) => void;
+  onFocus: (index: number) => void;
+  onDecide: (id: string, verdict: Verdict) => void;
+}) {
+  return (
+    <main className="mx-auto flex max-w-3xl flex-col gap-6 p-4 sm:p-8">
+      <header className="flex flex-col gap-1">
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          allowlister remote
+        </p>
+        <h1 className="text-2xl font-semibold tracking-tight">Approvals inbox</h1>
+        <p className="text-sm text-muted-foreground">
+          {requests.length} pending {requests.length === 1 ? "approval" : "approvals"} ·{" "}
+          {isDesktop ? "use the keyboard or tap a card" : "tap a card"} to expand
+        </p>
+        {isDesktop ? <InboxHints /> : null}
+        <ErrorBanner error={error} />
+      </header>
+
+      <ul className="flex flex-col gap-3" aria-label="Pending approvals">
+        {requests.map((request, index) => (
+          <InboxItem
+            key={request.id}
+            request={request}
+            now={now}
+            focused={index === focusedIndex}
+            showHints={isDesktop}
+            onOpen={onOpen}
+            onFocus={() => onFocus(index)}
+            onDecide={onDecide}
+          />
+        ))}
+      </ul>
+    </main>
+  );
 }
 
 function App() {
   const api = useMemo(() => createApprovalApi(), []);
   const [requests, setRequests] = useState<ApprovalRequest[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [focusedIndex, setFocusedIndex] = useState(0);
+  const [showShortcuts, setShowShortcuts] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  const isDesktop = useIsDesktop();
 
   useEffect(() => {
     let active = true;
@@ -413,6 +689,11 @@ function App() {
     [requests, selectedId],
   );
 
+  // Keep the inbox cursor in range as requests resolve or new ones arrive.
+  useEffect(() => {
+    setFocusedIndex((index) => Math.min(index, Math.max(0, requests.length - 1)));
+  }, [requests.length]);
+
   async function decide(id: string, verdict: Verdict) {
     await api.decide({
       requestId: id,
@@ -423,66 +704,77 @@ function App() {
     setSelectedId((current) => (current === id ? null : current));
   }
 
+  // Named handlers keep the shortcut maps below free of inline definitions.
+  const togglePanel = () => setShowShortcuts((open) => !open);
+  const closePanel = () => setShowShortcuts(false);
+  const focusNext = () => setFocusedIndex((index) => Math.min(index + 1, requests.length - 1));
+  const focusPrev = () => setFocusedIndex((index) => Math.max(index - 1, 0));
+  const openFocused = () => {
+    const request = requests[focusedIndex];
+    if (request) setSelectedId(request.id);
+  };
+  const decideFocused = (verdict: Verdict) => {
+    const request = requests[focusedIndex];
+    if (request) void decide(request.id, verdict);
+  };
+
+  // Toggle the shortcuts panel from anywhere on desktop.
+  useKeyboardShortcuts({ "?": togglePanel }, isDesktop);
+  // While the panel is open, Escape closes it and every other shortcut pauses.
+  useKeyboardShortcuts({ Escape: closePanel }, isDesktop && showShortcuts);
+  // Inbox navigation, only while a list is showing and nothing is layered on top.
+  const inboxActive = isDesktop && !selected && !showShortcuts && requests.length > 0;
+  useKeyboardShortcuts(
+    {
+      j: focusNext,
+      ArrowDown: focusNext,
+      k: focusPrev,
+      ArrowUp: focusPrev,
+      o: openFocused,
+      Enter: openFocused,
+      a: () => decideFocused("allow"),
+      d: () => decideFocused("deny"),
+    },
+    inboxActive,
+  );
+
+  let content: ReactNode;
   if (selected) {
-    return (
+    content = (
       <ApprovalDetail
         request={selected}
         now={now}
+        showHints={isDesktop}
+        keyboardEnabled={isDesktop && !showShortcuts}
         onBack={() => setSelectedId(null)}
+        onDecide={decide}
+      />
+    );
+  } else if (requests.length === 0) {
+    content = <EmptyInbox error={error} />;
+  } else {
+    content = (
+      <InboxView
+        requests={requests}
+        now={now}
+        focusedIndex={focusedIndex}
+        isDesktop={isDesktop}
+        error={error}
+        onOpen={setSelectedId}
+        onFocus={setFocusedIndex}
         onDecide={decide}
       />
     );
   }
 
-  if (requests.length === 0) {
-    return (
-      <main className="mx-auto flex max-w-3xl flex-col gap-3 p-8">
-        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          allowlister remote
-        </p>
-        <h1 className="text-2xl font-semibold tracking-tight">No pending approvals</h1>
-        <p className="text-muted-foreground">
-          Install this PWA on your desktop or phone and keep it ready for the next agent request.
-        </p>
-        {error ? (
-          <p className="text-destructive" role="alert">
-            {error}
-          </p>
-        ) : null}
-      </main>
-    );
-  }
-
   return (
-    <main className="mx-auto flex max-w-3xl flex-col gap-6 p-4 sm:p-8">
-      <header className="flex flex-col gap-1">
-        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          allowlister remote
-        </p>
-        <h1 className="text-2xl font-semibold tracking-tight">Approvals inbox</h1>
-        <p className="text-sm text-muted-foreground">
-          {requests.length} pending {requests.length === 1 ? "approval" : "approvals"} · tap a card
-          to expand
-        </p>
-        {error ? (
-          <p className="text-destructive" role="alert">
-            {error}
-          </p>
-        ) : null}
-      </header>
-
-      <ul className="flex flex-col gap-3" aria-label="Pending approvals">
-        {requests.map((request) => (
-          <InboxItem
-            key={request.id}
-            request={request}
-            now={now}
-            onOpen={setSelectedId}
-            onDecide={decide}
-          />
-        ))}
-      </ul>
-    </main>
+    <>
+      {content}
+      {isDesktop && !showShortcuts ? <ShortcutsHint onOpen={() => setShowShortcuts(true)} /> : null}
+      {isDesktop && showShortcuts ? (
+        <ShortcutsOverlay onClose={() => setShowShortcuts(false)} />
+      ) : null}
+    </>
   );
 }
 
