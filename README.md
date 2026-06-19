@@ -12,8 +12,11 @@ for allowlister, not setup glue for agent sessions.
   a human parse an entire shell script.
 - Preserves rich allowlister context: harness, cwd, current verdict, current
   reason, parsed fragments, matched rules, and risk signals.
-- Gives a full-screen installable approval experience with large allow/deny
-  controls suitable for desktop and mobile.
+- Triages many concurrent allowlister processes at once: an inbox-style list
+  shows every pending request with inline allow/deny, and each request resolves
+  its own waiting plugin independently.
+- Lets you tap any request to open a full-screen installable approval view with
+  large allow/deny controls suitable for desktop and mobile.
 - Runs as a Next.js app/server and talks to the Rust plugin over HTTP, so the UI can run on a different machine than the allowlister binary.
 
 ## allowlister plugin bridge
