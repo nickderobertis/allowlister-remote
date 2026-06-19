@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.3](https://github.com/nickderobertis/allowlister-remote/compare/v0.2.2...v0.2.3) (2026-06-19)
+
+
+### Bug Fixes
+
+* add crate repository metadata ([ab42460](https://github.com/nickderobertis/allowlister-remote/commit/ab42460f3ddb7c9115564861d00c9b2a75a722c6))
+
 ## [0.2.2](https://github.com/nickderobertis/allowlister-remote/compare/v0.2.1...v0.2.2) (2026-06-19)
 
 
