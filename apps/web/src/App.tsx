@@ -235,7 +235,7 @@ function DecisionBar({
   onDecide: RequestProps["onDecide"];
 }) {
   return (
-    <footer className="flex gap-3">
+    <footer className="flex gap-4">
       <Button
         variant="outline"
         className="flex-1"
