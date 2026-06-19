@@ -29,9 +29,12 @@ Use `just`; do not hand-roll equivalent commands.
   plugin package installed from the public npm registry (defaults to the latest version).
 - `just bench` / `just bench-allocs` run the Rust plugin's informational performance
   suite — Criterion micro-benchmarks and a deterministic allocation report over the
-  pure decision path — while `just bench-cli` (hyperfine) and `just profile` (samply /
-  callgrind) cover end-to-end CLI latency and sampling profiles. See the plugin's
-  `benches/` and `scripts/{bench,profile}.sh`.
+  pure decision path — while `just bench-cli` (hyperfine), `just bench-instructions`
+  (cachegrind), and `just profile` (samply / callgrind) cover end-to-end CLI latency,
+  deterministic instruction counts, and sampling profiles. See the plugin's `benches/`
+  and `scripts/{bench,bench-instructions,profile}.sh`. The `Performance` workflow
+  (`bench.yml`) runs these on every PR and posts the numbers as a sticky comment plus a
+  job summary; it is informational, never a required check.
 - Release helpers live behind `npm run release:*`; tags, GitHub Releases, and npm publishing run in Actions.
 
 ## Quality and tests
