@@ -62,6 +62,30 @@ SCENARIOS = [
             "cwd": "~/src/allowlister-remote",
         },
     },
+    {
+        # The terminal twin of the web gallery's `shell-script` card: a release
+        # script where only `npm publish` and `git push` tripped the gate. The
+        # prompt prints the whole multi-line command verbatim under `command:`,
+        # so this shot shows how a script renders at the terminal.
+        "name": "terminal-script",
+        "command": (
+            "set -euo pipefail\nnpm ci\nnpm run build\ncargo test --workspace\n"
+            'git add -A\nnpm publish --access public\ngit push origin main --tags\n'
+            'echo "release complete"'
+        ),
+        "cwd": "/workspace/acme-api",
+        "payload": {
+            "protocol_version": 2,
+            "subject": "shell",
+            "current_verdict": "defer",
+            "command": (
+                "set -euo pipefail\nnpm ci\nnpm run build\ncargo test --workspace\n"
+                'git add -A\nnpm publish --access public\ngit push origin main --tags\n'
+                'echo "release complete"'
+            ),
+            "cwd": "/workspace/acme-api",
+        },
+    },
 ]
 
 

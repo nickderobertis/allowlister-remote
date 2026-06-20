@@ -12,6 +12,12 @@
       "command": "mcp__github__create_issue",
       "cwd": "~/src/allowlister-remote",
       "prompt": "allowlister-remote approval required\n  command: mcp__github__create_issue\n  cwd: ~/src/allowlister-remote\nApprove here or in the web app. [a]llow / [d]eny: "
+    },
+    {
+      "name": "terminal-script",
+      "command": "set -euo pipefail\nnpm ci\nnpm run build\ncargo test --workspace\ngit add -A\nnpm publish --access public\ngit push origin main --tags\necho \"release complete\"",
+      "cwd": "/workspace/acme-api",
+      "prompt": "allowlister-remote approval required\n  command: set -euo pipefail\nnpm ci\nnpm run build\ncargo test --workspace\ngit add -A\nnpm publish --access public\ngit push origin main --tags\necho \"release complete\"\n  cwd: /workspace/acme-api\nApprove here or in the web app. [a]llow / [d]eny: "
     }
   ]
 }

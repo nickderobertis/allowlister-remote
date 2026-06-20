@@ -130,6 +130,20 @@
       "hash": "cbc4cbbfff36a9957a833b73b1c45b250b8646c1c281f63c3578ec78640a75d6"
     },
     {
+      "name": "terminal-script",
+      "toggles": {
+        "theme": "dark"
+      },
+      "hash": "1945ef7d00cd2d6aeeb58a953ed9ffdb23bf456b1d78e2b2a1e1515fbec583e8"
+    },
+    {
+      "name": "terminal-script",
+      "toggles": {
+        "theme": "light"
+      },
+      "hash": "bdc5ce2d36d546f25c2aba33a3c19101e2a34efdcaee9a95227e08bc0f5be268"
+    },
+    {
       "name": "terminal-shell",
       "toggles": {
         "theme": "dark"
