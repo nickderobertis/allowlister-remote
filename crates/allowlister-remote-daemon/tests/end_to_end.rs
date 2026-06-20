@@ -40,6 +40,7 @@ async fn start_stack() -> (String, String) {
     let config = Config {
         socket_path: socket_path.clone(),
         broker_url: format!("{base}/ws/daemon"),
+        ca_path: None,
     };
     tokio::spawn(async move {
         serve(config).await.unwrap();

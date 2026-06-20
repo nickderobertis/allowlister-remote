@@ -189,3 +189,96 @@ async fn daemon_disconnect_withdraws_its_pending_requests() {
         json!({"type":"resolved","requestId":"r5"})
     );
 }
+
+#[tokio::test]
+async fn many_daemons_and_pwas_all_interoperate() {
+    // The core single-broker guarantee: every PWA sees every daemon's requests,
+    // any PWA can decide any daemon's request, and each decision routes to the one
+    // owning daemon — never to the wrong one.
+    let base = start_broker().await;
+    let mut daemon_a = connect(&base, "/ws/daemon").await;
+    let mut daemon_b = connect(&base, "/ws/daemon").await;
+    let mut pwa_a = connect(&base, "/ws/pwa").await;
+    let mut pwa_b = connect(&base, "/ws/pwa").await;
+
+    for pwa in [&mut pwa_a, &mut pwa_b] {
+        send(pwa, json!({"type":"subscribe"})).await;
+        assert_eq!(recv(pwa).await["type"], "snapshot");
+    }
+
+    // Two different daemons each open a request.
+    send(
+        &mut daemon_a,
+        json!({"type":"create","request":{"id":"rA","command":"deploy A"}}),
+    )
+    .await;
+    send(
+        &mut daemon_b,
+        json!({"type":"create","request":{"id":"rB","command":"deploy B"}}),
+    )
+    .await;
+
+    // Every PWA sees both requests regardless of which daemon opened them.
+    for pwa in [&mut pwa_a, &mut pwa_b] {
+        let mut ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for _ in 0..2 {
+            let added = recv(pwa).await;
+            assert_eq!(added["type"], "added");
+            ids.insert(added["request"]["id"].as_str().unwrap().to_string());
+        }
+        assert_eq!(
+            ids,
+            std::collections::HashSet::from(["rA".to_string(), "rB".to_string()]),
+        );
+    }
+
+    // PWA A decides daemon B's request: it must route to daemon B, and every PWA
+    // is told it resolved.
+    send(
+        &mut pwa_a,
+        json!({"type":"decision","requestId":"rB","verdict":"allow","reason":"ok B"}),
+    )
+    .await;
+    let to_b = recv(&mut daemon_b).await;
+    assert_eq!(to_b["requestId"], "rB");
+    assert_eq!(to_b["verdict"], "allow");
+    for pwa in [&mut pwa_a, &mut pwa_b] {
+        assert_eq!(recv(pwa).await, json!({"type":"resolved","requestId":"rB"}));
+    }
+
+    // PWA B decides daemon A's request. Daemon A's first-ever inbound message is
+    // this rA decision (proving it never received rB's), routed only to it.
+    send(
+        &mut pwa_b,
+        json!({"type":"decision","requestId":"rA","verdict":"deny","reason":"no A"}),
+    )
+    .await;
+    let to_a = recv(&mut daemon_a).await;
+    assert_eq!(to_a["requestId"], "rA");
+    assert_eq!(to_a["verdict"], "deny");
+    for pwa in [&mut pwa_a, &mut pwa_b] {
+        assert_eq!(recv(pwa).await, json!({"type":"resolved","requestId":"rA"}));
+    }
+}
+
+#[tokio::test]
+async fn broker_sends_heartbeat_pings() {
+    // A short interval so the keepalive is observable quickly. Pings keep an idle
+    // connection alive through proxy/LB idle timeouts during a long wait.
+    std::env::set_var("ALLOWLISTER_REMOTE_BROKER_PING_MS", "150");
+    let base = start_broker().await;
+    let mut pwa = connect(&base, "/ws/pwa").await;
+
+    let got_ping = tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            match pwa.next().await {
+                Some(Ok(Message::Ping(_))) => return true,
+                Some(Ok(_)) => continue,
+                _ => return false,
+            }
+        }
+    })
+    .await
+    .unwrap_or(false);
+    assert!(got_ping, "expected a heartbeat ping from the broker");
+}

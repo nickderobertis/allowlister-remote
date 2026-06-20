@@ -8,6 +8,11 @@
 //! daemon over a Unix-domain socket; the daemon holds the one WebSocket to the
 //! broker and routes decisions back to the right plugin.
 //!
+//! The broker connection is supervised: it reconnects with backoff and
+//! **re-announces** every still-pending request on reconnect, so an approval that
+//! is open for hours or days survives a dropped link or a broker restart. The
+//! broker treats a re-announce idempotently (see `Broker::create`).
+//!
 //! ## Plugin ↔ daemon protocol (newline-delimited JSON over the unix socket)
 //!
 //! plugin → daemon:
@@ -24,24 +29,34 @@
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{json, Value};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{UnixListener, UnixStream};
-use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
-use tokio_tungstenite::connect_async;
+use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use tokio_tungstenite::tungstenite::Message;
+use tokio_tungstenite::{connect_async, connect_async_tls_with_config, Connector};
 
 pub struct Config {
     pub socket_path: String,
     pub broker_url: String,
+    /// Optional path to a PEM CA bundle to trust for `wss://` (self-hosted or
+    /// private-CA brokers). `None` uses the system trust store; ignored for
+    /// `ws://`.
+    pub ca_path: Option<String>,
 }
 
-/// Maps a broker request id to the channel that wakes the plugin task waiting on
-/// it, so a decision arriving on the single broker connection reaches the right
-/// plugin among many.
-type Routes = Arc<Mutex<HashMap<String, UnboundedSender<String>>>>;
+/// A still-pending request: the verbatim `create` message (so it can be
+/// re-announced after a reconnect) and the channel that wakes the plugin task
+/// waiting on it.
+struct PluginRoute {
+    create_msg: String,
+    decision_tx: UnboundedSender<String>,
+}
+
+type Routes = Arc<Mutex<HashMap<String, PluginRoute>>>;
 
 /// Default socket path: per-user under `$XDG_RUNTIME_DIR` when available (so it
 /// is private and cleaned up on logout), otherwise a uid-suffixed `/tmp` path.
@@ -56,45 +71,29 @@ pub fn default_socket_path() -> String {
 }
 
 pub fn default_broker_url() -> String {
-    std::env::var("ALLOWLISTER_REMOTE_BROKER_URL").unwrap_or_else(|_| "ws://127.0.0.1:4180".into())
+    std::env::var("ALLOWLISTER_REMOTE_BROKER_URL")
+        .unwrap_or_else(|_| "ws://127.0.0.1:4180/ws/daemon".into())
 }
 
-/// Run the daemon until the listener fails. Connects upstream, then accepts
-/// plugin connections forever.
+/// Run the daemon until the listener fails. The broker connection is supervised
+/// on its own task, so a broker that is down at startup (or that restarts later)
+/// does not stop the daemon from accepting plugins.
 pub async fn serve(config: Config) -> std::io::Result<()> {
     // A stale socket from a previous run would block the bind.
     let _ = std::fs::remove_file(&config.socket_path);
     let listener = UnixListener::bind(&config.socket_path)?;
 
-    let (ws, _) = connect_async(&config.broker_url)
-        .await
-        .map_err(|error| std::io::Error::other(format!("broker connect failed: {error}")))?;
-    let (mut ws_sink, mut ws_stream) = ws.split();
-
-    // One writer task owns the broker sink; every plugin task sends through this
-    // channel so state never blocks on socket back-pressure.
-    let (broker_tx, mut broker_rx) = unbounded_channel::<String>();
-    tokio::spawn(async move {
-        while let Some(text) = broker_rx.recv().await {
-            if ws_sink.send(Message::Text(text)).await.is_err() {
-                break;
-            }
-        }
-    });
-
     let routes: Routes = Arc::new(Mutex::new(HashMap::new()));
+    // One writer owns the broker connection; every plugin task sends through this
+    // channel. While the link is down, messages queue here and flush on reconnect.
+    let (broker_tx, broker_rx) = unbounded_channel::<String>();
 
-    // Broker reader: deliver each web decision to the plugin task awaiting it.
-    {
-        let routes = routes.clone();
-        tokio::spawn(async move {
-            while let Some(Ok(message)) = ws_stream.next().await {
-                if let Message::Text(text) = message {
-                    route_decision(&routes, text.as_str());
-                }
-            }
-        });
-    }
+    tokio::spawn(broker_loop(
+        config.broker_url,
+        config.ca_path,
+        routes.clone(),
+        broker_rx,
+    ));
 
     loop {
         let (stream, _) = listener.accept().await?;
@@ -102,6 +101,110 @@ pub async fn serve(config: Config) -> std::io::Result<()> {
         let broker_tx = broker_tx.clone();
         tokio::spawn(async move { handle_plugin(stream, routes, broker_tx).await });
     }
+}
+
+/// Supervise the single broker connection: connect (with capped backoff),
+/// re-announce still-pending requests, then forward outbound plugin messages and
+/// route inbound decisions until the link drops — and repeat.
+async fn broker_loop(
+    url: String,
+    ca_path: Option<String>,
+    routes: Routes,
+    mut broker_rx: UnboundedReceiver<String>,
+) {
+    let mut backoff = Duration::from_millis(250);
+    let max_backoff = Duration::from_secs(10);
+
+    loop {
+        let socket = match connect_broker(&url, ca_path.as_deref()).await {
+            Ok((socket, _)) => socket,
+            Err(_) => {
+                tokio::time::sleep(backoff).await;
+                backoff = (backoff * 2).min(max_backoff);
+                continue;
+            }
+        };
+        backoff = Duration::from_millis(250);
+        let (mut sink, mut stream) = socket.split();
+
+        // Re-announce every still-pending request so a broker that lost its state
+        // (restart) re-learns them and a live broker just refreshes ownership.
+        let pending: Vec<String> = {
+            let routes = routes.lock().unwrap();
+            routes
+                .values()
+                .map(|route| route.create_msg.clone())
+                .collect()
+        };
+        let mut link_alive = true;
+        for create_msg in pending {
+            if sink.send(Message::Text(create_msg)).await.is_err() {
+                link_alive = false;
+                break;
+            }
+        }
+
+        // Connected: pump outbound plugin messages and route inbound decisions
+        // until either side closes.
+        while link_alive {
+            tokio::select! {
+                outbound = broker_rx.recv() => match outbound {
+                    Some(text) => {
+                        if sink.send(Message::Text(text)).await.is_err() {
+                            link_alive = false;
+                        }
+                    }
+                    None => return, // serve() dropped the sender: daemon is shutting down
+                },
+                inbound = stream.next() => match inbound {
+                    Some(Ok(Message::Text(text))) => route_decision(&routes, text.as_str()),
+                    Some(Ok(Message::Close(_))) | None => link_alive = false,
+                    Some(Ok(_)) => {}
+                    Some(Err(_)) => link_alive = false,
+                },
+            }
+        }
+
+        tokio::time::sleep(backoff).await;
+    }
+}
+
+type WsStream =
+    tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
+
+/// Connect to the broker, handling `ws://` and `wss://`. A configured CA bundle
+/// is trusted in addition to the system store (for self-hosted/private-CA
+/// brokers); without one, `wss://` uses the system trust store and `ws://` is
+/// plain.
+async fn connect_broker(
+    url: &str,
+    ca_path: Option<&str>,
+) -> Result<
+    (
+        WsStream,
+        tokio_tungstenite::tungstenite::handshake::client::Response,
+    ),
+    tokio_tungstenite::tungstenite::Error,
+> {
+    match ca_path {
+        Some(path) if !path.is_empty() => {
+            connect_async_tls_with_config(url, None, false, tls_connector_with_ca(path)).await
+        }
+        _ => connect_async(url).await,
+    }
+}
+
+/// Build a native-tls connector that trusts the given PEM CA in addition to the
+/// system roots. Returns `None` on a read/parse failure, which falls back to the
+/// default connector (and a clean handshake failure if the cert is untrusted).
+fn tls_connector_with_ca(ca_path: &str) -> Option<Connector> {
+    let pem = std::fs::read(ca_path).ok()?;
+    let certificate = native_tls::Certificate::from_pem(&pem).ok()?;
+    let connector = native_tls::TlsConnector::builder()
+        .add_root_certificate(certificate)
+        .build()
+        .ok()?;
+    Some(Connector::NativeTls(connector))
 }
 
 fn route_decision(routes: &Routes, text: &str) {
@@ -114,7 +217,11 @@ fn route_decision(routes: &Routes, text: &str) {
     let Some(id) = value.get("requestId").and_then(Value::as_str) else {
         return;
     };
-    let sender = routes.lock().unwrap().get(id).cloned();
+    let sender = routes
+        .lock()
+        .unwrap()
+        .get(id)
+        .map(|route| route.decision_tx.clone());
     if let Some(sender) = sender {
         let _ = sender.send(text.to_string());
     }
@@ -146,10 +253,17 @@ async fn handle_plugin(stream: UnixStream, routes: Routes, broker_tx: UnboundedS
     if let Value::Object(map) = &mut request {
         map.insert("id".to_string(), json!(id));
     }
+    let create_msg = json!({ "type": "create", "request": request }).to_string();
 
     let (decision_tx, mut decision_rx) = unbounded_channel::<String>();
-    routes.lock().unwrap().insert(id.clone(), decision_tx);
-    let _ = broker_tx.send(json!({ "type": "create", "request": request }).to_string());
+    routes.lock().unwrap().insert(
+        id.clone(),
+        PluginRoute {
+            create_msg: create_msg.clone(),
+            decision_tx,
+        },
+    );
+    let _ = broker_tx.send(create_msg);
 
     loop {
         tokio::select! {

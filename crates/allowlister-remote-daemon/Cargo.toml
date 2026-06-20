@@ -15,9 +15,11 @@ path = "src/main.rs"
 
 [dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "sync", "time", "signal"] }
-# WebSocket client to the broker. ws:// over the trusted transport for now; a
-# wss:// TLS feature is a follow-up (see docs/design/realtime-sync.md).
-tokio-tungstenite = "0.24"
+# WebSocket client to the broker. `native-tls` (system OpenSSL) handles `wss://`
+# against a TLS-terminating proxy/broker; a custom CA can be trusted via
+# ALLOWLISTER_REMOTE_BROKER_CA for self-hosted/private-CA deployments.
+tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
+native-tls = "0.2"
 futures-util = { version = "0.3", default-features = false, features = ["sink"] }
 serde_json = "1"
 
@@ -25,5 +27,8 @@ serde_json = "1"
 # End-to-end tests run a real broker in-process and drive the full chain.
 allowlister-remote-broker = { path = "../allowlister-remote-broker" }
 axum = { version = "0.8", default-features = false, features = ["ws", "tokio", "http1"] }
-tokio-tungstenite = "0.24"
+tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
 futures-util = { version = "0.3", default-features = false, features = ["sink"] }
+# A self-signed cert + TLS acceptor to prove the daemon dials wss:// end-to-end.
+rcgen = "0.13"
+tokio-native-tls = "0.3"

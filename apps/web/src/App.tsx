@@ -711,7 +711,14 @@ function App() {
         brokerRef.current = connectBroker(config.brokerUrl, {
           onSnapshot: (snapshot) => setRequests(snapshot.map(normalizeBrokerRequest)),
           onAdded: (request) =>
-            setRequests((current) => [...current, normalizeBrokerRequest(request)]),
+            setRequests((current) => {
+              const normalized = normalizeBrokerRequest(request);
+              // Dedupe by id so a re-announce (e.g. after a broker restart) never
+              // double-renders a card.
+              return current.some((existing) => existing.id === normalized.id)
+                ? current
+                : [...current, normalized];
+            }),
           onResolved: (id) =>
             setRequests((current) => current.filter((request) => request.id !== id)),
         });

@@ -106,11 +106,30 @@ async fn serve_connection(socket: WebSocket, broker: SharedBroker, role: Role) {
 
     let (mut sink, mut stream) = socket.split();
     // Outbound pump: everything the broker sends this client flows through the
-    // mpsc channel so state mutations never block on socket back-pressure.
+    // mpsc channel so state mutations never block on socket back-pressure. A
+    // periodic Ping keeps idle connections alive under proxy/LB idle timeouts on
+    // a day-long wait (clients auto-pong); a send failure tears the pump down.
+    let ping_ms = std::env::var("ALLOWLISTER_REMOTE_BROKER_PING_MS")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(20_000);
     let send_task = tokio::spawn(async move {
-        while let Some(text) = rx.recv().await {
-            if sink.send(Message::Text(text.into())).await.is_err() {
-                break;
+        let mut heartbeat = tokio::time::interval(std::time::Duration::from_millis(ping_ms));
+        loop {
+            tokio::select! {
+                queued = rx.recv() => match queued {
+                    Some(text) => {
+                        if sink.send(Message::Text(text.into())).await.is_err() {
+                            break;
+                        }
+                    }
+                    None => break,
+                },
+                _ = heartbeat.tick() => {
+                    if sink.send(Message::Ping(Default::default())).await.is_err() {
+                        break;
+                    }
+                }
             }
         }
     });
@@ -184,8 +203,17 @@ impl Broker {
         else {
             return; // a request without an id cannot be routed or dismissed
         };
-        let added = json!({ "type": "added", "request": request }).to_string();
         let mut inner = self.inner.lock().unwrap();
+        // Idempotent re-announce: a daemon reconnecting to a broker that still has
+        // the request only updates its owner (the daemon's connection id changed)
+        // and must not broadcast a duplicate card. A genuinely new id — including
+        // one re-announced to a broker that restarted and lost its state — fans out.
+        if let Some(existing) = inner.requests.get_mut(&id) {
+            existing.owner = owner;
+            existing.request = request;
+            return;
+        }
+        let added = json!({ "type": "added", "request": request.clone() }).to_string();
         inner.requests.insert(id, Pending { request, owner });
         broadcast(&inner.pwas, &added);
     }

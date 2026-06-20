@@ -156,3 +156,47 @@ test("a plugin request appears via the broker and an allow click releases it", a
     running.kill();
   }
 });
+
+test("two PWA clients both see a request and either can resolve it", async ({ browser }) => {
+  const command = `npm publish ${randomUUID().slice(0, 8)}`;
+
+  // Two independent browsers (two PWA instances), each with its own service
+  // worker holding its own WebSocket to the broker.
+  const contextA = await browser.newContext();
+  const contextB = await browser.newContext();
+  const pageA = await contextA.newPage();
+  const pageB = await contextB.newPage();
+
+  const running = runPlugin(command);
+  try {
+    await expectStillRunning(running);
+
+    for (const page of [pageA, pageB]) {
+      await page.goto("/");
+      await page.evaluate(() => navigator.serviceWorker.ready);
+      await page.reload();
+      await page.evaluate(() => navigator.serviceWorker.ready);
+    }
+
+    const listA = pageA.getByRole("list", { name: "Pending approvals" });
+    const listB = pageB.getByRole("list", { name: "Pending approvals" });
+
+    // Both PWAs receive the same daemon's request.
+    await expect(listA.getByText(command, { exact: true })).toBeVisible({ timeout: 20_000 });
+    await expect(listB.getByText(command, { exact: true })).toBeVisible({ timeout: 20_000 });
+
+    // One PWA decides; the plugin is released and the card clears on BOTH PWAs.
+    await pageA.getByRole("button", { name: `Allow ${command}` }).click();
+
+    const result = await running.promise;
+    expect(result.code).toBe(0);
+    expect(JSON.parse(result.stdout).verdict).toBe("allow");
+
+    await expect(listA.getByText(command, { exact: true })).toHaveCount(0);
+    await expect(listB.getByText(command, { exact: true })).toHaveCount(0);
+  } finally {
+    running.kill();
+    await contextA.close();
+    await contextB.close();
+  }
+});

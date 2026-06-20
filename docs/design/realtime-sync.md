@@ -116,15 +116,20 @@ The key inversion: **the logical wait is days, but no single message exchange is
 held for days.** Connections are kept alive deliberately, and resumed losslessly
 when they drop.
 
-1. **Heartbeats.** WebSocket Ping/Pong (or an app-level keepalive) every ~15–25 s
-   keeps idle connections under typical proxy/LB idle timeouts (30–60 s).
-2. **Auto-reconnect.** The daemon reconnects to the broker with backoff; the
-   request `id` is the durable handle, so re-subscription resumes. The browser's
-   service worker reconnects the same way.
-3. **Lossless resume.** On reconnect the daemon re-announces its still-pending
-   requests and the PWA re-`subscribe`s for a fresh snapshot, so a decision that
-   landed during a gap is not missed. (A monotonic per-connection event cursor is
-   a later refinement if snapshots become large.)
+1. **Heartbeats.** The broker sends a WebSocket Ping to every connection on a
+   configurable interval (`ALLOWLISTER_REMOTE_BROKER_PING_MS`, default 20 s);
+   clients auto-pong, keeping idle connections under typical proxy/LB idle
+   timeouts (30–60 s). *(implemented + tested)*
+2. **Auto-reconnect.** The daemon reconnects to the broker with capped backoff;
+   the request `id` is the durable handle. The browser's service worker
+   reconnects the same way and re-`subscribe`s on open. *(implemented + tested)*
+3. **Lossless resume.** On reconnect the daemon **re-announces** its still-pending
+   requests (idempotent on the broker — only ownership is refreshed for a request
+   it still has; a restarted broker re-learns and re-broadcasts it) and the PWA
+   re-`subscribe`s for a fresh snapshot, so a decision that landed during a gap is
+   not missed. *(implemented + tested: a request survives a full broker restart.)*
+   A monotonic per-connection event cursor is a later refinement if snapshots
+   become large.
 4. **Service-worker lifetime.** Browsers may evict an idle service worker; an
    open WebSocket keeps it alive while connected, and reconnect-on-activate
    re-establishes it. Delivery while the app is fully closed is **out of scope**
@@ -137,19 +142,33 @@ when they drop.
 | No daemon running | Plugin **auto-starts** it, else falls back to direct HTTPS long-poll. |
 | Daemon crashes mid-wait | Plugin detects socket close; reconnect to a restarted daemon, else direct fallback, else **fail-closed** (`ask`/deny). |
 | Plugin killed / command Ctrl-C'd | Socket close ⇒ daemon **withdraws** the request upstream so the PWA stops showing a stale prompt. *(implemented + tested)* |
-| Daemon disconnects from broker | Broker withdraws all that daemon's pending requests so no PWA is left with a dead prompt. *(implemented + tested)* |
-| Broker unreachable | Daemon retries with backoff; plugin honors `--timeout-ms` if set, else waits. |
+| Daemon disconnects from broker | Broker withdraws that daemon's pending requests so no PWA shows a dead prompt; on a transient drop the daemon reconnects and **re-announces**, restoring the cards. *(implemented + tested)* |
+| Broker restarts mid-wait | Daemon reconnects (backoff) and re-announces still-pending requests to the fresh broker; a new PWA learns them and can decide — the original plugin, still waiting, gets the decision. *(implemented + tested)* |
+| Broker unreachable | Daemon retries with capped backoff; plugin honors `--timeout-ms` if set, else waits. |
 
 Recommended default: **fail-closed** when no decision channel can be established.
 
-## 7. Multi-instance / multi-tenant
+## 7. Many clients on one broker (decided scope: single broker, in-memory)
 
-The broker holds only in-memory routing state, so a single broker process is
-assumed. Horizontal scale needs a shared pub/sub (e.g. Redis) for cross-instance
-fan-out. Per-user request scoping (so a PWA only sees its own host's requests)
-also lands here; today, consistent with the existing store and `CLAUDE.md`'s
-"no auth", all subscribed PWAs see all pending requests. Both are deferred and
-called out as the next milestone, not silently assumed away.
+This repo deliberately targets **one broker process with in-memory routing
+state** — no horizontal scaling, no external bus. Within that, the broker
+fully supports **many concurrent daemons and many concurrent PWAs at once**:
+
+* Every subscribed PWA receives **every** daemon's requests (snapshot on
+  subscribe, then live `added`/`resolved`).
+* **Any** PWA can decide **any** daemon's request; the broker routes the
+  decision to the one daemon that owns it (and only that one) and dismisses the
+  card on every PWA.
+* A daemon disconnect withdraws only its own requests.
+
+This is the core mediation guarantee and is covered end-to-end at three levels
+(see §8): the broker integration tests, the process-level e2e with multiple real
+daemons and PWAs, and the browser e2e with multiple PWA clients.
+
+Out of scope by decision: running more than one broker instance (which would need
+a shared pub/sub for cross-instance fan-out) and per-user request scoping (today,
+consistent with the existing store and `CLAUDE.md`'s "no auth", all PWAs see all
+pending requests).
 
 ## 8. Implementation status
 
@@ -158,15 +177,19 @@ the size-optimized plugin binary):
 
 * **`crates/allowlister-remote-broker`** — axum WebSocket mediator. `Broker`
   holds the routing state; `app()` builds the router with `/ws/daemon`,
-  `/ws/pwa`, `/healthz`. **Done + tested.**
-  `tests/mediation.rs` (4 tests, real WS clients): fan-out to multiple PWAs,
-  web-decision routing back to the owning daemon, local-terminal relay without
-  echo, late-subscribe snapshot, and daemon-disconnect withdrawal.
-* **`crates/allowlister-remote-daemon`** — tokio daemon: one broker WebSocket +
-  a unix-socket listener multiplexing plugins; `serve(Config)`. **Done + tested.**
-  `tests/end_to_end.rs` (3 tests, real broker + daemon + fake plugin + fake PWA):
-  web decision down to the plugin, local-terminal decision up dismissing web,
-  and plugin-exit withdrawal.
+  `/ws/pwa`, `/healthz`. Idempotent `create` (for re-announce) and a per-connection
+  heartbeat Ping. **Done + tested.** `tests/mediation.rs` (7 tests, real WS
+  clients): multi-PWA fan-out, web-decision routing back to the owning daemon,
+  local-terminal relay without echo, late-subscribe snapshot, daemon-disconnect
+  withdrawal, **many-daemons-and-PWAs cross fan-out + owner-routing**, and the
+  heartbeat ping.
+* **`crates/allowlister-remote-daemon`** — tokio daemon: one supervised broker
+  WebSocket (**reconnect with backoff + re-announce of pending requests**) and a
+  unix-socket listener multiplexing plugins; `serve(Config)`. Dials `ws://` and
+  **`wss://`** (system trust or a custom CA via `ALLOWLISTER_REMOTE_BROKER_CA`).
+  **Done + tested.** `tests/end_to_end.rs` (3 tests): decision down, local relay
+  up, plugin-exit withdrawal. `tests/tls.rs`: a real `wss://` handshake with a
+  self-signed CA.
 
 * **Plugin** (`crates/allowlister-remote-plugin`) — daemon mode: a unix-socket
   client that auto-starts the daemon if none is listening (detached, own process
@@ -180,23 +203,27 @@ the size-optimized plugin binary):
   gated on `NEXT_PUBLIC_ALLOWLISTER_BROKER_URL`. **Done + tested** (SW bridge and
   page bridge unit-tested; the live `App` wiring is e2e-scoped).
 
-* **End-to-end** — two complementary suites exercise the real built artifacts:
-  * `crates/allowlister-remote-e2e` (process-level, 5 tests): spawns the real
-    **broker + daemon + plugin binaries** together; a WS client stands in for the
-    PWA. Covers the full chain, the plugin **auto-starting the real daemon**, and
-    per-binary smokes (broker `/healthz`, plugin `--version`/static-allow).
-  * `apps/web/e2e/broker-realtime.spec.ts` (Playwright, desktop + mobile): the
-    real broker + daemon + plugin binaries **and the real service worker / PWA**
-    in Chromium. A request opened by the plugin reaches the inbox over the broker
-    and an Allow click routes the decision SW → broker → daemon → plugin. The
-    broker URL is supplied at runtime via `/api/config`. **Done.**
+* **Packaging** (`packages/**`, `scripts/`, `publish.yml`) — the daemon binary
+  ships in each per-platform npm package next to the plugin; `install.mjs` links
+  both so the plugin's sibling lookup finds the daemon; release staging and the
+  publish workflow build/stamp/upload it from the git tag. **Done** (install test
+  + post-publish smokes; cross-target builds run in CI).
+* **End-to-end** — three complementary levels exercise the real artifacts:
+  * `crates/allowlister-remote-broker/tests/mediation.rs` — multi-daemon /
+    multi-PWA fan-out and owner-routing at the mediation layer.
+  * `crates/allowlister-remote-e2e` (process-level, 7 tests): spawns the real
+    **broker + daemon + plugin binaries**. Full chain, plugin **auto-starting the
+    real daemon**, **multiple real daemons + multiple PWAs together**, a request
+    **surviving a broker restart**, and per-binary smokes.
+  * `apps/web/e2e/broker-realtime.spec.ts` (Playwright, desktop + mobile): real
+    broker + daemon + plugin **and the real service worker / PWA** in Chromium —
+    single-PWA decide-and-release and **two PWA clients both seeing and resolving**
+    a request. Broker URL supplied at runtime via `/api/config`. **Done.**
 
-Remaining:
+Remaining (all deliberately out of scope for this repo — see §7):
 
-* **Packaging**: ship the daemon binary alongside the plugin in the per-platform
-  npm packages; broker deployment + `wss://` TLS.
-* **Heartbeat/reconnect refinements**, per-user session scoping, and the
-  multi-instance pub/sub (Redis) for horizontal broker scale.
+* Running more than one broker instance (needs a shared pub/sub) and per-user
+  request scoping / auth.
 
 ## 9. Phased rollout
 
@@ -205,8 +232,8 @@ Remaining:
 3. ✅ Plugin daemon-client + auto-start (HTTP fallback retained).
 4. ✅ Service worker + page wiring (live sync alongside the poll fallback).
 5. ✅ End-to-end coverage: process-level (real binaries) + Playwright (real PWA/SW).
-6. ⏳ Heartbeat/reconnect refinements, packaging, `wss://`, session scoping.
-7. (If needed) shared pub/sub for horizontal scale.
+6. ✅ Heartbeat + reconnect/re-announce, `wss://`, multi-client coverage, packaging.
+7. Out of scope: multi-broker pub/sub and per-user session scoping.
 
 ## 10. Early prototypes
 

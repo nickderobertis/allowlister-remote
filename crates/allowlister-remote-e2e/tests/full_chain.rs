@@ -108,20 +108,6 @@ fn free_port() -> u16 {
     listener.local_addr().expect("read local addr").port()
 }
 
-/// Block until something is listening on `127.0.0.1:port`, i.e. the broker is
-/// ready to accept WebSocket upgrades. Panics with a clear message on timeout so
-/// a broker that never came up surfaces as a test failure, not a hang.
-fn wait_for_port(port: u16, timeout: Duration) {
-    let deadline = Instant::now() + timeout;
-    while Instant::now() < deadline {
-        if StdTcpStream::connect(("127.0.0.1", port)).is_ok() {
-            return;
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
-    panic!("broker never became reachable on 127.0.0.1:{port} within {timeout:?}");
-}
-
 /// Block until the daemon's unix socket exists and accepts a connection. We test
 /// connectability rather than mere file existence because the daemon may create
 /// the path slightly before it is listening.
@@ -200,23 +186,127 @@ async fn subscribe_pwa(port: u16) -> Ws {
     pwa
 }
 
+/// Boot a broker bound to a specific port, retrying the spawn until it is
+/// listening. The retry matters for the restart test: immediately after the
+/// previous broker is killed the port is usually free, but a racing bind can
+/// still lose, so we re-spawn rather than fail.
+fn boot_broker_on(broker: &Path, port: u16) -> ChildGuard {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        let child = Command::new(broker)
+            .env(
+                "ALLOWLISTER_REMOTE_BROKER_ADDR",
+                format!("127.0.0.1:{port}"),
+            )
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn broker");
+        let guard = ChildGuard::new("broker", child);
+
+        let ready_by = Instant::now() + Duration::from_millis(500);
+        while Instant::now() < ready_by {
+            if StdTcpStream::connect(("127.0.0.1", port)).is_ok() {
+                return guard;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        // Not listening — the bind likely lost a race with the dying predecessor.
+        drop(guard); // kill this attempt and try again
+        assert!(
+            Instant::now() < deadline,
+            "broker never came up on port {port}"
+        );
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
 /// Spawn the broker on a fresh free port and wait for it to listen. Returns the
 /// guard (kill-on-Drop) and the port.
 fn spawn_broker(broker: &Path) -> (ChildGuard, u16) {
     let port = free_port();
-    let child = Command::new(broker)
+    let guard = boot_broker_on(broker, port);
+    (guard, port)
+}
+
+/// A unique daemon socket path, with any stale file cleared.
+fn unique_socket() -> PathBuf {
+    let path = PathBuf::from(format!(
+        "/tmp/allowlister-e2e-{}-{}.sock",
+        std::process::id(),
+        next_unique()
+    ));
+    let _ = std::fs::remove_file(&path);
+    path
+}
+
+/// Spawn a daemon bound to `socket`, wired to the broker on `port`.
+#[cfg(unix)]
+fn spawn_daemon(daemon: &Path, socket: &Path, port: u16) -> ChildGuard {
+    let child = Command::new(daemon)
+        .env("ALLOWLISTER_REMOTE_DAEMON_SOCK", socket)
         .env(
-            "ALLOWLISTER_REMOTE_BROKER_ADDR",
-            format!("127.0.0.1:{port}"),
+            "ALLOWLISTER_REMOTE_BROKER_URL",
+            format!("ws://127.0.0.1:{port}/ws/daemon"),
         )
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
-        .expect("spawn broker");
-    let guard = ChildGuard::new("broker", child);
-    wait_for_port(port, Duration::from_secs(5));
-    (guard, port)
+        .expect("spawn daemon");
+    ChildGuard::new("daemon", child)
+}
+
+/// Spawn a plugin in daemon mode that opens an approval request for `command`
+/// and blocks waiting for a decision. Returns the child (stdout piped).
+#[cfg(unix)]
+fn spawn_plugin(plugin: &Path, socket: &Path, command: &str) -> Child {
+    use std::io::Write;
+    let mut child = Command::new(plugin)
+        .args(["--daemon-socket"])
+        .arg(socket)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn plugin");
+    let payload =
+        format!(r#"{{"subject":"shell","current_verdict":"defer","command":"{command}"}}"#);
+    child
+        .stdin
+        .take()
+        .expect("plugin stdin")
+        .write_all(payload.as_bytes())
+        .expect("write plugin stdin");
+    child
+}
+
+/// Join a blocked plugin child and return its parsed `{verdict,reason}` output.
+async fn plugin_verdict(child: Child) -> Value {
+    let output = tokio::task::spawn_blocking(move || {
+        child.wait_with_output().expect("plugin wait_with_output")
+    })
+    .await
+    .expect("join plugin");
+    assert!(output.status.success(), "plugin exited non-zero");
+    serde_json::from_slice(&output.stdout).expect("plugin stdout is JSON")
+}
+
+/// Read `n` `added` frames and return a command -> request-id map.
+async fn collect_added(ws: &mut Ws, n: usize) -> std::collections::HashMap<String, String> {
+    let mut map = std::collections::HashMap::new();
+    for _ in 0..n {
+        let added = ws_recv(ws).await;
+        assert_eq!(added["type"], "added");
+        let command = added["request"]["command"]
+            .as_str()
+            .expect("command")
+            .to_string();
+        let id = added["request"]["id"].as_str().expect("id").to_string();
+        map.insert(command, id);
+    }
+    map
 }
 
 /// TEST A — the headline happy path through all three real binaries.
@@ -508,4 +598,140 @@ fn plugin_static_allow_defers() {
         verdict["reason"],
         "static allowlister verdict does not need remote approval"
     );
+}
+
+/// Connect a PWA and subscribe, returning the socket and the initial snapshot so
+/// a caller can inspect already-pending requests (used by the restart test).
+async fn subscribe_pwa_with_snapshot(port: u16) -> (Ws, Value) {
+    let (mut pwa, _) = tokio::time::timeout(
+        Duration::from_secs(5),
+        connect_async(format!("ws://127.0.0.1:{port}/ws/pwa")),
+    )
+    .await
+    .expect("pwa connect timed out")
+    .expect("pwa connect failed");
+    ws_send(&mut pwa, json!({"type":"subscribe"})).await;
+    let snapshot = ws_recv(&mut pwa).await;
+    assert_eq!(snapshot["type"], "snapshot");
+    (pwa, snapshot)
+}
+
+/// TEST D — many daemons and many PWAs on one broker, with real binaries.
+///
+/// Two daemons (separate hosts/sockets) each carry a plugin that opens a request.
+/// Two PWAs each see BOTH requests, and each PWA decides a DIFFERENT daemon's
+/// request — proving cross fan-out (every PWA sees every daemon's work) and
+/// correct owner routing (a decision reaches only the daemon/plugin that owns it).
+#[cfg(unix)]
+#[tokio::test]
+async fn multiple_daemons_and_pwas_interoperate_through_real_binaries() {
+    let (broker_bin, daemon_bin, plugin_bin) = binaries();
+    let (_broker, port) = spawn_broker(&broker_bin);
+
+    let sock_a = unique_socket();
+    let sock_b = unique_socket();
+    let _daemon_a = spawn_daemon(&daemon_bin, &sock_a, port);
+    let _daemon_b = spawn_daemon(&daemon_bin, &sock_b, port);
+    wait_for_socket(&sock_a, Duration::from_secs(5));
+    wait_for_socket(&sock_b, Duration::from_secs(5));
+
+    let mut pwa1 = subscribe_pwa(port).await;
+    let mut pwa2 = subscribe_pwa(port).await;
+
+    let cmd_a = format!("deploy-A-{}", next_unique());
+    let cmd_b = format!("deploy-B-{}", next_unique());
+    let plugin_a = spawn_plugin(&plugin_bin, &sock_a, &cmd_a);
+    let plugin_b = spawn_plugin(&plugin_bin, &sock_b, &cmd_b);
+
+    // Both PWAs see both daemons' requests.
+    let ids1 = collect_added(&mut pwa1, 2).await;
+    let ids2 = collect_added(&mut pwa2, 2).await;
+    assert!(ids1.contains_key(&cmd_a) && ids1.contains_key(&cmd_b));
+    assert!(ids2.contains_key(&cmd_a) && ids2.contains_key(&cmd_b));
+    assert_eq!(ids1[&cmd_a], ids2[&cmd_a], "same request id across PWAs");
+    assert_eq!(ids1[&cmd_b], ids2[&cmd_b]);
+
+    // PWA1 approves daemon A's request; PWA2 denies daemon B's request.
+    ws_send(
+        &mut pwa1,
+        json!({"type":"decision","requestId":ids1[&cmd_a],"verdict":"allow","reason":"via pwa1"}),
+    )
+    .await;
+    ws_send(
+        &mut pwa2,
+        json!({"type":"decision","requestId":ids2[&cmd_b],"verdict":"deny","reason":"via pwa2"}),
+    )
+    .await;
+
+    // Each decision is routed to exactly the owning daemon's plugin.
+    let verdict_a = plugin_verdict(plugin_a).await;
+    let verdict_b = plugin_verdict(plugin_b).await;
+    assert_eq!(verdict_a["verdict"], "allow");
+    assert_eq!(verdict_a["reason"], "via pwa1");
+    assert_eq!(verdict_b["verdict"], "deny");
+    assert_eq!(verdict_b["reason"], "via pwa2");
+
+    let _ = std::fs::remove_file(&sock_a);
+    let _ = std::fs::remove_file(&sock_b);
+}
+
+/// TEST E — a request survives a broker restart.
+///
+/// The plugin opens a request and blocks. We kill the broker and start a fresh
+/// one on the SAME port (so it has lost all state). The daemon must reconnect and
+/// re-announce its still-pending request, so a brand-new PWA learns about it and
+/// can decide it — and the original, still-waiting plugin gets that decision.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_request_survives_a_broker_restart() {
+    let (broker_bin, daemon_bin, plugin_bin) = binaries();
+    let port = free_port();
+    let broker1 = boot_broker_on(&broker_bin, port);
+
+    let sock = unique_socket();
+    let _daemon = spawn_daemon(&daemon_bin, &sock, port);
+    wait_for_socket(&sock, Duration::from_secs(5));
+
+    let mut pwa1 = subscribe_pwa(port).await;
+    let command = format!("survive-restart-{}", next_unique());
+    let plugin = spawn_plugin(&plugin_bin, &sock, &command);
+
+    let added = ws_recv(&mut pwa1).await;
+    assert_eq!(added["request"]["command"], command);
+    let id = added["request"]["id"].as_str().expect("id").to_string();
+
+    // Restart the broker on the same port; it comes up with empty state.
+    drop(broker1);
+    drop(pwa1); // its socket died with broker1
+    let _broker2 = boot_broker_on(&broker_bin, port);
+
+    // A fresh PWA must learn the still-pending request via the daemon's
+    // re-announce — whether it lands in the subscribe snapshot or as a later
+    // `added` once the daemon has reconnected.
+    let (mut pwa2, snapshot) = subscribe_pwa_with_snapshot(port).await;
+    let in_snapshot = snapshot["requests"]
+        .as_array()
+        .map(|requests| requests.iter().any(|r| r["command"] == command.as_str()))
+        .unwrap_or(false);
+    if !in_snapshot {
+        loop {
+            let message = ws_recv(&mut pwa2).await;
+            if message["type"] == "added" && message["request"]["command"] == command.as_str() {
+                break;
+            }
+        }
+    }
+
+    // Decide it on the new broker; the reconnected daemon routes it to the plugin
+    // that has been waiting the whole time.
+    ws_send(
+        &mut pwa2,
+        json!({"type":"decision","requestId":id,"verdict":"allow","reason":"after restart"}),
+    )
+    .await;
+    let verdict = plugin_verdict(plugin).await;
+    assert_eq!(verdict["verdict"], "allow");
+    assert_eq!(verdict["reason"], "after restart");
+
+    let _ = std::fs::remove_file(&sock);
 }
