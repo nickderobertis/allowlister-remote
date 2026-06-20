@@ -96,7 +96,7 @@ ensure_allowlister() {
 # classify with the identical tool. Pinning also skips the install script's
 # "resolve latest" GitHub API call, which is rate-limited for unauthenticated
 # requests. Override with SCREENCOMP_VERSION.
-SCREENCOMP_VERSION="${SCREENCOMP_VERSION:-v0.4.1}"
+SCREENCOMP_VERSION="${SCREENCOMP_VERSION:-v0.4.2}"
 ensure_screencomp() {
   if have screencomp; then
     ok "screencomp present ($(screencomp --version 2>/dev/null || echo unknown))"

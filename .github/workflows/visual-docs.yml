@@ -34,13 +34,13 @@ permissions:
 
 jobs:
   visual-docs:
-    uses: nickderobertis/screencomp/.github/workflows/visual-docs-reusable.yml@v0.4.1
+    uses: nickderobertis/screencomp/.github/workflows/visual-docs-reusable.yml@v0.4.2
     with:
       # Pin the screencomp CLI too: the reusable workflow's internal composite
       # actions float on the `@v0` major tag, so pinning only the workflow ref
-      # still let the v0.4.1 CLI roll in unannounced. Pinning the version here
+      # still let the v0.4.2 CLI roll in unannounced. Pinning the version here
       # keeps the gate's behaviour fixed until we deliberately bump it.
-      screencomp-version: v0.4.1
+      screencomp-version: v0.4.2
       # Strict gate (the safe default): CI FAILS if the capture drifts from the
       # committed baseline. Regenerate the baseline locally with the pre-push
       # guard (.githooks/pre-push) and commit it. To switch to CI auto-accept
