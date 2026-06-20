@@ -4,100 +4,226 @@
     {
       "name": "empty-state",
       "toggles": {
+        "theme": "dark",
         "viewport": "desktop"
       },
-      "hash": "a6bc6f0338ba28abaa42a553ccf1d5f032f8d296770c97f840d7aef9fe93ed36"
+      "hash": "bcd071bba55ce63dfcc85df43c68e14be7b1f28888bea2669cb2389808fb05d0"
     },
     {
       "name": "empty-state",
       "toggles": {
+        "theme": "dark",
         "viewport": "mobile"
       },
-      "hash": "241899f36f6924809f492c5f9a0521263663245493633d928504a0d0353bc495"
+      "hash": "b36a046c21a034f0879c57bc5e716c6c9f7f33780b2c07c05bfa4efbce583f34"
+    },
+    {
+      "name": "empty-state",
+      "toggles": {
+        "theme": "light",
+        "viewport": "desktop"
+      },
+      "hash": "dc126f95c483c699394990d19e59bb05f5b23244829227625087d4e978a6a8e9"
+    },
+    {
+      "name": "empty-state",
+      "toggles": {
+        "theme": "light",
+        "viewport": "mobile"
+      },
+      "hash": "76468f0ce9d7d2ec53285b38540c8fed59a71be736ffeb85ddbb6c2bc0866a5d"
     },
     {
       "name": "inbox",
       "toggles": {
+        "theme": "dark",
         "viewport": "desktop"
       },
-      "hash": "547a903cd789b7eab523fa73a9ee476ff3f88e4b1fb3386562ee0d71be95f8b6"
+      "hash": "adc3b68959e3e8f6a05c579cd0d8ee15fe512378cfe84d6392acc80e8a2c7f97"
     },
     {
       "name": "inbox",
       "toggles": {
+        "theme": "dark",
         "viewport": "mobile"
       },
-      "hash": "85b2753a1203a66965b1693413e490826c952406537528e9527614aec058b44f"
+      "hash": "4a0bc471f198582f53011798f07aa071335aa116a749f195c625d9a9555685a5"
+    },
+    {
+      "name": "inbox",
+      "toggles": {
+        "theme": "light",
+        "viewport": "desktop"
+      },
+      "hash": "b58fb1a7784d694bf8c73e2028ba817870a8c2d5e2533afae5014bdb6cff9768"
+    },
+    {
+      "name": "inbox",
+      "toggles": {
+        "theme": "light",
+        "viewport": "mobile"
+      },
+      "hash": "fe439e683d8baa1223daab3d6e63f5a1651ca80e1c7da60d9ecb53a394471b6e"
     },
     {
       "name": "shell-oneoff",
       "toggles": {
+        "theme": "dark",
         "viewport": "desktop"
       },
-      "hash": "c7d955cd6821cd3a7330eee405ee85d3428d25c3fbcc72374310e4d11f7a993b"
+      "hash": "4d99b267db9582496c88feac6c0bb7ea11cae5998dfb2774332dbd2f967bd6bc"
     },
     {
       "name": "shell-oneoff",
       "toggles": {
+        "theme": "dark",
         "viewport": "mobile"
       },
-      "hash": "a8571bd720859eecbe1cbe89e68be7d7730e99e89b5e711d35f13594a28d6679"
+      "hash": "0f2fb538dc58609b290ef610bbf1ccf5b72bf7cdd930e7637e24dad39415b0a0"
+    },
+    {
+      "name": "shell-oneoff",
+      "toggles": {
+        "theme": "light",
+        "viewport": "desktop"
+      },
+      "hash": "cfc281baef85a213bd59cfb5fc0c233c6c7da5c3b1bec56c4151eb9436f1338e"
+    },
+    {
+      "name": "shell-oneoff",
+      "toggles": {
+        "theme": "light",
+        "viewport": "mobile"
+      },
+      "hash": "af6c21685a75617059d7fb30e77911f5ef0d668bfd1110d9e3a240617d536a2c"
     },
     {
       "name": "shell-script",
       "toggles": {
+        "theme": "dark",
         "viewport": "desktop"
       },
-      "hash": "f816919f6204294e036ab7b58b95c3fc514f938419a3b53bb97c65afb5e7c95d"
+      "hash": "6e15281a469101cabcc2bf964892072b33a37c1f943dd779ba6a2b636fefb4d5"
     },
     {
       "name": "shell-script",
       "toggles": {
+        "theme": "dark",
         "viewport": "mobile"
       },
-      "hash": "98ce03c0d8ce79543ed80a9cd699c3ca4dff9d91d125de8a9631e92a701fc698"
+      "hash": "f37c356f90d8f580ec2865599d3128082c58704d255cf735cb366634d531257e"
+    },
+    {
+      "name": "shell-script",
+      "toggles": {
+        "theme": "light",
+        "viewport": "desktop"
+      },
+      "hash": "b976746ef1197fae094ed12af3bc283722a51960849e0dbe7ccbef4950143511"
+    },
+    {
+      "name": "shell-script",
+      "toggles": {
+        "theme": "light",
+        "viewport": "mobile"
+      },
+      "hash": "cbc2fa8e92049e34be18f19c45321bec0b280769eda4491d458383adc8bd039c"
     },
     {
       "name": "tool-capability",
       "toggles": {
+        "theme": "dark",
         "viewport": "desktop"
       },
-      "hash": "0ecdfefacf5d781ec99bfef17fc67e946392a75d6eafadc695707d2910e0177d"
+      "hash": "0ce56d1a60c2bbde4cd6447e99df76a2a8f9b9752703dc83ea7398d00c27f3f5"
     },
     {
       "name": "tool-capability",
       "toggles": {
+        "theme": "dark",
         "viewport": "mobile"
       },
-      "hash": "617c862e00065893b81afc4e85e15d912d06811aff24d3fbd95eb31bce4d88bc"
+      "hash": "a3fb1d2c6fa5a66b214348afb3fd6f2330b6884b4787c88f7d042fcfba3f15a4"
+    },
+    {
+      "name": "tool-capability",
+      "toggles": {
+        "theme": "light",
+        "viewport": "desktop"
+      },
+      "hash": "0afe8fd35df91f90a9597bdc85b5bf39232dc34a74e576968ccc5fb06bfbc2d9"
+    },
+    {
+      "name": "tool-capability",
+      "toggles": {
+        "theme": "light",
+        "viewport": "mobile"
+      },
+      "hash": "151516fbc0a7ab62c61fdcbfaf4f80259d2ae569c567e497a5b663cb35fa185d"
     },
     {
       "name": "tool-formatted",
       "toggles": {
+        "theme": "dark",
         "viewport": "desktop"
       },
-      "hash": "36506e0e9ccefd804bce67ea109bb42436410f2d315e8044c4a465d35574a11c"
+      "hash": "edefa3e3714f5c6acc4fae8201c5e8335fdf88145685d25b1e6bb4b9fb9ff4a1"
     },
     {
       "name": "tool-formatted",
       "toggles": {
+        "theme": "dark",
         "viewport": "mobile"
       },
-      "hash": "2580f9096834ba0cafdaa34b1972bfc1f1309f91de88df18fed5d1ebe07a8b08"
+      "hash": "f3365e5e110542dfaee5e7eb34d3c75758ed5611e0ac65ebfbf286ace5c4ad49"
     },
     {
-      "name": "tool-json",
+      "name": "tool-formatted",
       "toggles": {
+        "theme": "light",
         "viewport": "desktop"
       },
-      "hash": "46e9869a19eea3297a4246aa9714ae66b290f008b2bf985632c51cf4db7b2ed8"
+      "hash": "f4d46f57ca025be129e97ef9e7b888d6137f0e033cd84569f26cd2b471ccab78"
+    },
+    {
+      "name": "tool-formatted",
+      "toggles": {
+        "theme": "light",
+        "viewport": "mobile"
+      },
+      "hash": "fc7161cee2af327a74ec47091f99876d2c9fb7f12b3e5d5a88e18b01d43597e0"
     },
     {
       "name": "tool-json",
       "toggles": {
+        "theme": "dark",
+        "viewport": "desktop"
+      },
+      "hash": "dd74ef31deed5b61075479ec5cf427c5df6e7c148c9007ded18fa189abf6686d"
+    },
+    {
+      "name": "tool-json",
+      "toggles": {
+        "theme": "dark",
         "viewport": "mobile"
       },
-      "hash": "fa69d1f2f691ad1d959062e3d706880a0490215b25bb8f28667a6c4e9b254a43"
+      "hash": "ab3b82af104a3a0323bdbd4ed6f7ceb589230306335de8c50761573f2b4b4bb6"
+    },
+    {
+      "name": "tool-json",
+      "toggles": {
+        "theme": "light",
+        "viewport": "desktop"
+      },
+      "hash": "f70347eebdbf1ecd3ed1a46386fac5c2b553f51c129fc6a46e756d703daf038f"
+    },
+    {
+      "name": "tool-json",
+      "toggles": {
+        "theme": "light",
+        "viewport": "mobile"
+      },
+      "hash": "1e97b1e98a71d8b71bf74a8cc80970a87d6c9e0a4e6947da7c063518db947b50"
     }
   ]
 }

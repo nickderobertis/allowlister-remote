@@ -22,6 +22,14 @@ key = "viewport"
 label = "Viewport"
 values = ["desktop", "mobile"]
 
+# Light/dark is captured for every screen too. The app follows the OS setting
+# automatically (see src/lib/theme.tsx); captures drive prefers-color-scheme so
+# each state is recorded in both themes. First value is the gallery default.
+[[toggle]]
+key = "theme"
+label = "Theme"
+values = ["dark", "light"]
+
 [guard]
 # Local pre-push guard (.githooks/pre-push): re-capture only when these globs
 # change. Adjust to the files that actually affect your screenshots.

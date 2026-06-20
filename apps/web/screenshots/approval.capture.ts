@@ -11,33 +11,47 @@ const FIXED_TIME = new Date("2024-01-01T00:00:00Z");
 const FREEZE_MOTION =
   "*, *::before, *::after { transition: none !important; animation: none !important; caret-color: transparent !important; }";
 
-// position:fixed chrome (the floating "Shortcuts" hint) paints relative to the
-// viewport, which races Playwright's beyond-viewport fullPage capture on any page
-// taller than the viewport (today only desktop/shell-script, where the disclosed
-// script overflows): the hint lands at the viewport bottom in one run and the
-// document bottom in the next, drifting bytes run-to-run. Re-anchor that chrome to
-// the document (the only fixed element in a captured state is the floating hint;
-// the shortcuts overlay is never open during capture) so it paints at one
-// deterministic spot every run. body becomes the containing block; nothing else is
-// absolutely positioned, so this moves only the hint.
+// position:fixed chrome (the floating "Shortcuts" hint and the theme toggle)
+// paints relative to the viewport, which races Playwright's beyond-viewport
+// fullPage capture on any page taller than the viewport (today only
+// desktop/shell-script, where the disclosed script overflows): the chrome lands
+// at the viewport edge in one run and the document edge in the next, drifting
+// bytes run-to-run. Re-anchor every fixed element to the document (during capture
+// the only fixed elements are the theme toggle and, on desktop, the floating
+// hint; the shortcuts overlay is never open) so each paints at one deterministic
+// spot every run. body becomes the containing block; nothing else is absolutely
+// positioned, so this moves only that chrome.
 const PIN_FIXED_CHROME =
   "body { position: relative !important; } .fixed { position: absolute !important; }";
 
+// The app follows prefers-color-scheme automatically, so capturing both themes is
+// just a matter of emulating the OS setting and letting the ThemeProvider react.
+const THEMES = ["dark", "light"] as const;
+
 async function shoot(page: Page, viewport: string, name: string): Promise<void> {
   await page.addStyleTag({ content: `${FREEZE_MOTION}\n${PIN_FIXED_CHROME}` });
-  // Settle before capturing: wait for webfonts and let layout/raster flush over
-  // two animation frames, so nothing is caught mid-paint (the cause of otherwise
-  // byte-level run-to-run drift, especially on the high-DPI mobile viewport).
-  await page.evaluate(async () => {
-    await document.fonts.ready;
-    await new Promise<void>((done) =>
-      requestAnimationFrame(() => requestAnimationFrame(() => done())),
+  for (const theme of THEMES) {
+    await page.emulateMedia({ colorScheme: theme });
+    // Wait until the ThemeProvider has mirrored the emulated scheme onto <html>,
+    // so the screenshot never races the class flip.
+    await page.waitForFunction(
+      (expected) => document.documentElement.classList.contains("dark") === (expected === "dark"),
+      theme,
     );
-  });
-  const png = await page.screenshot({ fullPage: true, animations: "disabled", caret: "hide" });
-  // Each viewport is a `viewport` toggle on the same shot name; recordShot writes
-  // the PNG and upserts the entry into this lane's captures.json index.
-  await recordShot(name, { viewport }, png);
+    // Settle before capturing: wait for webfonts and let layout/raster flush over
+    // two animation frames, so nothing is caught mid-paint (the cause of otherwise
+    // byte-level run-to-run drift, especially on the high-DPI mobile viewport).
+    await page.evaluate(async () => {
+      await document.fonts.ready;
+      await new Promise<void>((done) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => done())),
+      );
+    });
+    const png = await page.screenshot({ fullPage: true, animations: "disabled", caret: "hide" });
+    // Each viewport/theme pair is a toggle combination on the same shot name;
+    // recordShot writes the PNG and upserts the entry into this lane's index.
+    await recordShot(name, { viewport, theme }, png);
+  }
 }
 
 test.beforeEach(async ({ page }) => {
