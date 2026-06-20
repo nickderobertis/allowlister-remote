@@ -6,8 +6,9 @@
   "include-v-in-tag": true,
   "group-pull-request-title-pattern": "chore: release ${branch}",
   "packages": {
-    "crates/allowlister-remote-plugin": {
-      "release-type": "rust"
+    ".": {
+      "release-type": "rust",
+      "component": "allowlister-remote-plugin"
     }
   }
 }

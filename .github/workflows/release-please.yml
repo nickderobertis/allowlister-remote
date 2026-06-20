@@ -16,5 +16,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: googleapis/release-please-action@v5
+        id: release
         with:
           token: ${{ secrets.RELEASE_TOKEN }}
+      # Make the release fully hands-off: turn on squash auto-merge for the
+      # release PR so it merges itself once the required checks pass, which
+      # pushes the version bump to main and lets the next release-please run tag
+      # vX.Y.Z (triggering publish). Skipped on runs where there is no open
+      # release PR (e.g. the run that performs the tag after a merge).
+      - name: Enable auto-merge on the release PR
+        if: ${{ steps.release.outputs.pr }}
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          RELEASE_PR: ${{ steps.release.outputs.pr }}
+        run: |
+          number="$(echo "$RELEASE_PR" | jq -r '.number')"
+          gh pr merge "$number" --repo "$GITHUB_REPOSITORY" --squash --auto
