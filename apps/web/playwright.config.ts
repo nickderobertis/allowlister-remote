@@ -13,6 +13,11 @@ export default defineConfig({
     command: "npx next start --hostname 127.0.0.1 --port 4183",
     url: "http://127.0.0.1:4183",
     reuseExistingServer: false,
+    // The broker-realtime spec runs a broker on this fixed port and drives the
+    // app through it; /api/config returns the derived /ws/pwa endpoint at runtime.
+    // Other specs exercise the HTTP path; their service worker simply retries a
+    // (down) broker harmlessly in the background.
+    env: { ALLOWLISTER_REMOTE_BROKER_URL: "ws://127.0.0.1:4188" },
   },
   projects: [
     {

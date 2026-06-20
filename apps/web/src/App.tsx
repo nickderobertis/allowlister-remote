@@ -7,6 +7,7 @@ import {
   toolParamSummary,
   triggeredRules,
 } from "./approval";
+import { normalizeBrokerRequest } from "./approval-normalize";
 import { ThemeToggle } from "./components/theme-toggle";
 import { Badge } from "./components/ui/badge";
 import { Button } from "./components/ui/button";
@@ -15,6 +16,7 @@ import { Kbd } from "./components/ui/kbd";
 import { SHORTCUT_GROUPS, useIsDesktop, useKeyboardShortcuts } from "./lib/keyboard";
 import { ThemeProvider } from "./lib/theme";
 import { cn } from "./lib/utils";
+import { connectBroker } from "./pwa/broker-bridge";
 import {
   type ApprovalRequest,
   type ApprovalVerdict,
@@ -662,6 +664,13 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const isDesktop = useIsDesktop();
+  // When the broker is live, decisions must travel back through it to the waiting
+  // plugin (the request lives in the broker, not the Next store). Held in a ref so
+  // `decide` can reach it without re-rendering on connect.
+  const brokerRef = useRef<{
+    decide: (decision: { requestId: string; verdict: "allow" | "deny"; reason: string }) => void;
+    close: () => void;
+  } | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -686,6 +695,43 @@ function App() {
     };
   }, [api]);
 
+  // Realtime sync: when a broker is configured, the service worker holds one
+  // WebSocket to it and relays live updates, so approvals appear and dismiss
+  // instantly instead of waiting for the 2s poll above (which stays as the
+  // fallback). The broker URL is fetched at runtime from /api/config. Requires a
+  // service worker, so this is inert under jsdom and exercised via e2e.
+  /* v8 ignore start -- realtime path runs against the broker; covered by e2e. */
+  useEffect(() => {
+    if (!navigator.serviceWorker) return;
+    let cancelled = false;
+    void fetch("/api/config")
+      .then((response) => response.json())
+      .then((config: { brokerUrl?: string | null }) => {
+        if (cancelled || !config.brokerUrl) return;
+        brokerRef.current = connectBroker(config.brokerUrl, {
+          onSnapshot: (snapshot) => setRequests(snapshot.map(normalizeBrokerRequest)),
+          onAdded: (request) =>
+            setRequests((current) => {
+              const normalized = normalizeBrokerRequest(request);
+              // Dedupe by id so a re-announce (e.g. after a broker restart) never
+              // double-renders a card.
+              return current.some((existing) => existing.id === normalized.id)
+                ? current
+                : [...current, normalized];
+            }),
+          onResolved: (id) =>
+            setRequests((current) => current.filter((request) => request.id !== id)),
+        });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+      brokerRef.current?.close();
+      brokerRef.current = null;
+    };
+  }, []);
+  /* v8 ignore stop */
+
   const selected = useMemo(
     () => requests.find((request) => request.id === selectedId) ?? null,
     [requests, selectedId],
@@ -697,11 +743,11 @@ function App() {
   }, [requests.length]);
 
   async function decide(id: string, verdict: Verdict) {
-    await api.decide({
-      requestId: id,
-      verdict,
-      reason: `${verdict}ed in allowlister-remote`,
-    });
+    const decision = { requestId: id, verdict, reason: `${verdict}ed in allowlister-remote` };
+    // Route through the broker when it is live (the plugin is waiting there); the
+    // HTTP call covers the polling path and is a harmless no-op otherwise.
+    brokerRef.current?.decide(decision);
+    await api.decide(decision);
     setRequests((current) => current.filter((request) => request.id !== id));
     setSelectedId((current) => (current === id ? null : current));
   }

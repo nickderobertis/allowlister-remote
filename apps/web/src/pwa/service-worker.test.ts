@@ -23,6 +23,36 @@ class FakeCache {
 type RequestLike = string | { url: string; method?: string; mode?: string };
 const urlOf = (request: RequestLike) => (typeof request === "string" ? request : request.url);
 
+/** Minimal WebSocket double for the broker bridge: records sent frames and lets
+ * a test drive open/message/close. */
+class FakeWebSocket {
+  static CONNECTING = 0;
+  static OPEN = 1;
+  readyState = 0;
+  sent: string[] = [];
+  private handlers: Record<string, ((event: { data?: string }) => void)[]> = {};
+  constructor(public url: string) {}
+  addEventListener(type: string, handler: (event: { data?: string }) => void) {
+    const list = this.handlers[type] ?? [];
+    list.push(handler);
+    this.handlers[type] = list;
+  }
+  send(data: string) {
+    this.sent.push(data);
+  }
+  close() {
+    this.readyState = 3;
+    this.emit("close", {});
+  }
+  emit(type: string, event: { data?: string }) {
+    for (const handler of this.handlers[type] ?? []) handler(event);
+  }
+  open() {
+    this.readyState = 1;
+    this.emit("open", {});
+  }
+}
+
 function createScope(fetchImpl: (request: RequestLike) => Promise<Response>) {
   const caches = new Map<string, FakeCache>();
   const listeners: Record<string, (event: SwEvent) => void> = {};
@@ -51,9 +81,22 @@ function createScope(fetchImpl: (request: RequestLike) => Promise<Response>) {
       listeners[type] = handler;
     },
     skipWaiting: vi.fn(),
-    clients: { claim: vi.fn() },
+    clients: {
+      claim: vi.fn(),
+      // The broker bridge broadcasts to every client via matchAll().
+      matchAll: async () => clientList,
+    },
     caches: cacheStorage,
   };
+  const clientMessages: unknown[] = [];
+  const clientList = [{ postMessage: (message: unknown) => clientMessages.push(message) }];
+  const sockets: FakeWebSocket[] = [];
+  class ScopedWebSocket extends FakeWebSocket {
+    constructor(url: string) {
+      super(url);
+      sockets.push(this);
+    }
+  }
   const sandbox = {
     self,
     caches: cacheStorage,
@@ -61,9 +104,13 @@ function createScope(fetchImpl: (request: RequestLike) => Promise<Response>) {
     Response,
     Request,
     console,
+    WebSocket: ScopedWebSocket,
+    // Reconnect timer is a no-op in tests so a dropped socket does not loop.
+    setTimeout: () => 0,
+    clearTimeout: () => {},
   };
   vm.runInNewContext(swSource, sandbox);
-  return { listeners, caches, self, fetch: sandbox.fetch };
+  return { listeners, caches, self, fetch: sandbox.fetch, sockets, clientMessages };
 }
 
 interface SwEvent {
@@ -161,5 +208,84 @@ describe("service worker", () => {
       mode: "cors",
     });
     expect(response).toBeUndefined();
+  });
+});
+
+const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+const message = (listeners: Record<string, (event: SwEvent) => void>, data: unknown) =>
+  (listeners.message as unknown as (event: { data: unknown }) => void)?.({ data });
+function only<T>(items: T[]): T {
+  const [item] = items;
+  if (!item) throw new Error("expected exactly one item");
+  return item;
+}
+
+describe("service worker broker bridge", () => {
+  beforeEach(() => vi.restoreAllMocks());
+
+  it("connects, subscribes, and relays broker events to all clients", async () => {
+    const { listeners, sockets, clientMessages } = createScope(async () => new Response("net"));
+    message(listeners, { type: "broker-connect", url: "ws://broker/ws/pwa" });
+    expect(sockets).toHaveLength(1);
+    const socket = only(sockets);
+    expect(socket.url).toBe("ws://broker/ws/pwa");
+
+    socket.open();
+    expect(socket.sent).toContain(JSON.stringify({ type: "subscribe" }));
+
+    socket.emit("message", { data: JSON.stringify({ type: "added", request: { id: "r1" } }) });
+    await flush();
+    expect(clientMessages).toContainEqual({
+      type: "broker-event",
+      event: { type: "added", request: { id: "r1" } },
+    });
+  });
+
+  it("forwards a client decision to the broker once connected", () => {
+    const { listeners, sockets } = createScope(async () => new Response("net"));
+    message(listeners, { type: "broker-connect", url: "ws://b" });
+    const socket = only(sockets);
+    socket.open();
+    message(listeners, { type: "decision", requestId: "r1", verdict: "allow", reason: "ok" });
+    expect(socket.sent).toContain(
+      JSON.stringify({ type: "decision", requestId: "r1", verdict: "allow", reason: "ok" }),
+    );
+  });
+
+  it("reuses one socket instead of stacking connections", () => {
+    const { listeners, sockets } = createScope(async () => new Response("net"));
+    message(listeners, { type: "broker-connect", url: "ws://b" });
+    only(sockets).open();
+    message(listeners, { type: "broker-connect", url: "ws://b" });
+    expect(sockets).toHaveLength(1);
+  });
+
+  it("ignores malformed broker frames and unknown client messages", async () => {
+    const { listeners, sockets, clientMessages } = createScope(async () => new Response("net"));
+    message(listeners, null);
+    message(listeners, { type: "decision" }); // no socket yet: nothing happens
+    message(listeners, { type: "broker-connect", url: "ws://b" });
+    const socket = only(sockets);
+    socket.open();
+    clientMessages.length = 0;
+    socket.emit("message", { data: "not json" });
+    await flush();
+    expect(clientMessages.some((m) => (m as { type: string }).type === "broker-event")).toBe(false);
+  });
+
+  it("broadcasts a closed status and attempts to reconnect when the socket drops", async () => {
+    const { listeners, sockets, clientMessages } = createScope(async () => new Response("net"));
+    message(listeners, { type: "broker-connect", url: "ws://b" });
+    const socket = only(sockets);
+    socket.open();
+    socket.close();
+    await flush();
+    expect(
+      clientMessages.some(
+        (m) =>
+          (m as { type: string; status?: string }).type === "broker-status" &&
+          (m as { status?: string }).status === "closed",
+      ),
+    ).toBe(true);
   });
 });

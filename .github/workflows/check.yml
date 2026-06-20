@@ -43,12 +43,13 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - run: cargo build --release -p allowlister-remote-plugin
+      - run: cargo build --release -p allowlister-remote-plugin -p allowlister-remote-daemon
       - run: npx nx run web:build
-      - name: Stage native binary into platform package
+      - name: Stage native binaries into platform package
         run: |
           mkdir -p packages/allowlister-remote-plugin-linux-x64/bin
           cp target/release/allowlister-remote-plugin packages/allowlister-remote-plugin-linux-x64/bin/allowlister-remote-plugin
-          chmod +x packages/allowlister-remote-plugin-linux-x64/bin/allowlister-remote-plugin
+          cp target/release/allowlister-remote-daemon packages/allowlister-remote-plugin-linux-x64/bin/allowlister-remote-daemon
+          chmod +x packages/allowlister-remote-plugin-linux-x64/bin/allowlister-remote-plugin packages/allowlister-remote-plugin-linux-x64/bin/allowlister-remote-daemon
       - name: Smoke-test npm install path
         run: npm run release:smoke-npm

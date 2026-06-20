@@ -1,0 +1,53 @@
+{
+  "name": "allowlister-remote-daemon",
+  "projectType": "application",
+  "root": "crates/allowlister-remote-daemon",
+  "sourceRoot": "crates/allowlister-remote-daemon/src",
+  "tags": ["scope:daemon", "type:service", "lang:rust"],
+  "targets": {
+    "format": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo fmt --manifest-path crates/allowlister-remote-daemon/Cargo.toml",
+        "cwd": "."
+      }
+    },
+    "fmt-check": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo fmt --manifest-path crates/allowlister-remote-daemon/Cargo.toml --check",
+        "cwd": "."
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo clippy -p allowlister-remote-daemon --all-targets -- -D warnings",
+        "cwd": "."
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo check -p allowlister-remote-daemon --all-targets",
+        "cwd": "."
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo test -p allowlister-remote-daemon",
+        "cwd": "."
+      }
+    },
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo build -p allowlister-remote-daemon",
+        "cwd": "."
+      },
+      "outputs": ["{workspaceRoot}/target/debug/allowlister-remote-daemon"],
+      "cache": false
+    }
+  }
+}

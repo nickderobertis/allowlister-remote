@@ -1,0 +1,39 @@
+[package]
+name = "allowlister-remote-daemon"
+# Placeholder version; the real version is the release git tag (see plugin crate).
+version = "0.0.0"
+edition = "2021"
+repository = "https://github.com/nickderobertis/allowlister-remote"
+
+[lib]
+name = "allowlister_remote_daemon"
+path = "src/lib.rs"
+
+[[bin]]
+name = "allowlister-remote-daemon"
+path = "src/main.rs"
+
+[dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "sync", "time", "signal"] }
+# WebSocket client to the broker. rustls + ring (matching the plugin's reqwest
+# backend) handles `wss://` without OpenSSL, so the static musl release binary
+# builds with just the musl C toolchain. A custom CA can be trusted via
+# ALLOWLISTER_REMOTE_BROKER_CA for self-hosted/private-CA brokers.
+tokio-tungstenite = { version = "0.24", default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+rustls-pemfile = "2"
+webpki-roots = "0.26"
+futures-util = { version = "0.3", default-features = false, features = ["sink"] }
+serde_json = "1"
+
+[dev-dependencies]
+# End-to-end tests run a real broker in-process and drive the full chain.
+allowlister-remote-broker = { path = "../allowlister-remote-broker" }
+axum = { version = "0.8", default-features = false, features = ["ws", "tokio", "http1"] }
+futures-util = { version = "0.3", default-features = false, features = ["sink"] }
+# A self-signed cert + a (native-tls) TLS acceptor stand in for a TLS proxy in
+# front of the broker, to prove the daemon's rustls client dials wss:// for real.
+# native-tls is dev-only, so it never enters the published binary.
+rcgen = "0.13"
+native-tls = "0.2"
+tokio-native-tls = "0.3"

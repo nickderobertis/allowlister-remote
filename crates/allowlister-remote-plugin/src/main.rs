@@ -2,6 +2,8 @@ use allowlister_remote_plugin::{
     build_create_body, interpret_decision, parse_local_input, request_summary, static_decision,
     LocalDecision, RemoteDecision,
 };
+
+mod daemon;
 use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -165,6 +167,53 @@ fn main() {
     // either the local terminal or the web app.
     let timeout_ms: u64 = arg(&args, "--timeout-ms", "0").parse().unwrap_or(0);
     let poll_ms: u64 = arg(&args, "--poll-ms", "150").parse().unwrap_or(150);
+
+    // Daemon mode (opt-in): when a broker URL or daemon socket is configured, or
+    // `--use-daemon` is passed, route through the host daemon — auto-starting it
+    // if needed — instead of polling the server directly. If the daemon cannot be
+    // reached, fall through to the direct HTTP path below.
+    let broker_url = arg(
+        &args,
+        "--broker-url",
+        &env::var("ALLOWLISTER_REMOTE_BROKER_URL").unwrap_or_default(),
+    );
+    let configured_socket = arg(
+        &args,
+        "--daemon-socket",
+        &env::var("ALLOWLISTER_REMOTE_DAEMON_SOCK").unwrap_or_default(),
+    );
+    let use_daemon = args.iter().any(|argument| argument == "--use-daemon")
+        || !broker_url.is_empty()
+        || !configured_socket.is_empty();
+    if use_daemon {
+        let socket_path = if configured_socket.is_empty() {
+            daemon::default_socket_path()
+        } else {
+            configured_socket
+        };
+        let config = daemon::DaemonConfig {
+            socket_path,
+            daemon_bin: env::var("ALLOWLISTER_REMOTE_DAEMON_BIN")
+                .ok()
+                .filter(|value| !value.is_empty()),
+            broker_url: (!broker_url.is_empty()).then(|| broker_url.clone()),
+        };
+        if let Some(stream) = daemon::connect_or_start(&config) {
+            let summary = request_summary(&input);
+            let cwd = input
+                .get("cwd")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
+            daemon::run_via_daemon(
+                stream,
+                build_create_body(&input, timeout_ms),
+                &summary,
+                &cwd,
+            );
+        }
+        // Daemon unreachable: fall through to the direct HTTP path.
+    }
 
     let client = Client::builder()
         .user_agent(format!("allowlister-remote-plugin/{VERSION}"))

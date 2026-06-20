@@ -18,26 +18,23 @@ jobs:
       matrix:
         include:
           - platform: linux-x64
-            # Static musl build: the published linux binary links libc in, so it
-            # carries no glibc version floor (runs on Alpine/distroless/old
-            # distros) and skips the dynamic loader entirely — the plugin is
+            # Static musl build: the published linux binaries link libc in, so
+            # they carry no glibc version floor (run on Alpine/distroless/old
+            # distros) and skip the dynamic loader entirely — the plugin is
             # spawned once per gated command, and dropping ld.so cuts the
             # no-network hot path ~75% (cachegrind). `ring` needs a musl C
             # compiler, installed below.
             os: ubuntu-latest
             target: x86_64-unknown-linux-musl
-            binary: allowlister-remote-plugin
-            artifact: allowlister-remote-plugin-linux-x64
+            exe: ""
           - platform: darwin-arm64
             os: macos-14
             target: aarch64-apple-darwin
-            binary: allowlister-remote-plugin
-            artifact: allowlister-remote-plugin-darwin-arm64
+            exe: ""
           - platform: win32-x64
             os: windows-latest
             target: x86_64-pc-windows-msvc
-            binary: allowlister-remote-plugin.exe
-            artifact: allowlister-remote-plugin-win32-x64.exe
+            exe: .exe
     steps:
       - uses: actions/checkout@v6
       - name: Resolve plugin version from tag
@@ -54,23 +51,32 @@ jobs:
         # musl libc. No-op for the macOS/Windows matrix legs.
         if: matrix.target == 'x86_64-unknown-linux-musl'
         run: sudo apt-get update && sudo apt-get install -y musl-tools
-      - name: Build release binary
+      - name: Build release binaries
         shell: bash
+        # Build both the plugin and the daemon it auto-starts, for the same
+        # target/profile, so they ship together in the per-platform npm package.
         # `CC_<target>` points `ring`'s `cc` build at musl-gcc when cross-building
         # the musl target; it is unused (and harmless) for the other targets.
         env:
           CC_x86_64_unknown_linux_musl: musl-gcc
-        run: cargo build --release --target "${{ matrix.target }}" -p allowlister-remote-plugin
-      - name: Stage artifact
+        run: |
+          cargo build --release --target "${{ matrix.target }}" -p allowlister-remote-plugin
+          cargo build --release --target "${{ matrix.target }}" -p allowlister-remote-daemon
+      - name: Stage artifacts
         shell: bash
+        # Name each artifact `<binary>-<platform>[.exe]` so release:stage-npm can
+        # pick both up by binary and platform.
         run: |
           mkdir -p dist/artifacts
-          cp "target/${{ matrix.target }}/release/${{ matrix.binary }}" "dist/artifacts/${{ matrix.artifact }}"
-          if [[ "${{ matrix.os }}" != windows-* ]]; then chmod +x "dist/artifacts/${{ matrix.artifact }}"; fi
+          for binary in allowlister-remote-plugin allowlister-remote-daemon; do
+            artifact="${binary}-${{ matrix.platform }}${{ matrix.exe }}"
+            cp "target/${{ matrix.target }}/release/${binary}${{ matrix.exe }}" "dist/artifacts/${artifact}"
+            if [[ "${{ matrix.os }}" != windows-* ]]; then chmod +x "dist/artifacts/${artifact}"; fi
+          done
       - uses: actions/upload-artifact@v7
         with:
-          name: ${{ matrix.artifact }}
-          path: dist/artifacts/${{ matrix.artifact }}
+          name: binaries-${{ matrix.platform }}
+          path: dist/artifacts/*
           if-no-files-found: error
 
   github-release:
@@ -84,11 +90,12 @@ jobs:
       - name: Generate checksums
         run: |
           cd dist/release-artifacts
-          sha256sum allowlister-remote-plugin-* > SHA256SUMS
+          sha256sum allowlister-remote-plugin-* allowlister-remote-daemon-* > SHA256SUMS
       - uses: softprops/action-gh-release@v3
         with:
           files: |
             dist/release-artifacts/allowlister-remote-plugin-*
+            dist/release-artifacts/allowlister-remote-daemon-*
             dist/release-artifacts/SHA256SUMS
 
   npm-publish:
@@ -171,3 +178,13 @@ jobs:
             exit 1
           fi
           echo "published command resolves directly to the native binary"
+          # The auto-started daemon must ship as a sibling of the RESOLVED plugin
+          # binary (current_exe() follows the bin symlink), so the plugin's
+          # `resolve_daemon_bin` sibling lookup finds it.
+          daemon="$(dirname "$resolved")/allowlister-remote-daemon"
+          if [[ ! -x "$daemon" ]]; then
+            echo "published package is missing the daemon binary next to the plugin" >&2
+            exit 1
+          fi
+          [[ "$("$daemon" --version)" == "$version" ]]
+          echo "published daemon binary resolves next to the plugin"

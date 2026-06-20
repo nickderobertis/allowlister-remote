@@ -60,6 +60,16 @@ if [[ "$platform" != win32-* ]]; then
     echo "npm package smoke: command on PATH is still the JS launcher, expected the native binary" >&2
     exit 1
   fi
+
+  # The daemon must be installed as a sibling of the RESOLVED plugin binary
+  # (current_exe() follows the bin symlink) so the plugin's `resolve_daemon_bin`
+  # sibling lookup finds it (it auto-starts the daemon).
+  daemon="$(dirname "$target")/allowlister-remote-daemon"
+  if [[ ! -x "$daemon" ]]; then
+    echo "npm package smoke: daemon binary missing next to the plugin on PATH" >&2
+    exit 1
+  fi
+  "$daemon" --version >/dev/null
 fi
 
-echo "npm package smoke: ok (native binary on PATH)"
+echo "npm package smoke: ok (native plugin and daemon binaries on PATH)"

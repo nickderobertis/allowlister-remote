@@ -1,7 +1,7 @@
 {
   "name": "@nickderobertis/allowlister-remote-plugin-linux-x64",
   "version": "0.1.0",
-  "description": "Linux x64 native binary for @nickderobertis/allowlister-remote-plugin",
+  "description": "Linux x64 native binaries (plugin and daemon) for @nickderobertis/allowlister-remote-plugin",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",

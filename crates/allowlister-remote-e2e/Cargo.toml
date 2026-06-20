@@ -1,0 +1,21 @@
+[package]
+name = "allowlister-remote-e2e"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+# This crate ships no library or binary of its own — it exists purely to host
+# process-level end-to-end tests that spawn the REAL built binaries (broker,
+# daemon, plugin) and drive them over their actual wire protocols. The empty
+# `src/lib.rs` only satisfies cargo's requirement that a package have a target.
+[lib]
+path = "src/lib.rs"
+
+[dev-dependencies]
+# The WS-driving tests stand in for the PWA: a tokio-tungstenite client talking
+# the broker's `/ws/pwa` JSON protocol. We need a multi-thread runtime because
+# the tests both run blocking child processes and await async sockets.
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "time"] }
+tokio-tungstenite = "0.24"
+futures-util = { version = "0.3", features = ["sink"] }
+serde_json = "1"
