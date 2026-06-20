@@ -53,22 +53,28 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y musl-tools
       - name: Build release binaries
         shell: bash
-        # Build both the plugin and the daemon it auto-starts, for the same
-        # target/profile, so they ship together in the per-platform npm package.
-        # `CC_<target>` points `ring`'s `cc` build at musl-gcc when cross-building
-        # the musl target; it is unused (and harmless) for the other targets.
+        # Build the plugin for every target. The daemon it auto-starts is built on
+        # Unix domain sockets, so it is Unix-only — skip it on Windows, which uses
+        # the plugin's HTTP path. `CC_<target>` points `ring`'s `cc` build at
+        # musl-gcc when cross-building the musl target; unused on the other targets.
         env:
           CC_x86_64_unknown_linux_musl: musl-gcc
         run: |
           cargo build --release --target "${{ matrix.target }}" -p allowlister-remote-plugin
-          cargo build --release --target "${{ matrix.target }}" -p allowlister-remote-daemon
+          if [[ "${{ matrix.os }}" != windows-* ]]; then
+            cargo build --release --target "${{ matrix.target }}" -p allowlister-remote-daemon
+          fi
       - name: Stage artifacts
         shell: bash
         # Name each artifact `<binary>-<platform>[.exe]` so release:stage-npm can
-        # pick both up by binary and platform.
+        # pick it up by binary and platform. The daemon is Unix-only (see above).
         run: |
           mkdir -p dist/artifacts
-          for binary in allowlister-remote-plugin allowlister-remote-daemon; do
+          binaries=(allowlister-remote-plugin)
+          if [[ "${{ matrix.os }}" != windows-* ]]; then
+            binaries+=(allowlister-remote-daemon)
+          fi
+          for binary in "${binaries[@]}"; do
             artifact="${binary}-${{ matrix.platform }}${{ matrix.exe }}"
             cp "target/${{ matrix.target }}/release/${binary}${{ matrix.exe }}" "dist/artifacts/${artifact}"
             if [[ "${{ matrix.os }}" != windows-* ]]; then chmod +x "dist/artifacts/${artifact}"; fi
