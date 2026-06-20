@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.1](https://github.com/nickderobertis/allowlister-remote/compare/v0.6.0...v0.6.1) (2026-06-20)
+
+
+### Bug Fixes
+
+* **plugin:** make daemon mode Unix-only so the Windows release builds ([#52](https://github.com/nickderobertis/allowlister-remote/issues/52)) ([21209fa](https://github.com/nickderobertis/allowlister-remote/commit/21209fa2ff588d75ab9ecd0acf2af4793a9b4632))
+
 ## [0.6.0](https://github.com/nickderobertis/allowlister-remote/compare/v0.5.0...v0.6.0) (2026-06-20)
 
 
