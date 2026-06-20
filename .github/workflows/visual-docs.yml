@@ -62,6 +62,11 @@ jobs:
         # line records which microarchitecture a given capture ran on so a green
         # gate across re-runs visibly samples different CPUs. Renders no bytes.
         echo "runner CPU: $(grep -m1 'model name' /proc/cpuinfo | cut -d: -f2- | sed 's/^ *//')"
+        # Force full font hinting via fontconfig so glyph stems grid-snap and
+        # render byte-identically across CPU microarchitectures. Must be
+        # local.conf (a conf.d drop-in is shadowed by the container's config).
+        # The local pre-push guard installs the same file for local==CI bytes.
+        cp apps/web/screenshots/fonts-determinism.conf /etc/fonts/local.conf
         npm ci
         npx playwright install --with-deps chromium
         npx next build apps/web

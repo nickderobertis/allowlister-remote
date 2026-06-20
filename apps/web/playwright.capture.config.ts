@@ -23,13 +23,25 @@ import { defineConfig, devices } from "@playwright/test";
 // (--disable-gpu + --disable-skia-runtime-opts, no SwiftShader) stays
 // byte-identical to CI; --disable-gpu-compositing keeps the compositor on Skia
 // too so nothing falls back to a GL context.
+//
+// Dropping SwiftShader was necessary but not sufficient: the dense tool-json
+// shot still drifted by 9 px / 1 LSB between an Intel baseline and an AMD EPYC
+// runner — a sub-pixel anti-aliasing rounding flip on glyph edges rendered at
+// fractional pen positions. Full font hinting grid-snaps glyph stems to fix
+// that, BUT the Chromium --font-render-hinting flag is inert in the Playwright/
+// Linux container: FreeType hinting is governed by fontconfig (default
+// hintSLIGHT here), so the flag changes no bytes. The real lever is
+// screenshots/fonts-determinism.conf, which the capture environments copy to
+// /etc/fonts/local.conf to force hintfull. We still pass the matching flag below
+// to document intent and cover any non-fontconfig path. See that file and
+// visual-docs.yml / .githooks/pre-push for where the fontconfig is installed.
 const DETERMINISM_ARGS = [
   "--disable-skia-runtime-opts",
   "--disable-gpu",
   "--disable-gpu-rasterization",
   "--disable-gpu-compositing",
   "--force-color-profile=srgb",
-  "--font-render-hinting=none",
+  "--font-render-hinting=full",
   "--disable-lcd-text",
   "--hide-scrollbars",
 ];

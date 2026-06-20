@@ -109,6 +109,7 @@ docker run --rm --platform="$DOCKER_PLATFORM" --ipc=host --shm-size=2g \
   mcr.microsoft.com/playwright:v1.60.0-noble \
   bash -lc "cp /host-ca/*.crt /usr/local/share/ca-certificates/ 2>/dev/null && update-ca-certificates >/dev/null 2>&1 || true
     export NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
+    cp /work/apps/web/screenshots/fonts-determinism.conf /etc/fonts/local.conf
     npm ci && npx playwright install --with-deps chromium && npx next build apps/web && SHOTS_OUT=$CURRENT/$ARCH npx playwright test --config apps/web/playwright.capture.config.ts"
 # ------------------------------------------------------------------------------
 
