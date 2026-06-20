@@ -177,7 +177,11 @@ impl Broker {
 
     /// A daemon opened a request: record ownership and fan it out to every PWA.
     fn create(&self, owner: u64, request: Value) {
-        let Some(id) = request.get("id").and_then(Value::as_str).map(str::to_string) else {
+        let Some(id) = request
+            .get("id")
+            .and_then(Value::as_str)
+            .map(str::to_string)
+        else {
             return; // a request without an id cannot be routed or dismissed
         };
         let added = json!({ "type": "added", "request": request }).to_string();

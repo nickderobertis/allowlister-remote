@@ -76,7 +76,7 @@ pub async fn serve(config: Config) -> std::io::Result<()> {
     let (broker_tx, mut broker_rx) = unbounded_channel::<String>();
     tokio::spawn(async move {
         while let Some(text) = broker_rx.recv().await {
-            if ws_sink.send(Message::Text(text.into())).await.is_err() {
+            if ws_sink.send(Message::Text(text)).await.is_err() {
                 break;
             }
         }

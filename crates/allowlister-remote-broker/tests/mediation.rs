@@ -33,7 +33,7 @@ async fn connect(base: &str, path: &str) -> Ws {
 }
 
 async fn send(ws: &mut Ws, value: Value) {
-    ws.send(Message::Text(value.to_string().into())).await.unwrap();
+    ws.send(Message::Text(value.to_string())).await.unwrap();
 }
 
 /// Read the next JSON frame, ignoring pings/pongs, failing if nothing arrives in
@@ -92,8 +92,14 @@ async fn web_decision_routes_back_to_owning_daemon_and_dismisses_all_pwas() {
     assert_eq!(routed["requestId"], "r1");
     assert_eq!(routed["verdict"], "allow");
     assert_eq!(routed["reason"], "approved in app");
-    assert_eq!(recv(&mut pwa_a).await, json!({"type":"resolved","requestId":"r1"}));
-    assert_eq!(recv(&mut pwa_b).await, json!({"type":"resolved","requestId":"r1"}));
+    assert_eq!(
+        recv(&mut pwa_a).await,
+        json!({"type":"resolved","requestId":"r1"})
+    );
+    assert_eq!(
+        recv(&mut pwa_b).await,
+        json!({"type":"resolved","requestId":"r1"})
+    );
 }
 
 #[tokio::test]
@@ -119,7 +125,10 @@ async fn local_terminal_decision_dismisses_web_without_echo_to_daemon() {
         json!({"type":"decision","requestId":"r2","verdict":"deny","reason":"denied at terminal"}),
     )
     .await;
-    assert_eq!(recv(&mut pwa).await, json!({"type":"resolved","requestId":"r2"}));
+    assert_eq!(
+        recv(&mut pwa).await,
+        json!({"type":"resolved","requestId":"r2"})
+    );
 
     // Prove no echo: a fresh request must be the very next thing the daemon sees.
     send(
@@ -133,7 +142,10 @@ async fn local_terminal_decision_dismisses_web_without_echo_to_daemon() {
     )
     .await;
     let next = recv(&mut daemon).await;
-    assert_eq!(next["requestId"], "r3", "daemon should not have received an r2 echo");
+    assert_eq!(
+        next["requestId"], "r3",
+        "daemon should not have received an r2 echo"
+    );
 }
 
 #[tokio::test]
@@ -172,5 +184,8 @@ async fn daemon_disconnect_withdraws_its_pending_requests() {
     // The host went away (plugin killed, daemon crashed). The broker withdraws
     // the orphaned request so the web app stops showing a dead prompt.
     daemon.close(None).await.unwrap();
-    assert_eq!(recv(&mut pwa).await, json!({"type":"resolved","requestId":"r5"}));
+    assert_eq!(
+        recv(&mut pwa).await,
+        json!({"type":"resolved","requestId":"r5"})
+    );
 }

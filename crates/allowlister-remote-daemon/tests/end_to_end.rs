@@ -23,7 +23,9 @@ async fn start_stack() -> (String, String) {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move {
-        axum::serve(listener, app(Arc::new(Broker::default()))).await.unwrap();
+        axum::serve(listener, app(Arc::new(Broker::default())))
+            .await
+            .unwrap();
     });
     let base = format!("ws://{addr}");
 
@@ -31,8 +33,14 @@ async fn start_stack() -> (String, String) {
     // would have the daemons clobber each other's socket.
     static STACK: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let n = STACK.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let socket_path = format!("/tmp/allowlister-daemon-test-{}-{n}.sock", std::process::id());
-    let config = Config { socket_path: socket_path.clone(), broker_url: format!("{base}/ws/daemon") };
+    let socket_path = format!(
+        "/tmp/allowlister-daemon-test-{}-{n}.sock",
+        std::process::id()
+    );
+    let config = Config {
+        socket_path: socket_path.clone(),
+        broker_url: format!("{base}/ws/daemon"),
+    };
     tokio::spawn(async move {
         serve(config).await.unwrap();
     });
@@ -52,7 +60,7 @@ async fn connect_plugin(socket_path: &str) -> UnixStream {
 }
 
 async fn ws_send(ws: &mut Ws, value: Value) {
-    ws.send(Message::Text(value.to_string().into())).await.unwrap();
+    ws.send(Message::Text(value.to_string())).await.unwrap();
 }
 
 async fn ws_recv(ws: &mut Ws) -> Value {
@@ -131,7 +139,9 @@ async fn local_terminal_decision_relays_up_and_dismisses_web() {
 
     // The operator typed 'd' at the terminal; the plugin relays it to the daemon.
     plugin_write
-        .write_all(b"{\"type\":\"decision\",\"verdict\":\"deny\",\"reason\":\"denied at terminal\"}\n")
+        .write_all(
+            b"{\"type\":\"decision\",\"verdict\":\"deny\",\"reason\":\"denied at terminal\"}\n",
+        )
         .await
         .unwrap();
 
@@ -157,7 +167,9 @@ async fn plugin_exit_withdraws_the_request_from_web() {
     let (plugin_read, mut plugin_write) = plugin.into_split();
     drop(plugin_read);
     plugin_write
-        .write_all(b"{\"type\":\"create\",\"payload\":{\"subject\":\"shell\",\"command\":\"sleep 1\"}}\n")
+        .write_all(
+            b"{\"type\":\"create\",\"payload\":{\"subject\":\"shell\",\"command\":\"sleep 1\"}}\n",
+        )
         .await
         .unwrap();
     let added = ws_recv(&mut pwa).await;
@@ -167,5 +179,8 @@ async fn plugin_exit_withdraws_the_request_from_web() {
     // The gated command was Ctrl-C'd: the plugin process exits, closing the
     // socket. The daemon withdraws the request so the web prompt disappears.
     drop(plugin_write);
-    assert_eq!(ws_recv(&mut pwa).await, json!({"type":"resolved","requestId":id}));
+    assert_eq!(
+        ws_recv(&mut pwa).await,
+        json!({"type":"resolved","requestId":id})
+    );
 }

@@ -11,7 +11,12 @@ async fn main() {
         std::env::var("ALLOWLISTER_REMOTE_DAEMON_SOCK").unwrap_or_else(|_| default_socket_path());
     let broker_url = default_broker_url();
 
-    if let Err(error) = serve(Config { socket_path, broker_url }).await {
+    if let Err(error) = serve(Config {
+        socket_path,
+        broker_url,
+    })
+    .await
+    {
         eprintln!("allowlister-remote-daemon exited: {error}");
         std::process::exit(1);
     }
