@@ -65,6 +65,18 @@ Use `just`; do not hand-roll equivalent commands.
   the same request at the local terminal (via `/dev/tty`) and in the web app at the
   same time. Whichever side decides first wins; a local-terminal decision is posted
   back to the server so the pending web approval is dismissed.
+- The visual-docs gallery (screencomp) captures both approval surfaces. The web lane
+  is Playwright (`apps/web/screenshots/*.capture.ts`); the **terminal lane**
+  (`terminal.capture.ts`) renders the plugin's real `/dev/tty` prompt to a vector
+  **SVG** instead of a rasterized terminal screenshot — there is no CPU font
+  rasterization, so its bytes are byte-identical across CI's heterogeneous runners
+  (the determinism the strict gate needs; the web lane fights the same cross-CPU
+  jitter with deviceScaleFactor supersampling). The prompt text is a committed
+  fixture (`screenshots/terminal/prompts.json`) recorded from the genuine binary by
+  `just record-terminal-prompts`; `crates/.../tests/terminal_prompt.rs` asserts the
+  live `local_prompt` still reproduces it, so the gallery can never depict a prompt
+  the plugin no longer emits. Terminal shots carry only the `theme` toggle (a
+  terminal frame is not responsive), so viewport is a screencomp wildcard.
 - After a release publishes, the `e2e-smoke` workflow re-runs the approval-flow e2e
   against the plugin package downloaded from the public npm registry (rather than a
   locally built binary), so the published artifact is verified end-to-end. It first

@@ -17,6 +17,19 @@ pub struct LocalDecision {
     pub reason: String,
 }
 
+/// The exact text the plugin writes to `/dev/tty` to open a local approval
+/// prompt: the awaiting command (or tool name) and its cwd, then the
+/// allow/deny instruction. Extracted here as a pure function so the binary's
+/// real terminal surface is unit-testable and so the visual-docs capture can
+/// render the genuine prompt from a fixture pinned to this output (see
+/// `apps/web/screenshots/terminal.capture.ts`). The caller appends the trailing
+/// newline (`writeln!`), so this returns the line block without it.
+pub fn local_prompt(command: &str, cwd: &str) -> String {
+    format!(
+        "\nallowlister-remote approval required\n  command: {command}\n  cwd: {cwd}\nApprove here or in the web app. [a]llow / [d]eny: "
+    )
+}
+
 /// Map a line typed at the terminal onto an allow/deny verdict, ignoring
 /// anything we do not recognize so the operator can simply retry.
 pub fn parse_local_input(line: &str) -> Option<LocalDecision> {
@@ -165,6 +178,14 @@ pub fn interpret_decision(body: &str) -> RemoteDecision {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn local_prompt_lays_out_command_cwd_and_instruction() {
+        assert_eq!(
+            local_prompt("gh pr merge 42", "~/src/app"),
+            "\nallowlister-remote approval required\n  command: gh pr merge 42\n  cwd: ~/src/app\nApprove here or in the web app. [a]llow / [d]eny: "
+        );
+    }
 
     #[test]
     fn local_input_maps_synonyms_and_ignores_noise() {
