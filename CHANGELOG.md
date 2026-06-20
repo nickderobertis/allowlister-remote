@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/nickderobertis/allowlister-remote/compare/v0.4.0...v0.5.0) (2026-06-20)
+
+
+### Features
+
+* **web:** add system-aware dark/light theme with toggle ([#46](https://github.com/nickderobertis/allowlister-remote/issues/46)) ([d671be7](https://github.com/nickderobertis/allowlister-remote/commit/d671be71432578247950e90c2ed89845f2faa3a7))
+
 ## [0.4.0](https://github.com/nickderobertis/allowlister-remote/compare/v0.3.0...v0.4.0) (2026-06-20)
 
 
