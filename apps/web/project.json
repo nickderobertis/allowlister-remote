@@ -40,6 +40,14 @@
         "cwd": "apps/web"
       }
     },
+    "bench": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "npx vitest bench --config vitest.config.ts --run --outputJson ../../target/web-perf/bench.json",
+        "cwd": "apps/web"
+      },
+      "cache": false
+    },
     "build": {
       "executor": "nx:run-commands",
       "options": {
