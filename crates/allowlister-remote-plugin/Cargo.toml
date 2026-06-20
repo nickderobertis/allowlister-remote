@@ -1,6 +1,11 @@
 [package]
 name = "allowlister-remote-plugin"
-version = "0.3.0"
+# Placeholder: the real version is the release git tag, injected into the binary
+# at publish time via ALLOWLISTER_REMOTE_PLUGIN_VERSION (see publish.yml) — the
+# same stamp-from-tag pattern the npm packages use. Kept at 0.0.0 so the repo's
+# Cargo.toml and Cargo.lock never drift from each other (every `--locked` bench
+# step stays green); releases are tracked by .release-please-manifest.json.
+version = "0.0.0"
 edition = "2021"
 repository = "https://github.com/nickderobertis/allowlister-remote"
 

@@ -90,10 +90,14 @@ Use `just`; do not hand-roll equivalent commands.
 - PR titles use Conventional Commits and are required because squash commits drive releases.
 - Pre-1.0 bump policy: `feat` and breaking changes create a minor; `fix`, `perf`,
   `refactor`, and `build` create a patch; chores/docs/tests/styles do not release.
-- Release Please tracks the whole repo (root `.` package, Rust release-type), so both
-  web (`apps/web`) and plugin (`crates/**`) commits drive a single `vX.Y.Z` release; the
-  Rust release-type bumps the crate `Cargo.toml`/`Cargo.lock` via Cargo workspace support
-  so the built binary's `--version` matches the tag.
+- Release Please tracks the whole repo (root `.` package, `simple` release-type), so both
+  web (`apps/web`) and plugin (`crates/**`) commits drive a single `vX.Y.Z` release. It
+  owns the changelog, `.release-please-manifest.json`, and the tag only — it does not edit
+  any Cargo file, so `Cargo.toml`/`Cargo.lock` never drift and every `--locked` bench step
+  stays green. The crate `Cargo.toml` keeps a `0.0.0` placeholder; the published binary's
+  version is the git tag, injected at compile time via `ALLOWLISTER_REMOTE_PLUGIN_VERSION`
+  (`option_env!` in `main.rs`, set by `publish.yml`) — the same stamp-from-tag pattern the
+  npm packages use, so `--version` matches the npm package version.
 - After the main `check` workflow passes, Release Please opens or updates a release PR with `RELEASE_TOKEN` and turns on squash **auto-merge**, so the PR merges itself once required checks pass — no manual click. Merging tags `vX.Y.Z`, then the tag builds GitHub Release binaries, stamps every npm package from the tag, and publishes the per-platform packages followed by the parent `@nickderobertis/allowlister-remote-plugin` (which depends on them) with `NPM_TOKEN`.
 - GitHub should stay squash-only with auto-merge, branch deletion, required `check`,
   `install-smoke`, and `pr-title` checks, linear history, conversation resolution, and admin override.
