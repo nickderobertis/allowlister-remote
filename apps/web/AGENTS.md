@@ -93,3 +93,25 @@ the mouse follows on hover; the focused card is ringed and marked
   interaction in the mobile viewport. The `allowlister-binary.spec.ts` suite
   spawns the real `allowlister` binary and only runs where it is installed;
   `approval-flow.spec.ts` exercises the UI against the demo data path.
+
+## Performance suite
+
+Informational, never a gate (root `CLAUDE.md`). Three layers mirror the Rust
+plugin's bench suite:
+
+- **Micro-benchmarks** (`src/perf/*.bench.ts`, `nx run web:bench` /
+  `just bench-web`): Vitest benchmarks of the pure, render-free decision surface
+  in `approval.ts` (the `flaggedFragments`/`triggeredRules`/`requestHeadline`/
+  `toolParamSummary`/`remainingDisplay` functions). Keep React, the DOM, and the
+  network out of any timed loop — bench the same pure functions a render calls,
+  not components. `*.bench.ts` is excluded from the `*.test.ts` run and coverage.
+- **Bundle size** (`scripts/web-bundle-size.mjs` / `just bundle-size`): the
+  deterministic, trustworthy delta layer — gzip + raw of the client JS/CSS under
+  `.next/static`, aggregated by stable category (Turbopack content-hashes the
+  filenames, so only category totals are comparable across builds).
+- **Lighthouse** (`scripts/web-lighthouse.mjs` / `just lighthouse`): a runtime
+  audit of the built app over the demo data path; wall-clock and noise-prone, so
+  informational only. Needs Chrome on PATH (or `CHROME_PATH`).
+
+The `Performance` workflow's `web` job runs all three on every PR and posts a
+sticky comment plus a job summary.

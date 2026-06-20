@@ -35,6 +35,15 @@ Use `just`; do not hand-roll equivalent commands.
   and `scripts/{bench,bench-instructions,profile}.sh`. The `Performance` workflow
   (`bench.yml`) runs these on every PR and posts the numbers as a sticky comment plus a
   job summary; it is informational, never a required check.
+- `just bench-web` / `just bundle-size` / `just lighthouse` run the PWA's parallel
+  performance suite: Vitest micro-benchmarks of the pure decision/summarization surface
+  (`apps/web/src/perf/*.bench.ts`), a deterministic gzip bundle-size report
+  (`scripts/web-bundle-size.mjs`), and a Lighthouse runtime audit
+  (`scripts/web-lighthouse.mjs`). The same `Performance` workflow `web` job runs all three
+  on every PR and posts its own sticky comment plus job summary; like the plugin suite it
+  is informational, never a required check. Bundle size is the deterministic, trustworthy
+  delta (the web counterpart of the plugin's cachegrind instruction counts); the Vitest and
+  Lighthouse numbers are absolute and noise-prone, so treat small deltas with caution.
 - Release helpers live behind `npm run release:*`; tags, GitHub Releases, and npm publishing run in Actions.
 
 ## Quality and tests

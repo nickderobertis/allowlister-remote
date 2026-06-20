@@ -1,11 +1,13 @@
 name: Performance
 
-# Informational performance suite. On every PR it runs the Criterion engine
-# benchmarks and the hyperfine end-to-end CLI timings, then posts the numbers as
-# a sticky PR comment and a job summary. It is deliberately NOT a quality gate:
-# benchmark timings are noisy on shared CI runners, so this job reports rather
-# than blocks — keep it out of branch-protection's required checks. (The hard,
-# deterministic gate is check.yml / `just check`.)
+# Informational performance suite. On every PR the `bench` job runs the plugin's
+# Criterion engine benchmarks and hyperfine CLI timings, and the `web` job runs
+# the PWA's Vitest micro-benchmarks, deterministic bundle-size report, and a
+# Lighthouse runtime audit. Each posts its own sticky PR comment and a job
+# summary. It is deliberately NOT a quality gate: benchmark timings are noisy on
+# shared CI runners, so these jobs report rather than block — keep them out of
+# branch-protection's required checks. (The hard, deterministic gate is
+# check.yml / `just check`.)
 
 on:
   push:
@@ -169,6 +171,145 @@ jobs:
             const fs = require('fs');
             const marker = '<!-- allowlister-remote-perf -->';
             const body = `${marker}\n${fs.readFileSync('target/bench/report.md', 'utf8')}`;
+            const { owner, repo } = context.repo;
+            const issue_number = context.payload.pull_request.number;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner, repo, issue_number,
+            });
+            const existing = comments.find((c) => c.body && c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }
+
+  web:
+    name: web PWA
+    # A single, consistent runner so the Lighthouse timings stay comparable; the
+    # bundle-size numbers are deterministic regardless of host.
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history so the PR base commit is available for the bundle-size
+          # comparison.
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+
+      - name: Build the PWA
+        run: npx nx run web:build
+
+      # Pure-function micro-benchmarks (the Criterion analogue): absolute numbers,
+      # rendered to markdown from the JSON the run exports.
+      - name: Micro-benchmarks (Vitest)
+        run: |
+          npx nx run web:bench
+          node scripts/web-bench-report.mjs target/web-perf/bench.json \
+            | tee target/web-perf/bench.md
+
+      # Deterministic: the trustworthy delta layer (the cachegrind analogue).
+      - name: Bundle size (deterministic)
+        run: node scripts/web-bundle-size.mjs
+
+      # Wall-clock and noisy (the hyperfine analogue); informational only. CI
+      # ubuntu images ship Google Chrome, which chrome-launcher finds. Best
+      # effort: a launch failure must not sink the deterministic layers above.
+      - name: Lighthouse runtime audit
+        continue-on-error: true
+        run: node scripts/web-lighthouse.mjs
+
+      # Best effort: the PR base may predate this suite (e.g. the PR that adds
+      # it), so a failure here is expected and non-fatal — the job still reports
+      # absolute numbers, just without a size delta. Reuses the head's installed
+      # deps to build the base, avoiding a second `npm ci`.
+      - name: Compare bundle size against PR base
+        id: basecmp
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          base='${{ github.event.pull_request.base.sha }}'
+          # The report script must be the PR's copy even while the worktree sits
+          # at base (where it may not exist yet); parked one level under the repo
+          # root so its own root resolution still finds this repo.
+          cp scripts/web-bundle-size.mjs target/web-bundle-size-pr.mjs
+          git checkout -q "$base"
+          npx nx run web:build
+          BUNDLE_OUT="$PWD/target/web-perf-base" node target/web-bundle-size-pr.mjs
+          git checkout -q -
+          node scripts/web-bundle-size.mjs report \
+            target/web-perf-base/bundle-size.tsv target/web-perf/bundle-size.tsv \
+            | tee target/web-perf/bundle-size-delta.md
+
+      - name: Assemble report
+        run: |
+          set -euo pipefail
+          report=target/web-perf/report.md
+          {
+            echo "## 🌐 PWA performance report"
+            echo
+            echo "Commit \`${GITHUB_SHA::8}\` on \`ubuntu-latest\`. Bundle size is"
+            echo "deterministic; Lighthouse timings are informational — shared-runner"
+            echo "noise means treat small deltas with caution."
+            echo
+            echo "### Client bundle size (gzip; deterministic)"
+            echo
+            if [ -s target/web-perf/bundle-size-delta.md ]; then
+              cat target/web-perf/bundle-size-delta.md
+            else
+              cat target/web-perf/bundle-size.md
+              echo
+              echo "_No base comparison: the bundle-size report is not present on the"
+              echo "base ref yet (expected on the PR that introduces it). Future PRs"
+              echo "will show the size delta here._"
+            fi
+            echo
+            echo "### Lighthouse runtime audit (informational)"
+            echo
+            if [ -s target/web-perf/lighthouse.md ]; then
+              cat target/web-perf/lighthouse.md
+            else
+              echo "_Lighthouse did not produce a result this run (see the job log)._"
+            fi
+            echo
+            echo "### Decision-path micro-benchmarks (Vitest)"
+            echo
+            cat target/web-perf/bench.md
+          } > "$report"
+          cat "$report" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload raw results
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-perf-results
+          path: |
+            target/web-perf/bench.json
+            target/web-perf/bench.md
+            target/web-perf/bundle-size.json
+            target/web-perf/bundle-size.tsv
+            target/web-perf/bundle-size.md
+            target/web-perf/bundle-size-delta.md
+            target/web-perf/lighthouse.json
+            target/web-perf/lighthouse.md
+          if-no-files-found: warn
+
+      # Same-repo PRs only: fork PRs carry a read-only token and cannot comment,
+      # so they fall back to the job summary + artifact above.
+      - name: Post sticky PR comment
+        if: >-
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const marker = '<!-- allowlister-remote-web-perf -->';
+            const body = `${marker}\n${fs.readFileSync('target/web-perf/report.md', 'utf8')}`;
             const { owner, repo } = context.repo;
             const issue_number = context.payload.pull_request.number;
             const comments = await github.paginate(github.rest.issues.listComments, {

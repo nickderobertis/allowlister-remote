@@ -89,3 +89,23 @@ bench-cli-smoke:
 # Sampling/instruction profiler (samply or callgrind). E.g. `just profile cli`.
 profile *args:
     @bash scripts/profile.sh {{args}}
+
+# Web PWA performance suite (informational — measured, not gated). Mirrors the
+# plugin suite above: Vitest micro-benchmarks of the pure decision surface, a
+# deterministic client bundle-size report, and a Lighthouse runtime audit. The
+# `Performance` workflow (bench.yml) runs these on every PR and posts the numbers
+# as a sticky comment plus a job summary.
+
+# Vitest micro-benchmarks of the pure decision/summarization functions.
+bench-web:
+    npx nx run web:bench
+
+# Deterministic client bundle-size report (gzip + raw). Builds the app first.
+bundle-size:
+    npx nx run web:build
+    node scripts/web-bundle-size.mjs
+
+# Lighthouse runtime audit of the built PWA (needs Chrome on PATH or CHROME_PATH).
+lighthouse:
+    npx nx run web:build
+    node scripts/web-lighthouse.mjs
