@@ -58,7 +58,11 @@
         "build",
         {
           "target": "build",
-          "projects": ["allowlister-remote-plugin"]
+          "projects": [
+            "allowlister-remote-plugin",
+            "allowlister-remote-broker",
+            "allowlister-remote-daemon"
+          ]
         }
       ]
     },
@@ -79,5 +83,9 @@
       }
     }
   },
-  "implicitDependencies": ["allowlister-remote-plugin"]
+  "implicitDependencies": [
+    "allowlister-remote-plugin",
+    "allowlister-remote-broker",
+    "allowlister-remote-daemon"
+  ]
 }

@@ -180,13 +180,23 @@ the size-optimized plugin binary):
   gated on `NEXT_PUBLIC_ALLOWLISTER_BROKER_URL`. **Done + tested** (SW bridge and
   page bridge unit-tested; the live `App` wiring is e2e-scoped).
 
+* **End-to-end** — two complementary suites exercise the real built artifacts:
+  * `crates/allowlister-remote-e2e` (process-level, 5 tests): spawns the real
+    **broker + daemon + plugin binaries** together; a WS client stands in for the
+    PWA. Covers the full chain, the plugin **auto-starting the real daemon**, and
+    per-binary smokes (broker `/healthz`, plugin `--version`/static-allow).
+  * `apps/web/e2e/broker-realtime.spec.ts` (Playwright, desktop + mobile): the
+    real broker + daemon + plugin binaries **and the real service worker / PWA**
+    in Chromium. A request opened by the plugin reaches the inbox over the broker
+    and an Allow click routes the decision SW → broker → daemon → plugin. The
+    broker URL is supplied at runtime via `/api/config`. **Done.**
+
 Remaining:
 
 * **Packaging**: ship the daemon binary alongside the plugin in the per-platform
   npm packages; broker deployment + `wss://` TLS.
 * **Heartbeat/reconnect refinements**, per-user session scoping, and the
   multi-instance pub/sub (Redis) for horizontal broker scale.
-* **Playwright e2e** through the full broker + daemon + plugin chain.
 
 ## 9. Phased rollout
 
@@ -194,8 +204,9 @@ Remaining:
 2. ✅ Daemon (unix multiplexing + single upstream + plugin routing).
 3. ✅ Plugin daemon-client + auto-start (HTTP fallback retained).
 4. ✅ Service worker + page wiring (live sync alongside the poll fallback).
-5. ⏳ Heartbeat/reconnect refinements, packaging, `wss://`, session scoping.
-6. (If needed) shared pub/sub for horizontal scale.
+5. ✅ End-to-end coverage: process-level (real binaries) + Playwright (real PWA/SW).
+6. ⏳ Heartbeat/reconnect refinements, packaging, `wss://`, session scoping.
+7. (If needed) shared pub/sub for horizontal scale.
 
 ## 10. Early prototypes
 

@@ -1,5 +1,6 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { createApprovalApi } from "./api";
+import { normalizeBrokerRequest } from "./approval-normalize";
 import { connectBroker } from "./pwa/broker-bridge";
 import {
   flaggedFragments,
@@ -663,6 +664,13 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const isDesktop = useIsDesktop();
+  // When the broker is live, decisions must travel back through it to the waiting
+  // plugin (the request lives in the broker, not the Next store). Held in a ref so
+  // `decide` can reach it without re-rendering on connect.
+  const brokerRef = useRef<{
+    decide: (decision: { requestId: string; verdict: "allow" | "deny"; reason: string }) => void;
+    close: () => void;
+  } | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -690,18 +698,30 @@ function App() {
   // Realtime sync: when a broker is configured, the service worker holds one
   // WebSocket to it and relays live updates, so approvals appear and dismiss
   // instantly instead of waiting for the 2s poll above (which stays as the
-  // fallback). Exercised against the real broker + service worker, not jsdom.
+  // fallback). The broker URL is fetched at runtime from /api/config. Requires a
+  // service worker, so this is inert under jsdom and exercised via e2e.
   /* v8 ignore start -- realtime path runs against the broker; covered by e2e. */
   useEffect(() => {
-    const brokerUrl = process.env.NEXT_PUBLIC_ALLOWLISTER_BROKER_URL;
-    if (!brokerUrl) return;
-    const bridge = connectBroker(brokerUrl, {
-      onSnapshot: (snapshot) => setRequests(snapshot as ApprovalRequest[]),
-      onAdded: (request) => setRequests((current) => [...current, request as ApprovalRequest]),
-      onResolved: (id) =>
-        setRequests((current) => current.filter((request) => request.id !== id)),
-    });
-    return () => bridge.close();
+    if (!navigator.serviceWorker) return;
+    let cancelled = false;
+    void fetch("/api/config")
+      .then((response) => response.json())
+      .then((config: { brokerUrl?: string | null }) => {
+        if (cancelled || !config.brokerUrl) return;
+        brokerRef.current = connectBroker(config.brokerUrl, {
+          onSnapshot: (snapshot) => setRequests(snapshot.map(normalizeBrokerRequest)),
+          onAdded: (request) =>
+            setRequests((current) => [...current, normalizeBrokerRequest(request)]),
+          onResolved: (id) =>
+            setRequests((current) => current.filter((request) => request.id !== id)),
+        });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+      brokerRef.current?.close();
+      brokerRef.current = null;
+    };
   }, []);
   /* v8 ignore stop */
 
@@ -716,11 +736,11 @@ function App() {
   }, [requests.length]);
 
   async function decide(id: string, verdict: Verdict) {
-    await api.decide({
-      requestId: id,
-      verdict,
-      reason: `${verdict}ed in allowlister-remote`,
-    });
+    const decision = { requestId: id, verdict, reason: `${verdict}ed in allowlister-remote` };
+    // Route through the broker when it is live (the plugin is waiting there); the
+    // HTTP call covers the polling path and is a harmless no-op otherwise.
+    brokerRef.current?.decide(decision);
+    await api.decide(decision);
     setRequests((current) => current.filter((request) => request.id !== id));
     setSelectedId((current) => (current === id ? null : current));
   }
