@@ -14,6 +14,14 @@ on:
     types: [opened, synchronize, reopened, closed]
   push:
     branches: [main]
+  workflow_dispatch:
+    # On-demand canonical redeploy. A push to main only redeploys the canonical
+    # gallery if its visual-docs run runs to completion, but a run can be
+    # superseded when several merges land in quick succession (e.g. a release
+    # burst), leaving the deployed /<arch>/ gallery a commit or two behind main.
+    # Dispatching this workflow on main recaptures and redeploys the canonical
+    # gallery without waiting for the next push. Non-PR event, so the concurrency
+    # rule below queues it rather than cancelling it.
   schedule:
     # Monthly: prune the gh-pages gallery history so the committed PNGs do not grow
     # the branch without bound. Keeps the 20 most recent versions by default (see
@@ -26,13 +34,13 @@ permissions:
 
 jobs:
   visual-docs:
-    uses: nickderobertis/screencomp/.github/workflows/visual-docs-reusable.yml@v0.4.0
+    uses: nickderobertis/screencomp/.github/workflows/visual-docs-reusable.yml@v0.4.1
     with:
       # Pin the screencomp CLI too: the reusable workflow's internal composite
       # actions float on the `@v0` major tag, so pinning only the workflow ref
-      # still let the v0.4.0 CLI roll in unannounced. Pinning the version here
+      # still let the v0.4.1 CLI roll in unannounced. Pinning the version here
       # keeps the gate's behaviour fixed until we deliberately bump it.
-      screencomp-version: v0.4.0
+      screencomp-version: v0.4.1
       # Strict gate (the safe default): CI FAILS if the capture drifts from the
       # committed baseline. Regenerate the baseline locally with the pre-push
       # guard (.githooks/pre-push) and commit it. To switch to CI auto-accept
