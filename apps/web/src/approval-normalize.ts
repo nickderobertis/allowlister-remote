@@ -1,8 +1,8 @@
 import type { AllowlisterFragment, ApprovalRequest, ApprovalVerdict, ToolCall } from "./types";
 
-// The plugin forwards allowlister's protocol-v2 payload verbatim (plus the app's
-// own timeoutMs), so this mirrors that wire shape. Everything is unknown because
-// it crosses a process boundary; we narrow it as we build the request. Shared by
+// The plugin forwards allowlister's protocol-v2 payload verbatim, so this mirrors
+// that wire shape. Everything is unknown because it crosses a process boundary; we
+// narrow it as we build the request. Shared by
 // the HTTP store (server) and the broker bridge (client) so both paths produce
 // exactly the same normalized ApprovalRequest the UI renders.
 export type PluginPayload = {
@@ -72,12 +72,7 @@ function readTool(raw: unknown): ToolCall {
 
 // Build the normalized request from a raw plugin payload and an id assigned by
 // the caller (a fresh uuid in the store, the daemon-assigned id over the broker).
-export function normalizePluginRequest(
-  input: PluginPayload,
-  id: string,
-  timeoutMs: number,
-): ApprovalRequest {
-  const now = Date.now();
+export function normalizePluginRequest(input: PluginPayload, id: string): ApprovalRequest {
   const base = {
     id,
     protocolVersion: Number(input.protocol_version ?? 2),
@@ -85,10 +80,6 @@ export function normalizePluginRequest(
     cwd: String(input.cwd ?? ""),
     currentVerdict: asVerdict(input.current_verdict),
     currentReason: String(input.current_reason ?? ""),
-    createdAt: new Date(now).toISOString(),
-    // A non-positive timeout means the request waits indefinitely for either a
-    // remote or a local-terminal decision, so it never expires on its own.
-    expiresAt: timeoutMs > 0 ? new Date(now + timeoutMs).toISOString() : null,
   };
 
   return input.subject === "tool"
@@ -106,10 +97,9 @@ export function normalizePluginRequest(
 
 // Normalize a request delivered over the broker. That object is the plugin's
 // `build_create_body` output: the verbatim allowlister payload plus the assigned
-// `id` and `timeoutMs`.
+// `id`.
 export function normalizeBrokerRequest(raw: unknown): ApprovalRequest {
   const record = asRecord(raw) as Record<string, unknown> & PluginPayload;
   const id = typeof record.id === "string" ? record.id : crypto.randomUUID();
-  const timeoutMs = typeof record.timeoutMs === "number" ? record.timeoutMs : 0;
-  return normalizePluginRequest(record, id, timeoutMs);
+  return normalizePluginRequest(record, id);
 }

@@ -27,15 +27,11 @@ mod support;
 
 use support::{chain, corpus, decision_bodies, local_inputs, payload};
 
-/// The default (wait-indefinitely) timeout the binary passes; held constant so
-/// the benches isolate parsing and body construction, not arithmetic.
-const TIMEOUT_MS: u64 = 0;
-
 fn bench_triage(c: &mut Criterion) {
     let mut group = c.benchmark_group("triage");
     for (name, body) in corpus() {
         group.bench_with_input(BenchmarkId::from_parameter(name), &body, |b, body| {
-            b.iter(|| triage(black_box(body), black_box(TIMEOUT_MS)));
+            b.iter(|| triage(black_box(body)));
         });
     }
     group.finish();
@@ -62,7 +58,7 @@ fn bench_build_create_body(c: &mut Criterion) {
         // Parse once, outside the timer: this group isolates body construction.
         let input: Value = serde_json::from_str(&body).expect("corpus payload is valid JSON");
         group.bench_with_input(BenchmarkId::from_parameter(name), &input, |b, input| {
-            b.iter(|| build_create_body(black_box(input), black_box(TIMEOUT_MS)));
+            b.iter(|| build_create_body(black_box(input)));
         });
     }
     group.finish();
@@ -95,7 +91,7 @@ fn bench_triage_scaling(c: &mut Criterion) {
     for len in [4usize, 32, 256] {
         let body = payload(&chain(len), "defer", None);
         group.bench_with_input(BenchmarkId::from_parameter(len), &body, |b, body| {
-            b.iter(|| triage(black_box(body), black_box(TIMEOUT_MS)));
+            b.iter(|| triage(black_box(body)));
         });
     }
     group.finish();

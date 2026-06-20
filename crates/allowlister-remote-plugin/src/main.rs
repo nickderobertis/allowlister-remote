@@ -16,7 +16,7 @@ use std::io::{self, BufRead, BufReader, Read, Write};
 use std::process;
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 #[derive(Debug, Deserialize)]
 struct CreateResponse {
@@ -166,9 +166,6 @@ fn main() {
     )
     .trim_end_matches('/')
     .to_string();
-    // A timeout of 0 (the default) means wait indefinitely for a decision from
-    // either the local terminal or the web app.
-    let timeout_ms: u64 = arg(&args, "--timeout-ms", "0").parse().unwrap_or(0);
     let poll_ms: u64 = arg(&args, "--poll-ms", "150").parse().unwrap_or(150);
 
     // Daemon mode (opt-in, Unix only): when a broker URL or daemon socket is
@@ -211,12 +208,7 @@ fn main() {
                     .and_then(Value::as_str)
                     .unwrap_or("")
                     .to_string();
-                daemon::run_via_daemon(
-                    stream,
-                    build_create_body(&input, timeout_ms),
-                    &summary,
-                    &cwd,
-                );
+                daemon::run_via_daemon(stream, build_create_body(&input), &summary, &cwd);
             }
             // Daemon unreachable: fall through to the direct HTTP path.
         }
@@ -230,7 +222,7 @@ fn main() {
         .expect("build HTTP client");
     let create: CreateResponse = client
         .post(format!("{server_url}/api/plugin/requests"))
-        .json(&build_create_body(&input, timeout_ms))
+        .json(&build_create_body(&input))
         .send()
         .and_then(|response| response.error_for_status())
         .and_then(|response| response.json())
@@ -247,9 +239,6 @@ fn main() {
     let cwd = input.get("cwd").and_then(Value::as_str).unwrap_or("");
     let (mut local_rx, mut status_writer) = start_local_prompt(&summary, cwd);
 
-    // A zero timeout waits indefinitely; a positive timeout keeps the legacy
-    // bounded behavior for callers that opt into it.
-    let deadline = (timeout_ms > 0).then(|| Instant::now() + Duration::from_millis(timeout_ms));
     let poll_interval = Duration::from_millis(poll_ms);
 
     loop {
@@ -270,15 +259,6 @@ fn main() {
             // No local terminal, or just nothing typed this interval.
             None => thread::sleep(poll_interval),
             Some(Err(RecvTimeoutError::Timeout)) => {}
-        }
-
-        if let Some(deadline) = deadline {
-            if Instant::now() >= deadline {
-                write_response(
-                    "ask",
-                    format!("allowlister-remote timed out after {timeout_ms}ms"),
-                );
-            }
         }
     }
 }

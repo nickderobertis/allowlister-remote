@@ -1,12 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  flaggedFragments,
-  remainingDisplay,
-  requestHeadline,
-  secondsRemaining,
-  toolParamSummary,
-  triggeredRules,
-} from "./approval";
+import { flaggedFragments, requestHeadline, toolParamSummary, triggeredRules } from "./approval";
 import { demoRequests } from "./fixtures";
 import {
   isShellRequest,
@@ -76,31 +69,5 @@ describe("tool approval helpers", () => {
     expect(toolParamSummary(toolFixture("demo-tool-write"))).toBe(
       "path = /repo/.github/workflows/deploy.yml",
     );
-  });
-});
-
-describe("countdown helpers", () => {
-  it("never returns a negative countdown", () => {
-    expect(secondsRemaining(script, Date.parse(script.expiresAt ?? "") + 1_000)).toBe(0);
-  });
-
-  it("treats a request without an expiry as waiting indefinitely", () => {
-    const indefinite = { ...script, expiresAt: null };
-    expect(secondsRemaining(indefinite)).toBeNull();
-    expect(remainingDisplay(indefinite)).toEqual({
-      value: "∞",
-      unit: "waiting",
-      label: "waiting for a decision",
-      compact: "∞",
-    });
-  });
-
-  it("formats a live countdown for requests that expire", () => {
-    expect(remainingDisplay(script, Date.parse(script.expiresAt ?? "") - 5_000)).toEqual({
-      value: "5",
-      unit: "sec",
-      label: "5 seconds remaining",
-      compact: "5s",
-    });
   });
 });

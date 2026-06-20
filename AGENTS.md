@@ -61,11 +61,10 @@ Use `just`; do not hand-roll equivalent commands.
   viewports through the actual allowlister binary, Rust plugin process, Next.js app
   server over HTTP, remote allow/deny decisions, and static allow/deny no-wait
   paths.
-- Approvals have no timeout by default: the plugin waits indefinitely and presents
+- Approvals have no timeout: the plugin waits indefinitely and presents
   the same request at the local terminal (via `/dev/tty`) and in the web app at the
   same time. Whichever side decides first wins; a local-terminal decision is posted
-  back to the server so the pending web approval is dismissed. A positive
-  `--timeout-ms` opts back into bounded waiting.
+  back to the server so the pending web approval is dismissed.
 - After a release publishes, the `e2e-smoke` workflow re-runs the approval-flow e2e
   against the plugin package downloaded from the public npm registry (rather than a
   locally built binary), so the published artifact is verified end-to-end. It first

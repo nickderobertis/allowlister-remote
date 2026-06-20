@@ -9,7 +9,7 @@
 //! (`benches/engine.rs`) without spawning a process or opening a socket.
 
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::Value;
 
 /// A decision captured from the operator at the local terminal.
 pub struct LocalDecision {
@@ -72,17 +72,12 @@ pub fn static_decision(stdin: &str) -> Option<bool> {
 /// Build the JSON body POSTed to open an approval request. allowlister's
 /// protocol-v2 payload is forwarded verbatim — `protocol_version`, `subject`,
 /// `command`, `fragments`, `tool`, and the pre-plugin verdict/reason — so the
-/// server records the real structured decomposition instead of re-deriving it,
-/// and the app's own `timeoutMs` is layered on top.
-pub fn build_create_body(input: &Value, timeout_ms: u64) -> Value {
-    let mut body = match input {
+/// server records the real structured decomposition instead of re-deriving it.
+pub fn build_create_body(input: &Value) -> Value {
+    match input {
         Value::Object(_) => input.clone(),
         _ => Value::Object(serde_json::Map::new()),
-    };
-    if let Value::Object(map) = &mut body {
-        map.insert("timeoutMs".to_string(), json!(timeout_ms));
     }
-    body
 }
 
 /// A short human label for the local-terminal prompt: the shell command when
@@ -114,12 +109,12 @@ pub enum Triage {
 /// a static verdict or produce the create-request body to POST. Mirrors the
 /// composition the binary runs before it touches the network, so the benches
 /// track the real per-invocation cost.
-pub fn triage(stdin: &str, timeout_ms: u64) -> Result<Triage, serde_json::Error> {
+pub fn triage(stdin: &str) -> Result<Triage, serde_json::Error> {
     let input: Value = serde_json::from_str(stdin)?;
     if is_static_decision(&input) {
         Ok(Triage::Defer)
     } else {
-        Ok(Triage::NeedsApproval(build_create_body(&input, timeout_ms)))
+        Ok(Triage::NeedsApproval(build_create_body(&input)))
     }
 }
 
@@ -185,10 +180,9 @@ mod tests {
         // A protocol-v2 shell payload: the create body forwards the structured
         // fragments verbatim, not just the flat command/verdict fields.
         let body = r#"{"protocol_version":2,"subject":"shell","current_verdict":"defer","command":"gh pr merge 42","fragments":[{"display":"gh pr merge 42","verdict":"defer","role":"standalone","rule":null}]}"#;
-        match triage(body, 0).expect("valid payload") {
+        match triage(body).expect("valid payload") {
             Triage::NeedsApproval(create) => {
                 assert_eq!(create["command"], "gh pr merge 42");
-                assert_eq!(create["timeoutMs"], 0);
                 assert_eq!(create["subject"], "shell");
                 assert_eq!(create["protocol_version"], 2);
                 assert_eq!(create["fragments"][0]["display"], "gh pr merge 42");
@@ -196,11 +190,11 @@ mod tests {
             Triage::Defer => panic!("defer verdict must reach the server"),
         }
         assert_eq!(
-            triage(r#"{"current_verdict":"allow"}"#, 0).expect("valid"),
+            triage(r#"{"current_verdict":"allow"}"#).expect("valid"),
             Triage::Defer
         );
         assert!(matches!(
-            triage(r#"{"current_verdict":"ask"}"#, 0).expect("valid"),
+            triage(r#"{"current_verdict":"ask"}"#).expect("valid"),
             Triage::NeedsApproval(_)
         ));
     }
@@ -232,13 +226,12 @@ mod tests {
     fn create_body_forwards_tool_calls_verbatim() {
         let body = r#"{"protocol_version":2,"subject":"tool","current_verdict":"defer","tool":{"name":"mcp__github__create_issue","capability":"mcp","params":{},"raw":{"repo":"app"}}}"#;
         let input: Value = serde_json::from_str(body).expect("valid");
-        let create = build_create_body(&input, 5000);
+        let create = build_create_body(&input);
         assert_eq!(create["subject"], "tool");
         assert_eq!(create["tool"]["name"], "mcp__github__create_issue");
         assert_eq!(create["tool"]["raw"]["repo"], "app");
-        assert_eq!(create["timeoutMs"], 5000);
-        // A non-object payload degrades to just the timeout rather than panicking.
-        assert_eq!(build_create_body(&Value::Null, 1)["timeoutMs"], 1);
+        // A non-object payload degrades to an empty object rather than panicking.
+        assert_eq!(build_create_body(&Value::Null), serde_json::json!({}));
     }
 
     #[test]
@@ -256,7 +249,7 @@ mod tests {
 
     #[test]
     fn triage_surfaces_invalid_json() {
-        assert!(triage("not json", 0).is_err());
+        assert!(triage("not json").is_err());
     }
 
     #[test]

@@ -23,7 +23,6 @@ describe("Next approval API routes", () => {
         cwd: "/workspace/repo",
         current_verdict: "defer",
         current_reason: "requires human review",
-        timeoutMs: 60_000,
       }),
     );
     expect(created.status).toBe(200);

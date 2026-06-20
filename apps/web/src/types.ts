@@ -41,8 +41,6 @@ interface ApprovalRequestBase {
   cwd: string;
   currentVerdict: ApprovalVerdict;
   currentReason: string;
-  createdAt: string;
-  expiresAt: string | null;
 }
 
 export interface ShellApprovalRequest extends ApprovalRequestBase {

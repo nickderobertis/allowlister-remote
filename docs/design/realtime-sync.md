@@ -26,9 +26,9 @@ Three HTTP channels mediated by the Next.js app's in-memory store
 
 ### Why change it
 
-* **Churn over long waits.** Approvals have *no timeout by default*
-  (`timeoutMs <= 0` ⇒ `expiresAt: null`), so a request can sit for days. At a
-  150 ms poll that is ~24k requests/hour, ~575k/day, for a single approval.
+* **Churn over long waits.** Approvals have *no timeout* — a request waits
+  indefinitely and can sit for days. At a 150 ms poll that is ~24k
+  requests/hour, ~575k/day, for a single approval.
 * **Latency floor.** 150 ms polling averages ~75 ms delivery; the browser's 2 s
   poll is far worse.
 * **Per-invocation connections.** The plugin is spawned **once per gated
@@ -144,7 +144,7 @@ when they drop.
 | Plugin killed / command Ctrl-C'd | Socket close ⇒ daemon **withdraws** the request upstream so the PWA stops showing a stale prompt. *(implemented + tested)* |
 | Daemon disconnects from broker | Broker withdraws that daemon's pending requests so no PWA shows a dead prompt; on a transient drop the daemon reconnects and **re-announces**, restoring the cards. *(implemented + tested)* |
 | Broker restarts mid-wait | Daemon reconnects (backoff) and re-announces still-pending requests to the fresh broker; a new PWA learns them and can decide — the original plugin, still waiting, gets the decision. *(implemented + tested)* |
-| Broker unreachable | Daemon retries with capped backoff; plugin honors `--timeout-ms` if set, else waits. |
+| Broker unreachable | Daemon retries with capped backoff; the plugin waits indefinitely. |
 
 Recommended default: **fail-closed** when no decision channel can be established.
 

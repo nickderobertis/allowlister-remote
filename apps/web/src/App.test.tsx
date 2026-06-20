@@ -58,24 +58,24 @@ describe("App inbox", () => {
       await screen.findByRole("button", { name: "Open approval for npm publish --access public" }),
     );
 
-    expect(screen.getByText(/Approve the action/)).toBeInTheDocument();
+    expect(screen.getByText("Approve shell command")).toBeInTheDocument();
 
     // Only the two tripping fragments appear under "needs your attention".
     const flagged = screen.getByLabelText("Flagged commands");
     expect(within(flagged).getByText("npm publish --access public")).toBeInTheDocument();
     expect(within(flagged).getByText("git push origin main --tags")).toBeInTheDocument();
     expect(within(flagged).queryByText("npm ci")).not.toBeInTheDocument();
-
-    // The full decomposition still lists every fragment with its verdict.
-    expect(screen.getByText("ask before publishing a package")).toBeInTheDocument();
+    expect(within(flagged).getByText("ask before publishing a package")).toBeInTheDocument();
     expect(screen.getByText("/workspace/acme-api")).toBeInTheDocument();
 
-    await user.click(screen.getByText("Show full script"));
-    const fullScript = screen.getByText(
-      (_, element) =>
-        element?.tagName === "PRE" && (element.textContent ?? "").includes("set -euo pipefail"),
-    );
-    expect(fullScript.textContent).toContain('echo "release complete"');
+    // The interactive script lists every fragment in order, colored by permission.
+    const script = screen.getByLabelText("Script");
+    expect(within(script).getByText("set -euo pipefail")).toBeInTheDocument();
+    expect(within(script).getByText('echo "release complete"')).toBeInTheDocument();
+
+    // Clicking a fragment reveals that fragment's details (role, rule, reason).
+    await user.click(within(script).getByRole("button", { name: /npm publish --access public/ }));
+    expect(within(script).getByText(/needs approval per rule/)).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Allow once" }));
     await waitFor(() => {
@@ -93,15 +93,16 @@ describe("App inbox", () => {
 
     expect(screen.getByText("Approve this tool call")).toBeInTheDocument();
 
-    // Formatted view shows the canonical capability and the raw input.
+    // Formatted view shows the capability and the tool's arguments.
     const formatted = screen.getByLabelText("Tool call formatted view");
     expect(within(formatted).getByText("capability: mcp")).toBeInTheDocument();
     expect(within(formatted).getByText("Production is down")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "JSON" }));
     const json = screen.getByLabelText("Tool call JSON view");
-    expect(json.textContent).toContain('"capability": "mcp"');
-    expect(json.textContent).toContain('"name": "mcp__github__create_issue"');
+    // The JSON view shows just the arguments the agent passed.
+    expect(json.textContent).toContain('"title": "Production is down"');
+    expect(json.textContent).toContain('"owner": "acme"');
   });
 
   it("returns to the inbox from the expanded view via the back control", async () => {
@@ -136,7 +137,7 @@ describe("App inbox", () => {
 });
 
 describe("App keyboard navigation (desktop)", () => {
-  it("moves the inbox cursor with J/K and the arrow keys", async () => {
+  it("moves the inbox cursor with the up and down arrow keys", async () => {
     const user = userEvent.setup();
     render(<App />);
     await screen.findByRole("list", { name: "Pending approvals" });
@@ -144,13 +145,13 @@ describe("App keyboard navigation (desktop)", () => {
     // The first card is the cursor by default.
     expect(focusedHeadline()).toContain("gh pr merge 42 --squash --delete-branch");
 
-    await user.keyboard("j");
+    await user.keyboard("{ArrowDown}");
     expect(focusedHeadline()).toContain("npm publish --access public");
 
     await user.keyboard("{ArrowDown}");
     expect(focusedHeadline()).toContain("mcp__github__create_issue");
 
-    await user.keyboard("k");
+    await user.keyboard("{ArrowUp}");
     expect(focusedHeadline()).toContain("npm publish --access public");
 
     await user.keyboard("{ArrowUp}");
@@ -163,7 +164,7 @@ describe("App keyboard navigation (desktop)", () => {
     await screen.findByRole("list", { name: "Pending approvals" });
 
     await user.keyboard("{Enter}");
-    expect(screen.getByText(/Approve the action/)).toBeInTheDocument();
+    expect(screen.getByText("Approve shell command")).toBeInTheDocument();
 
     await user.keyboard("{Escape}");
     expect(await screen.findByRole("list", { name: "Pending approvals" })).toBeInTheDocument();
@@ -187,7 +188,7 @@ describe("App keyboard navigation (desktop)", () => {
     render(<App />);
     await screen.findByRole("list", { name: "Pending approvals" });
 
-    await user.keyboard("j");
+    await user.keyboard("{ArrowDown}");
     await user.keyboard("d");
 
     await waitFor(() => {
@@ -246,21 +247,25 @@ describe("App keyboard navigation (desktop)", () => {
     expect(screen.getByLabelText("Tool call formatted view")).toBeInTheDocument();
   });
 
-  it("toggles the full shell script with the S key", async () => {
+  it("reveals a script fragment's details when it is clicked", async () => {
     const user = userEvent.setup();
     render(<App />);
 
     await user.click(
       await screen.findByRole("button", { name: "Open approval for npm publish --access public" }),
     );
-    const details = screen.getByText("Show full script").closest("details");
-    expect(details).not.toHaveAttribute("open");
+    const script = screen.getByLabelText("Script");
+    const fragment = within(script).getByRole("button", {
+      name: /git push origin main --tags/,
+    });
+    expect(fragment).toHaveAttribute("aria-expanded", "false");
 
-    await user.keyboard("s");
-    expect(details).toHaveAttribute("open");
+    await user.click(fragment);
+    expect(fragment).toHaveAttribute("aria-expanded", "true");
+    expect(within(script).getByText("ask before pushing to a remote")).toBeInTheDocument();
 
-    await user.keyboard("s");
-    expect(details).not.toHaveAttribute("open");
+    await user.click(fragment);
+    expect(fragment).toHaveAttribute("aria-expanded", "false");
   });
 
   it("focuses a card on hover so the keyboard acts on it", async () => {
@@ -280,7 +285,7 @@ describe("App keyboard navigation (desktop)", () => {
 
     // Focus an action button: navigation keys must not hijack native behavior.
     screen.getByRole("button", { name: "Allow gh pr merge 42 --squash --delete-branch" }).focus();
-    await user.keyboard("j");
+    await user.keyboard("{ArrowDown}");
     expect(focusedHeadline()).toContain("gh pr merge 42 --squash --delete-branch");
 
     // Modifier combos are left for the browser.

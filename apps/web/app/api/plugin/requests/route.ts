@@ -3,7 +3,6 @@ import { enqueuePluginRequest } from "../../../../src/server/store";
 
 export async function POST(request: Request) {
   const body = await request.json();
-  const timeoutMs = Number(body.timeoutMs ?? 0);
-  const approval = enqueuePluginRequest(body, timeoutMs);
+  const approval = enqueuePluginRequest(body);
   return NextResponse.json({ id: approval.id });
 }

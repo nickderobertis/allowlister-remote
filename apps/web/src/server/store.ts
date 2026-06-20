@@ -19,23 +19,18 @@ if (!globalState.__allowlisterRemoteState) {
 
 const state = globalState.__allowlisterRemoteState;
 
-export function enqueuePluginRequest(input: PluginPayload, timeoutMs: number): ApprovalRequest {
+export function enqueuePluginRequest(input: PluginPayload): ApprovalRequest {
   // Same normalization the broker path uses, so HTTP- and broker-sourced
   // requests render identically in the UI.
-  const request = normalizePluginRequest(input, crypto.randomUUID(), timeoutMs);
+  const request = normalizePluginRequest(input, crypto.randomUUID());
   state.requests.set(request.id, request);
   return request;
 }
 
 export function listPendingRequests() {
-  const now = Date.now();
-  return [...state.requests.values()]
-    .filter(
-      (request) =>
-        !state.decisions.has(request.id) &&
-        (request.expiresAt === null || Date.parse(request.expiresAt) > now),
-    )
-    .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
+  // Approvals wait indefinitely, so the only filter is whether a decision has
+  // landed; the Map preserves insertion (creation) order.
+  return [...state.requests.values()].filter((request) => !state.decisions.has(request.id));
 }
 
 export function decideRequest(id: string, decision: ApprovalDecision) {
