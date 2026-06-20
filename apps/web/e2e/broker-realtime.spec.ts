@@ -16,8 +16,12 @@ import { expect, test } from "@playwright/test";
 
 const root = resolve(import.meta.dirname, "../../..");
 const targetDir = join(root, "target", "debug");
-const brokerBin = join(targetDir, "allowlister-remote-broker");
-const daemonBin = join(targetDir, "allowlister-remote-daemon");
+// Honor the *_BIN env overrides so the post-release smoke drives the published
+// plugin and daemon binaries (the broker is server-side, built from source).
+const brokerBin =
+  process.env.ALLOWLISTER_REMOTE_BROKER_BIN ?? join(targetDir, "allowlister-remote-broker");
+const daemonBin =
+  process.env.ALLOWLISTER_REMOTE_DAEMON_BIN ?? join(targetDir, "allowlister-remote-daemon");
 const pluginBin =
   process.env.ALLOWLISTER_REMOTE_PLUGIN_BIN ?? join(targetDir, "allowlister-remote-plugin");
 

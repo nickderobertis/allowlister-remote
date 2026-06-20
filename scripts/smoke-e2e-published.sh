@@ -53,9 +53,10 @@ if [[ "$(head -c 2 "$resolved")" == "#!" ]]; then
 fi
 echo "smoke-e2e: command resolves directly to the native binary at $resolved"
 
-# The daemon the plugin auto-starts must be installed as a sibling so the
-# plugin's `resolve_daemon_bin` sibling lookup finds it.
-daemon_bin="$(dirname "$plugin_bin")/allowlister-remote-daemon"
+# The daemon the plugin auto-starts must be installed as a sibling of the
+# RESOLVED plugin binary (current_exe() follows the bin symlink) so the plugin's
+# `resolve_daemon_bin` sibling lookup finds it.
+daemon_bin="$(dirname "$resolved")/allowlister-remote-daemon"
 if [[ ! -x "$daemon_bin" ]]; then
   echo "smoke-e2e: daemon binary missing next to the plugin on PATH" >&2
   exit 1

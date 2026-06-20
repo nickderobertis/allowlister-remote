@@ -79,6 +79,11 @@ pub fn default_broker_url() -> String {
 /// on its own task, so a broker that is down at startup (or that restarts later)
 /// does not stop the daemon from accepting plugins.
 pub async fn serve(config: Config) -> std::io::Result<()> {
+    // Install the process-default rustls crypto provider once so the no-CA
+    // `wss://` path (connect_async's auto connector) has a provider. Idempotent;
+    // a custom-CA connector supplies its own provider explicitly.
+    let _ = rustls::crypto::ring::default_provider().install_default();
+
     // A stale socket from a previous run would block the bind.
     let _ = std::fs::remove_file(&config.socket_path);
     let listener = UnixListener::bind(&config.socket_path)?;
@@ -194,17 +199,26 @@ async fn connect_broker(
     }
 }
 
-/// Build a native-tls connector that trusts the given PEM CA in addition to the
-/// system roots. Returns `None` on a read/parse failure, which falls back to the
-/// default connector (and a clean handshake failure if the cert is untrusted).
+/// Build a rustls connector that trusts the given PEM CA in addition to the
+/// webpki system roots. Returns `None` on a read/parse failure, which falls back
+/// to the default connector (and a clean handshake failure if the cert is
+/// untrusted).
 fn tls_connector_with_ca(ca_path: &str) -> Option<Connector> {
     let pem = std::fs::read(ca_path).ok()?;
-    let certificate = native_tls::Certificate::from_pem(&pem).ok()?;
-    let connector = native_tls::TlsConnector::builder()
-        .add_root_certificate(certificate)
-        .build()
-        .ok()?;
-    Some(Connector::NativeTls(connector))
+    let mut roots = rustls::RootCertStore::empty();
+    roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+    let mut reader = std::io::BufReader::new(&pem[..]);
+    for certificate in rustls_pemfile::certs(&mut reader).flatten() {
+        let _ = roots.add(certificate);
+    }
+    let config = rustls::ClientConfig::builder_with_provider(std::sync::Arc::new(
+        rustls::crypto::ring::default_provider(),
+    ))
+    .with_safe_default_protocol_versions()
+    .ok()?
+    .with_root_certificates(roots)
+    .with_no_client_auth();
+    Some(Connector::Rustls(std::sync::Arc::new(config)))
 }
 
 fn route_decision(routes: &Routes, text: &str) {

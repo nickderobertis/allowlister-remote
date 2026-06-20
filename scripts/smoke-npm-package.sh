@@ -61,9 +61,10 @@ if [[ "$platform" != win32-* ]]; then
     exit 1
   fi
 
-  # The daemon must be installed as a sibling of the plugin so the plugin's
-  # `resolve_daemon_bin` sibling lookup finds it (it auto-starts the daemon).
-  daemon="$(dirname "$cmd")/allowlister-remote-daemon"
+  # The daemon must be installed as a sibling of the RESOLVED plugin binary
+  # (current_exe() follows the bin symlink) so the plugin's `resolve_daemon_bin`
+  # sibling lookup finds it (it auto-starts the daemon).
+  daemon="$(dirname "$target")/allowlister-remote-daemon"
   if [[ ! -x "$daemon" ]]; then
     echo "npm package smoke: daemon binary missing next to the plugin on PATH" >&2
     exit 1

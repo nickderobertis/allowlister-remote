@@ -178,9 +178,10 @@ jobs:
             exit 1
           fi
           echo "published command resolves directly to the native binary"
-          # The auto-started daemon must ship as a sibling so the plugin's
+          # The auto-started daemon must ship as a sibling of the RESOLVED plugin
+          # binary (current_exe() follows the bin symlink), so the plugin's
           # `resolve_daemon_bin` sibling lookup finds it.
-          daemon="$(dirname "$cmd")/allowlister-remote-daemon"
+          daemon="$(dirname "$resolved")/allowlister-remote-daemon"
           if [[ ! -x "$daemon" ]]; then
             echo "published package is missing the daemon binary next to the plugin" >&2
             exit 1
