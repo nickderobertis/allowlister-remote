@@ -66,15 +66,12 @@ fn measure<T>(f: impl FnOnce() -> T) -> (u64, u64) {
     )
 }
 
-/// The default (wait-indefinitely) timeout the binary passes.
-const TIMEOUT_MS: u64 = 0;
-
 fn main() {
     // Flush lazy one-time initialization out of the measured calls, so every row
     // reflects steady-state cost.
     for (_, body) in support::corpus() {
         black_box(static_decision(&body));
-        black_box(triage(&body, TIMEOUT_MS).ok());
+        black_box(triage(&body).ok());
     }
     for (_, body) in support::decision_bodies() {
         black_box(interpret_decision(body));
@@ -86,11 +83,11 @@ fn main() {
         let (calls, bytes) = measure(|| static_decision(&body));
         println!("| static_decision | {name} | {calls} | {bytes} |");
 
-        let (calls, bytes) = measure(|| triage(&body, TIMEOUT_MS).ok());
+        let (calls, bytes) = measure(|| triage(&body).ok());
         println!("| triage | {name} | {calls} | {bytes} |");
 
         let input: Value = serde_json::from_str(&body).expect("corpus payload is valid JSON");
-        let (calls, bytes) = measure(|| build_create_body(&input, TIMEOUT_MS));
+        let (calls, bytes) = measure(|| build_create_body(&input));
         println!("| build_create_body | {name} | {calls} | {bytes} |");
     }
     for (name, body) in support::decision_bodies() {

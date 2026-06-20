@@ -1,12 +1,6 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { createApprovalApi } from "./api";
-import {
-  flaggedFragments,
-  remainingDisplay,
-  requestHeadline,
-  toolParamSummary,
-  triggeredRules,
-} from "./approval";
+import { flaggedFragments, requestHeadline, triggeredRules } from "./approval";
 import { normalizeBrokerRequest } from "./approval-normalize";
 import { ThemeToggle } from "./components/theme-toggle";
 import { Badge } from "./components/ui/badge";
@@ -18,6 +12,7 @@ import { ThemeProvider } from "./lib/theme";
 import { cn } from "./lib/utils";
 import { connectBroker } from "./pwa/broker-bridge";
 import {
+  type AllowlisterFragment,
   type ApprovalRequest,
   type ApprovalVerdict,
   isToolRequest,
@@ -29,7 +24,6 @@ type Verdict = "allow" | "deny";
 
 interface RequestProps {
   request: ApprovalRequest;
-  now: number;
   onDecide: (id: string, verdict: Verdict) => void;
 }
 
@@ -45,6 +39,22 @@ function verdictVariant(verdict: ApprovalVerdict): "destructive" | "outline" {
   return verdict === "ask" || verdict === "deny" ? "destructive" : "outline";
 }
 
+// Permission colour for a fragment in the interactive script: allow is calm
+// green, ask is amber, deny is the destructive red, and an unmatched defer stays
+// muted. The same scale the verdict badges use, applied to the script text.
+function fragmentTone(verdict: ApprovalVerdict): string {
+  switch (verdict) {
+    case "allow":
+      return "text-emerald-600 dark:text-emerald-400";
+    case "ask":
+      return "text-amber-600 dark:text-amber-400";
+    case "deny":
+      return "text-destructive";
+    default:
+      return "text-muted-foreground";
+  }
+}
+
 function VerdictBadge({ verdict }: { verdict: ApprovalVerdict }) {
   return <Badge variant={verdictVariant(verdict)}>{verdict}</Badge>;
 }
@@ -57,9 +67,12 @@ function Eyebrow({ request }: { request: ApprovalRequest }) {
   );
 }
 
+// The inbox card lists up to this many flagged commands inline so the operator
+// can size up a request without opening it; anything beyond folds into a count.
+const INBOX_FRAGMENT_LIMIT = 5;
+
 function InboxItem({
   request,
-  now,
   focused,
   showHints,
   onOpen,
@@ -72,11 +85,12 @@ function InboxItem({
   onFocus: () => void;
 }) {
   const headline = requestHeadline(request);
-  const remaining = remainingDisplay(request, now);
-  const flaggedCount = request.subject === "shell" ? flaggedFragments(request).length : 0;
+  const fragments = request.subject === "shell" ? flaggedFragments(request) : [];
+  const shownFragments = fragments.slice(0, INBOX_FRAGMENT_LIMIT);
+  const hiddenFragments = fragments.length - shownFragments.length;
   const rules = request.subject === "shell" ? triggeredRules(request) : [];
   const itemRef = useRef<HTMLLIElement>(null);
-  // The keyboard cursor: keep the focused card visible as J/K walk the list.
+  // The keyboard cursor: keep the focused card visible as the arrows walk the list.
   const highlighted = focused && showHints;
 
   useEffect(() => {
@@ -102,12 +116,25 @@ function InboxItem({
           onClick={() => onOpen(request.id)}
         >
           <Eyebrow request={request} />
-          <code className="font-mono text-base text-foreground">{headline}</code>
-          {flaggedCount > 1 ? (
-            <span className="text-xs text-muted-foreground">
-              +{flaggedCount - 1} more flagged command(s)
+          {request.subject === "shell" ? (
+            <span className="flex flex-col gap-1">
+              {shownFragments.map((fragment) => (
+                <code
+                  className={cn("font-mono text-base", fragmentTone(fragment.verdict))}
+                  key={`${fragment.role}-${fragment.display}`}
+                >
+                  {fragment.display}
+                </code>
+              ))}
+              {hiddenFragments > 0 ? (
+                <span className="text-xs text-muted-foreground">
+                  +{hiddenFragments} more flagged command(s)
+                </span>
+              ) : null}
             </span>
-          ) : null}
+          ) : (
+            <code className="font-mono text-base text-foreground">{headline}</code>
+          )}
           <span className="text-sm text-muted-foreground">{request.currentReason}</span>
           <span className="flex flex-wrap gap-1.5">
             {request.subject === "tool" ? (
@@ -124,69 +151,40 @@ function InboxItem({
           </span>
         </button>
 
-        <div className="flex items-center justify-between gap-3 sm:flex-col sm:items-end sm:justify-center">
-          <span
-            className="font-mono text-sm text-muted-foreground"
-            role="timer"
-            aria-label={`${remaining.label} for ${headline}`}
+        <div className="flex items-center justify-end gap-3 sm:flex-col sm:justify-center">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-11 flex-1 px-5 text-sm sm:h-8 sm:flex-none sm:px-3 sm:text-xs"
+            aria-label={`Deny ${headline}`}
+            onClick={() => onDecide(request.id, "deny")}
           >
-            {remaining.compact}
-          </span>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              aria-label={`Deny ${headline}`}
-              onClick={() => onDecide(request.id, "deny")}
-            >
-              Deny
-              {highlighted ? <Kbd>D</Kbd> : null}
-            </Button>
-            <Button
-              size="sm"
-              aria-label={`Allow ${headline}`}
-              onClick={() => onDecide(request.id, "allow")}
-            >
-              Allow
-              {highlighted ? <Kbd>A</Kbd> : null}
-            </Button>
-          </div>
+            Deny
+            {highlighted ? <Kbd>D</Kbd> : null}
+          </Button>
+          <Button
+            size="sm"
+            className="h-11 flex-1 px-5 text-sm sm:h-8 sm:flex-none sm:px-3 sm:text-xs"
+            aria-label={`Allow ${headline}`}
+            onClick={() => onDecide(request.id, "allow")}
+          >
+            Allow
+            {highlighted ? <Kbd>A</Kbd> : null}
+          </Button>
         </div>
       </Card>
     </li>
   );
 }
 
-function DetailHero({
-  request,
-  now,
-  title,
-}: {
-  request: ApprovalRequest;
-  now: number;
-  title: string;
-}) {
-  const remaining = remainingDisplay(request, now);
+function DetailHero({ request, title }: { request: ApprovalRequest; title: string }) {
   return (
-    <section
-      className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"
-      aria-labelledby="approval-title"
-    >
-      <div className="flex flex-col gap-2">
-        <Eyebrow request={request} />
-        <h1 id="approval-title" className="text-2xl font-semibold tracking-tight">
-          {title}
-        </h1>
-        <p className="text-muted-foreground">{request.currentReason}</p>
-      </div>
-      <div
-        className="flex shrink-0 flex-col items-center rounded-lg border border-border bg-card px-4 py-3 shadow-sm"
-        role="timer"
-        aria-label={remaining.label}
-      >
-        <span className="font-mono text-2xl">{remaining.value}</span>
-        <small className="text-xs text-muted-foreground">{remaining.unit}</small>
-      </div>
+    <section className="flex flex-col gap-2" aria-labelledby="approval-title">
+      <Eyebrow request={request} />
+      <h1 id="approval-title" className="text-2xl font-semibold tracking-tight">
+        {title}
+      </h1>
+      <p className="text-muted-foreground">{request.currentReason}</p>
     </section>
   );
 }
@@ -242,7 +240,7 @@ function DecisionBar({
     <footer className="flex gap-4">
       <Button
         variant="outline"
-        className="flex-1"
+        className="h-12 flex-1 text-base sm:h-10 sm:text-sm"
         aria-label="Deny"
         onClick={() => onDecide(request.id, "deny")}
       >
@@ -250,7 +248,7 @@ function DecisionBar({
         {showHints ? <Kbd>D</Kbd> : null}
       </Button>
       <Button
-        className="flex-1"
+        className="h-12 flex-1 text-base sm:h-10 sm:text-sm"
         aria-label="Allow once"
         onClick={() => onDecide(request.id, "allow")}
       >
@@ -261,35 +259,86 @@ function DecisionBar({
   );
 }
 
+// The interactive script: every fragment allowlister parsed, in order, coloured by
+// its permission. Each line is a button — clicking one reveals that fragment's
+// role, rule, and reason so the operator can drill in without leaving the script.
+function ShellScript({ fragments }: { fragments: AllowlisterFragment[] }) {
+  const [openIndex, setOpenIndex] = useState<number | null>(null);
+
+  return (
+    <Card aria-label="Script">
+      <CardHeader>
+        <CardTitle>Script</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <ul className="flex flex-col">
+          {fragments.map((fragment, index) => {
+            const open = openIndex === index;
+            return (
+              <li key={`${fragment.role}-${fragment.display}`}>
+                <button
+                  type="button"
+                  aria-expanded={open}
+                  aria-label={`${fragment.display} — ${fragment.verdict}`}
+                  className="flex w-full items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  onClick={() => setOpenIndex(open ? null : index)}
+                >
+                  <code className={cn("font-mono text-sm", fragmentTone(fragment.verdict))}>
+                    {fragment.display}
+                  </code>
+                  {fragment.verdict === "allow" ? null : <VerdictBadge verdict={fragment.verdict} />}
+                </button>
+                {open ? (
+                  <dl className="flex flex-col gap-2 rounded-md border border-border bg-background px-3 py-2 text-sm">
+                    <div className="flex items-center justify-between gap-2">
+                      <dt className="text-xs uppercase tracking-wide text-muted-foreground">
+                        Verdict
+                      </dt>
+                      <dd>
+                        <VerdictBadge verdict={fragment.verdict} />
+                      </dd>
+                    </div>
+                    <div className="flex flex-col gap-0.5">
+                      <dt className="text-xs uppercase tracking-wide text-muted-foreground">Role</dt>
+                      <dd className="font-mono text-sm">{fragment.role}</dd>
+                    </div>
+                    <div className="flex flex-col gap-0.5">
+                      <dt className="text-xs uppercase tracking-wide text-muted-foreground">Rule</dt>
+                      <dd className="font-mono text-sm">{fragment.rule ?? "no matching rule"}</dd>
+                    </div>
+                    {fragment.reason ? (
+                      <div className="flex flex-col gap-0.5">
+                        <dt className="text-xs uppercase tracking-wide text-muted-foreground">
+                          Reason
+                        </dt>
+                        <dd className="text-sm text-muted-foreground">{fragment.reason}</dd>
+                      </div>
+                    ) : null}
+                  </dl>
+                ) : null}
+              </li>
+            );
+          })}
+        </ul>
+      </CardContent>
+    </Card>
+  );
+}
+
 function ShellDetail({
   request,
-  now,
   showHints,
-  keyboardEnabled,
   onBack,
   onDecide,
 }: { request: ShellApprovalRequest } & Omit<RequestProps, "request"> &
   DetailChromeProps & { onBack: () => void }) {
   const flagged = flaggedFragments(request);
-  // Leave the native <details> in charge of click toggling; the `S` shortcut
-  // flips its open state through the ref so both paths stay in sync.
-  const scriptRef = useRef<HTMLDetailsElement>(null);
-
-  useKeyboardShortcuts(
-    {
-      s: () => {
-        const details = scriptRef.current;
-        if (details) details.open = !details.open;
-      },
-    },
-    keyboardEnabled,
-  );
 
   return (
     <main className="mx-auto flex max-w-3xl flex-col gap-6 p-4 sm:p-8">
       <BackButton showHints={showHints} onBack={onBack} />
 
-      <DetailHero request={request} now={now} title="Approve the action, not the wall of shell" />
+      <DetailHero request={request} title="Approve shell command" />
 
       <Card aria-label="Flagged commands">
         <CardContent className="flex flex-col gap-2 p-4">
@@ -298,7 +347,9 @@ function ShellDetail({
           </span>
           {flagged.map((fragment) => (
             <div className="flex flex-col gap-1" key={`flagged-${fragment.display}`}>
-              <code className="font-mono text-base text-foreground">{fragment.display}</code>
+              <code className={cn("font-mono text-base", fragmentTone(fragment.verdict))}>
+                {fragment.display}
+              </code>
               {fragment.rule ? (
                 <small className="text-xs text-muted-foreground">{fragment.rule}</small>
               ) : null}
@@ -307,47 +358,9 @@ function ShellDetail({
         </CardContent>
       </Card>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Card aria-label="Allowlister fragments">
-          <CardHeader>
-            <CardTitle>Parsed allowlister fragments</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ul className="flex flex-col gap-3">
-              {request.fragments.map((fragment) => (
-                <li
-                  className={
-                    fragment.verdict === "allow"
-                      ? "flex flex-col gap-1 rounded-md border border-transparent p-2"
-                      : "flex flex-col gap-1 rounded-md border border-destructive/40 bg-destructive/5 p-2"
-                  }
-                  key={`${fragment.role}-${fragment.display}`}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <code className="font-mono text-sm text-foreground">{fragment.display}</code>
-                    <VerdictBadge verdict={fragment.verdict} />
-                  </div>
-                  <small className="text-xs text-muted-foreground">
-                    {fragment.role}
-                    {fragment.rule ? ` · ${fragment.rule}` : ""}
-                  </small>
-                </li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
-        <ContextCard request={request}>
-          <details className="text-sm" ref={scriptRef}>
-            <summary className="flex cursor-pointer items-center gap-2 text-muted-foreground">
-              <span>Show full script</span>
-              {showHints ? <Kbd>S</Kbd> : null}
-            </summary>
-            <pre className="mt-2 overflow-x-auto rounded-md border border-border bg-background p-3 text-xs">
-              {request.command}
-            </pre>
-          </details>
-        </ContextCard>
-      </div>
+      <ShellScript fragments={request.fragments} />
+
+      <ContextCard request={request} />
 
       <DecisionBar request={request} showHints={showHints} onDecide={onDecide} />
     </main>
@@ -356,7 +369,6 @@ function ShellDetail({
 
 function ToolDetail({
   request,
-  now,
   showHints,
   keyboardEnabled,
   onBack,
@@ -364,9 +376,8 @@ function ToolDetail({
 }: { request: ToolApprovalRequest } & Omit<RequestProps, "request"> &
   DetailChromeProps & { onBack: () => void }) {
   const [view, setView] = useState<"formatted" | "json">("formatted");
-  const params = Object.entries(request.tool.params);
-  const raw = Object.entries(request.tool.raw);
-  const paramSummary = toolParamSummary(request);
+  // The arguments the agent actually passed — the one set the operator weighs.
+  const args = Object.entries(request.tool.raw);
 
   useKeyboardShortcuts(
     { f: () => setView("formatted"), j: () => setView("json") },
@@ -377,7 +388,7 @@ function ToolDetail({
     <main className="mx-auto flex max-w-3xl flex-col gap-6 p-4 sm:p-8">
       <BackButton showHints={showHints} onBack={onBack} />
 
-      <DetailHero request={request} now={now} title="Approve this tool call" />
+      <DetailHero request={request} title="Approve this tool call" />
 
       <Card aria-label="Tool call">
         <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -412,17 +423,13 @@ function ToolDetail({
             <section className="flex flex-col gap-4" aria-label="Tool call formatted view">
               <div className="flex flex-wrap items-center gap-2">
                 <Badge variant="outline">capability: {request.tool.capability}</Badge>
-                {paramSummary ? (
-                  <span className="text-sm text-muted-foreground">{paramSummary}</span>
-                ) : null}
               </div>
-              <ToolKeyValues title="Canonical parameters" entries={params} />
-              <ToolKeyValues title="Raw tool input" entries={raw} />
+              <ToolKeyValues title="Arguments" entries={args} />
             </section>
           ) : (
             <section aria-label="Tool call JSON view">
               <pre className="overflow-x-auto rounded-md border border-border bg-background p-3 text-xs">
-                {JSON.stringify(request.tool, null, 2)}
+                {JSON.stringify(request.tool.raw, null, 2)}
               </pre>
             </section>
           )}
@@ -462,14 +469,13 @@ function ToolKeyValues({ title, entries }: { title: string; entries: [string, un
 
 function ApprovalDetail({
   request,
-  now,
   showHints,
   keyboardEnabled,
   onBack,
   onDecide,
 }: RequestProps & DetailChromeProps & { onBack: () => void }) {
   // Allow / deny / back work the same for both subjects, so bind them once here;
-  // each subject view binds its own extra keys (F/J for tools, S for shell).
+  // the tool view binds its own extra keys (F/J for formatted/JSON).
   useKeyboardShortcuts(
     {
       a: () => onDecide(request.id, "allow"),
@@ -484,7 +490,6 @@ function ApprovalDetail({
     return (
       <ToolDetail
         request={request}
-        now={now}
         showHints={showHints}
         keyboardEnabled={keyboardEnabled}
         onBack={onBack}
@@ -495,7 +500,6 @@ function ApprovalDetail({
   return (
     <ShellDetail
       request={request}
-      now={now}
       showHints={showHints}
       keyboardEnabled={keyboardEnabled}
       onBack={onBack}
@@ -563,8 +567,8 @@ function ShortcutsOverlay({ onClose }: { onClose: () => void }) {
 function InboxHints() {
   return (
     <p className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-      <Kbd>J</Kbd>
-      <Kbd>K</Kbd>
+      <Kbd>↑</Kbd>
+      <Kbd>↓</Kbd>
       <span>move</span>
       <Kbd>Enter</Kbd>
       <span>open</span>
@@ -605,7 +609,6 @@ function EmptyInbox({ error }: { error: string | null }) {
 
 function InboxView({
   requests,
-  now,
   focusedIndex,
   isDesktop,
   error,
@@ -614,7 +617,6 @@ function InboxView({
   onDecide,
 }: {
   requests: ApprovalRequest[];
-  now: number;
   focusedIndex: number;
   isDesktop: boolean;
   error: string | null;
@@ -642,7 +644,6 @@ function InboxView({
           <InboxItem
             key={request.id}
             request={request}
-            now={now}
             focused={index === focusedIndex}
             showHints={isDesktop}
             onOpen={onOpen}
@@ -662,7 +663,6 @@ function App() {
   const [focusedIndex, setFocusedIndex] = useState(0);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [now, setNow] = useState(() => Date.now());
   const isDesktop = useIsDesktop();
   // When the broker is live, decisions must travel back through it to the waiting
   // plugin (the request lives in the broker, not the Next store). Held in a ref so
@@ -687,11 +687,9 @@ function App() {
     }
     void refresh();
     const poll = window.setInterval(refresh, 2_000);
-    const tick = window.setInterval(() => setNow(Date.now()), 1_000);
     return () => {
       active = false;
       window.clearInterval(poll);
-      window.clearInterval(tick);
     };
   }, [api]);
 
@@ -774,9 +772,7 @@ function App() {
   const inboxActive = isDesktop && !selected && !showShortcuts && requests.length > 0;
   useKeyboardShortcuts(
     {
-      j: focusNext,
       ArrowDown: focusNext,
-      k: focusPrev,
       ArrowUp: focusPrev,
       o: openFocused,
       Enter: openFocused,
@@ -791,7 +787,6 @@ function App() {
     content = (
       <ApprovalDetail
         request={selected}
-        now={now}
         showHints={isDesktop}
         keyboardEnabled={isDesktop && !showShortcuts}
         onBack={() => setSelectedId(null)}
@@ -804,7 +799,6 @@ function App() {
     content = (
       <InboxView
         requests={requests}
-        now={now}
         focusedIndex={focusedIndex}
         isDesktop={isDesktop}
         error={error}

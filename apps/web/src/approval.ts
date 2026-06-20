@@ -42,31 +42,3 @@ export function toolParamSummary(request: ToolApprovalRequest): string {
     .map(([key, value]) => `${key} = ${String(value)}`)
     .join(" · ");
 }
-
-export function secondsRemaining(request: ApprovalRequest, now = Date.now()): number | null {
-  if (request.expiresAt === null) {
-    return null;
-  }
-  return Math.max(0, Math.ceil((Date.parse(request.expiresAt) - now) / 1000));
-}
-
-export interface RemainingDisplay {
-  value: string;
-  unit: string;
-  label: string;
-  // Single-token form for tight spots like the inbox row timer.
-  compact: string;
-}
-
-export function remainingDisplay(request: ApprovalRequest, now = Date.now()): RemainingDisplay {
-  const remaining = secondsRemaining(request, now);
-  if (remaining === null) {
-    return { value: "∞", unit: "waiting", label: "waiting for a decision", compact: "∞" };
-  }
-  return {
-    value: String(remaining),
-    unit: "sec",
-    label: `${remaining} seconds remaining`,
-    compact: `${remaining}s`,
-  };
-}

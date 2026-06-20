@@ -4,8 +4,8 @@
 // (crates/allowlister-remote-plugin/benches/engine.rs): they isolate the pure
 // functions every render runs to turn an allowlister payload into what the
 // operator sees — filtering the flagged fragments, collecting triggered rules,
-// the request headline, the tool-param summary, and the countdown display —
-// without React, the DOM, or the network in any timed loop. React rendering and
+// the request headline, and the tool-param summary — without React, the DOM, or
+// the network in any timed loop. React rendering and
 // the full browser load are covered by the Lighthouse layer and the e2e suite,
 // not here.
 //
@@ -17,7 +17,6 @@
 import { bench, describe } from "vitest";
 import {
   flaggedFragments,
-  remainingDisplay,
   requestHeadline,
   toolParamSummary,
   triggeredRules,
@@ -28,10 +27,6 @@ import { isShellRequest, isToolRequest } from "../types";
 
 const shellRequests = demoRequests.filter(isShellRequest);
 const toolRequests = demoRequests.filter(isToolRequest);
-
-// A frozen "now" so the countdown benches measure arithmetic, not Date.now()
-// drift between iterations.
-const NOW = Date.parse("2026-06-20T00:00:00Z");
 
 // A synthetic release-style script of N fragments, all-but-two allowed — the
 // worst case for the flagged-fragment scan and the rule de-duplication.
@@ -53,8 +48,6 @@ function longScript(fragments: number): ShellApprovalRequest {
     command: frags.map((f) => f.display).join("\n"),
     currentVerdict: "ask",
     currentReason: "synthetic",
-    createdAt: new Date(NOW).toISOString(),
-    expiresAt: new Date(NOW + 120_000).toISOString(),
     fragments: frags,
   };
 }
@@ -87,14 +80,6 @@ describe("toolParamSummary", () => {
   for (const request of toolRequests as ToolApprovalRequest[]) {
     bench(request.id, () => {
       toolParamSummary(request);
-    });
-  }
-});
-
-describe("remainingDisplay", () => {
-  for (const request of demoRequests) {
-    bench(request.id, () => {
-      remainingDisplay(request, NOW);
     });
   }
 });

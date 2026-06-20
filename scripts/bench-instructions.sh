@@ -131,7 +131,7 @@ note "» counting instructions ($bin)"
 measure "version" "$bin" --version
 measure "defer:static" "$bin" --server-url "$dead" <"$allow"
 measure "ask:malformed" "$bin" --server-url "$dead" <"$malformed"
-measure "ask:unavailable" "$bin" --server-url "$dead" --timeout-ms 1 <"$defer"
+measure "ask:unavailable" "$bin" --server-url "$dead" <"$defer"
 
 {
     echo "| command | instructions |"

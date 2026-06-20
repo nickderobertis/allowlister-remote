@@ -17,8 +17,6 @@ export const demoRequests: ApprovalRequest[] = [
     command: "gh pr merge 42 --squash --delete-branch",
     currentVerdict: "defer",
     currentReason: "no rule matched `gh pr merge 42 --squash --delete-branch` (standalone)",
-    createdAt: new Date(Date.now() - 42_000).toISOString(),
-    expiresAt: new Date(Date.now() + 118_000).toISOString(),
     fragments: [
       {
         display: "gh pr merge 42 --squash --delete-branch",
@@ -44,8 +42,6 @@ export const demoRequests: ApprovalRequest[] = [
     currentVerdict: "ask",
     currentReason:
       "2 commands need approval: `npm publish --access public` (standalone): needs approval per rule 'ask before publishing a package'; `git push origin main --tags` (standalone): needs approval per rule 'ask before pushing to a remote'",
-    createdAt: new Date(Date.now() - 8_000).toISOString(),
-    expiresAt: new Date(Date.now() + 132_000).toISOString(),
     fragments: [
       {
         display: "set -euo pipefail",
@@ -124,8 +120,6 @@ export const demoRequests: ApprovalRequest[] = [
     cwd: "/workspace/acme-api",
     currentVerdict: "defer",
     currentReason: "no rule matched tool `mcp__github__create_issue`",
-    createdAt: new Date(Date.now() - 21_000).toISOString(),
-    expiresAt: new Date(Date.now() + 96_000).toISOString(),
     tool: {
       name: "mcp__github__create_issue",
       capability: "mcp",
@@ -147,8 +141,6 @@ export const demoRequests: ApprovalRequest[] = [
     cwd: "/workspace/acme-api",
     currentVerdict: "defer",
     currentReason: "no rule matched tool `write`",
-    createdAt: new Date(Date.now() - 3_000).toISOString(),
-    expiresAt: new Date(Date.now() + 140_000).toISOString(),
     tool: {
       name: "write",
       capability: "write",

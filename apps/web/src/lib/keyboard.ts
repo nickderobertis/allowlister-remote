@@ -96,8 +96,8 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
   {
     title: "Approvals inbox",
     shortcuts: [
-      { keys: ["J", "↓"], description: "Focus the next approval" },
-      { keys: ["K", "↑"], description: "Focus the previous approval" },
+      { keys: ["↓"], description: "Focus the next approval" },
+      { keys: ["↑"], description: "Focus the previous approval" },
       { keys: ["Enter", "O"], description: "Open the focused approval" },
       { keys: ["A"], description: "Allow the focused approval" },
       { keys: ["D"], description: "Deny the focused approval" },
@@ -110,7 +110,6 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
       { keys: ["D"], description: "Deny this request" },
       { keys: ["Esc", "B"], description: "Back to the inbox" },
       { keys: ["F", "J"], description: "Tool calls: formatted / JSON view" },
-      { keys: ["S"], description: "Shell scripts: show / hide the full script" },
     ],
   },
 ];

@@ -107,7 +107,7 @@ hyperfine \
     -n "version" "'$bin' --version" \
     -n "defer:static" "'$bin' --server-url '$dead' < '$allow'" \
     -n "ask:malformed" "'$bin' --server-url '$dead' < '$malformed'" \
-    -n "ask:unavailable" "'$bin' --server-url '$dead' --timeout-ms 1 < '$defer'"
+    -n "ask:unavailable" "'$bin' --server-url '$dead' < '$defer'"
 
 note ""
 note "✓ wrote $out/results.json"

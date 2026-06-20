@@ -64,8 +64,6 @@ Configure allowlister to use the plugin process:
         "/path/to/allowlister-remote-plugin",
         "--server-url",
         "https://allowlister-remote.example.com",
-        "--timeout-ms",
-        "120000",
       ],
       "timeout_ms": 125000,
     },
@@ -117,8 +115,6 @@ static `allow`; only the flagged ones surface for approval):
     "command": "npm test\ngit push origin main",
     "currentVerdict": "ask",
     "currentReason": "1 command needs approval: `git push origin main` (standalone): needs approval per rule 'ask before pushing to a remote'",
-    "createdAt": "2026-06-18T00:00:00.000Z",
-    "expiresAt": "2026-06-18T00:02:00.000Z",
     "fragments": [
       {
         "display": "npm test",
@@ -153,8 +149,6 @@ verbatim `raw` input) for `command`/`fragments`:
   "cwd": "/workspace/app",
   "currentVerdict": "defer",
   "currentReason": "no rule matched tool `mcp__github__create_issue`",
-  "createdAt": "2026-06-18T00:00:00.000Z",
-  "expiresAt": null,
   "tool": {
     "name": "mcp__github__create_issue",
     "capability": "mcp",

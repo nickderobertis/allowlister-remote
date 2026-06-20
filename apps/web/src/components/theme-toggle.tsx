@@ -79,9 +79,10 @@ const ICONS: Record<ThemePreference, (props: SVGProps<SVGSVGElement>) => ReactEl
   dark: MoonIcon,
 };
 
-// A single button that cycles system → light → dark. The label always names the
-// active preference; the aria-label also announces what the next press will do so
-// screen-reader users aren't guessing.
+// A single button that cycles system → light → dark. On desktop the label names
+// the active preference; on mobile only the icon shows to save screen real estate.
+// The aria-label always announces the active preference and what the next press
+// will do, so screen-reader users (and the icon-only mobile button) aren't guessing.
 export function ThemeToggle({ className }: { className?: string }) {
   const { preference, setPreference } = useTheme();
   const next = ORDER[(ORDER.indexOf(preference) + 1) % ORDER.length] ?? "system";
@@ -96,7 +97,7 @@ export function ThemeToggle({ className }: { className?: string }) {
       onClick={() => setPreference(next)}
     >
       <Icon />
-      <span>{LABELS[preference]}</span>
+      <span className="hidden md:inline">{LABELS[preference]}</span>
     </Button>
   );
 }

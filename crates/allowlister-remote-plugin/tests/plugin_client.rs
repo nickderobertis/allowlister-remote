@@ -113,7 +113,7 @@ fn spawn_pending_then_decide_server() -> String {
 
 #[test]
 fn waits_through_pending_until_remote_decision() {
-    // No --timeout-ms, so the plugin defaults to waiting indefinitely.
+    // The plugin always waits indefinitely; it stays through `pending`.
     let url = spawn_pending_then_decide_server();
     let output = run_plugin(
         r#"{"current_verdict":"defer","command":"gh pr merge 42","cwd":"/tmp"}"#,
@@ -142,7 +142,7 @@ fn static_allow_verdict_defers_without_contacting_server() {
 fn unavailable_server_falls_back_to_ask() {
     let output = run_plugin(
         r#"{"current_verdict":"defer","command":"gh pr merge 42","cwd":"/tmp"}"#,
-        &["--server-url", "http://127.0.0.1:9", "--timeout-ms", "500"],
+        &["--server-url", "http://127.0.0.1:9"],
     );
 
     assert_eq!(output["verdict"], "ask");
@@ -157,14 +157,7 @@ fn posts_request_and_returns_remote_decision() {
     let (url, requests) = spawn_server();
     let output = run_plugin(
         r#"{"current_verdict":"defer","current_reason":"needs approval","command":"gh pr merge 42","cwd":"/tmp","harness":"codex"}"#,
-        &[
-            "--server-url",
-            &url,
-            "--timeout-ms",
-            "2000",
-            "--poll-ms",
-            "10",
-        ],
+        &["--server-url", &url, "--poll-ms", "10"],
     );
 
     assert_eq!(output["verdict"], "deny");

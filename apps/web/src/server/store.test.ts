@@ -51,7 +51,6 @@ describe("approval server store", () => {
           },
         ],
       },
-      60_000,
     );
 
     expect(request).toMatchObject({
@@ -87,7 +86,6 @@ describe("approval server store", () => {
           raw: { owner: "acme", repo: "app", title: "bug" },
         },
       },
-      0,
     );
 
     expect(request.subject).toBe("tool");
@@ -96,26 +94,23 @@ describe("approval server store", () => {
     expect(request.tool.capability).toBe("mcp");
     expect(request.tool.params).toEqual({ mcp_server: "github", mcp_tool: "create_issue" });
     expect(request.tool.raw).toEqual({ owner: "acme", repo: "app", title: "bug" });
-    expect(request.expiresAt).toBeNull();
   });
 
   it("falls back to a whole-command fragment when none are supplied", () => {
-    const request = enqueuePluginRequest(
-      { subject: "shell", command: "rm -rf build", current_verdict: "ask" },
-      60_000,
-    );
+    const request = enqueuePluginRequest({
+      subject: "shell",
+      command: "rm -rf build",
+      current_verdict: "ask",
+    });
     if (!isShellRequest(request)) throw new Error("expected a shell request");
     expect(request.fragments).toHaveLength(1);
     expect(request.fragments[0]?.display).toBe("rm -rf build");
     expect(request.harness).toBe("allowlister");
   });
 
-  it("lists only pending, unexpired, undecided requests in creation order", () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-06-18T00:00:00.000Z"));
-    const first = enqueuePluginRequest({ command: "npm test" }, 10_000);
-    vi.setSystemTime(new Date("2026-06-18T00:00:01.000Z"));
-    const second = enqueuePluginRequest({ command: "gh pr merge 42" }, 10_000);
+  it("lists only pending, undecided requests in creation order", () => {
+    const first = enqueuePluginRequest({ command: "npm test" });
+    const second = enqueuePluginRequest({ command: "gh pr merge 42" });
     decideRequest(first.id, {
       requestId: first.id,
       verdict: "allow",
@@ -123,23 +118,19 @@ describe("approval server store", () => {
     });
 
     expect(listPendingRequests().map((request) => request.id)).toEqual([second.id]);
-
-    vi.setSystemTime(new Date("2026-06-18T00:00:12.000Z"));
-    expect(listPendingRequests()).toEqual([]);
   });
 
-  it("keeps requests pending indefinitely when the timeout is zero", () => {
+  it("keeps requests pending indefinitely (approvals never expire)", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-18T00:00:00.000Z"));
-    const request = enqueuePluginRequest({ command: "gh pr merge 42" }, 0);
-    expect(request.expiresAt).toBeNull();
+    const request = enqueuePluginRequest({ command: "gh pr merge 42" });
 
     vi.setSystemTime(new Date("2026-06-19T00:00:00.000Z"));
     expect(listPendingRequests().map((entry) => entry.id)).toEqual([request.id]);
   });
 
   it("stores and retrieves decisions for plugin polling", () => {
-    const request = enqueuePluginRequest({ command: "rm -rf build" }, 60_000);
+    const request = enqueuePluginRequest({ command: "rm -rf build" });
     expect(getDecision(request.id)).toBeNull();
 
     decideRequest(request.id, {

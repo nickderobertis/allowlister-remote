@@ -31,7 +31,7 @@ type TtyRunning = {
 
 async function repoConfig(extraRules = "") {
   const dir = await mkdtemp(join(tmpdir(), "allowlister-remote-e2e-"));
-  // No --timeout-ms: the plugin waits indefinitely for a local or remote decision.
+  // The plugin waits indefinitely for a local or remote decision.
   const config = `{
     "rules": [${extraRules}],
     "plugins": [{
@@ -248,20 +248,18 @@ test("renders a real multi-fragment script with mixed allow/ask verdicts", async
     await expect(open).toHaveCount(1);
     await open.click();
 
-    await expect(page.getByRole("heading", { name: /Approve the action/ })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Approve shell command" })).toBeVisible();
     // Only the two tripping fragments are surfaced for attention.
     const flagged = page.getByLabel("Flagged commands");
     await expect(flagged).toContainText(headline);
     await expect(flagged).toContainText("git push origin main --tags");
-    // The full decomposition lists the allowed fragments with their rule names,
-    // proving mixed verdicts (allow + ask) came through from the real binary.
-    // Scoped to the fragments card so rule names that also appear in the flagged
-    // card above do not match twice.
-    const fragments = page.getByLabel("Allowlister fragments");
-    await expect(fragments).toContainText("npm ci");
-    await expect(fragments).toContainText("allow npm install");
-    await expect(fragments).toContainText("ask before publishing a package");
-    await expect(fragments).toContainText("ask before pushing to a remote");
+    // The interactive script lists every fragment including the statically allowed
+    // ones, proving mixed verdicts (allow + ask) came through from the real binary.
+    // Clicking an allowed fragment discloses the static rule that allowed it.
+    const script = page.getByLabel("Script");
+    await expect(script).toContainText("npm ci");
+    await script.getByRole("button", { name: /npm ci/ }).click();
+    await expect(script).toContainText("allow npm install");
 
     // The script statically resolves to `ask` (rule-driven), and allowlister only
     // lets a plugin `allow` upgrade a static `defer` — so the effective remote
@@ -399,7 +397,7 @@ test("resolves the correct process from the expanded view while others stay pend
 
     // Open one request full-screen and approve it from the detail view.
     await expandedOpen.click();
-    await expect(page.getByRole("heading", { name: /Approve the action/ })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Approve shell command" })).toBeVisible();
     await page.getByRole("button", { name: "Allow once" }).click();
 
     // Only the opened request's plugin resolves.
