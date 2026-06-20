@@ -39,6 +39,10 @@ paths = [
   "apps/web/public/**",
   "apps/web/screenshots/**",
   "apps/web/playwright.capture.config.ts",
+  # The terminal lane renders the plugin's real /dev/tty prompt: re-capture when
+  # the prompt source, the recorded fixture, or the SVG renderer changes.
+  "crates/allowlister-remote-plugin/src/**",
+  "scripts/terminal-svg.mjs",
   "**/*.{css,scss,html}",
 ]
 gallery = "shots/review"

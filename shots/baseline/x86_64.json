@@ -130,6 +130,34 @@
       "hash": "cbc4cbbfff36a9957a833b73b1c45b250b8646c1c281f63c3578ec78640a75d6"
     },
     {
+      "name": "terminal-shell",
+      "toggles": {
+        "theme": "dark"
+      },
+      "hash": "6aa9acd3cca1bccebd5c7e3b5c7dc8020359d690fab8303a5798777a62a2e7ce"
+    },
+    {
+      "name": "terminal-shell",
+      "toggles": {
+        "theme": "light"
+      },
+      "hash": "4e9238468965be9a187fd956adc53fca1fcd6d31cc0a257fc21ec1ead28e61e6"
+    },
+    {
+      "name": "terminal-tool",
+      "toggles": {
+        "theme": "dark"
+      },
+      "hash": "7ea86a840d436bc4e571a924bdc4e0c229f652819608a9847ff9278f516e60c7"
+    },
+    {
+      "name": "terminal-tool",
+      "toggles": {
+        "theme": "light"
+      },
+      "hash": "213144a5f0919ec409746f632789db25d71d0824407bda862cda66496e81d428"
+    },
+    {
       "name": "tool-capability",
       "toggles": {
         "theme": "dark",

@@ -1,6 +1,6 @@
 use allowlister_remote_plugin::{
-    build_create_body, interpret_decision, parse_local_input, request_summary, static_decision,
-    LocalDecision, RemoteDecision,
+    build_create_body, interpret_decision, local_prompt, parse_local_input, request_summary,
+    static_decision, LocalDecision, RemoteDecision,
 };
 
 // Daemon mode is built on Unix domain sockets, so it is Unix-only; Windows uses
@@ -65,10 +65,7 @@ fn start_local_prompt(
         return (None, None);
     };
 
-    let _ = writeln!(
-        prompt_writer,
-        "\nallowlister-remote approval required\n  command: {command}\n  cwd: {cwd}\nApprove here or in the web app. [a]llow / [d]eny: "
-    );
+    let _ = writeln!(prompt_writer, "{}", local_prompt(command, cwd));
 
     let (tx, rx) = mpsc::channel();
     thread::spawn(move || {

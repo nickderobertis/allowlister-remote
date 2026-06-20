@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "prompts": [
+    {
+      "name": "terminal-shell",
+      "command": "gh pr merge 42 --squash --delete-branch",
+      "cwd": "~/src/allowlister-remote",
+      "prompt": "allowlister-remote approval required\n  command: gh pr merge 42 --squash --delete-branch\n  cwd: ~/src/allowlister-remote\nApprove here or in the web app. [a]llow / [d]eny: "
+    },
+    {
+      "name": "terminal-tool",
+      "command": "mcp__github__create_issue",
+      "cwd": "~/src/allowlister-remote",
+      "prompt": "allowlister-remote approval required\n  command: mcp__github__create_issue\n  cwd: ~/src/allowlister-remote\nApprove here or in the web app. [a]llow / [d]eny: "
+    }
+  ]
+}

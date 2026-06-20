@@ -47,8 +47,16 @@ smoke-e2e version="":
 
 # Capture deterministic screenshots into shots/current/<arch>/ (captures.json +
 # the PNGs it references) for screencomp's visual-docs gate (builds the app first).
+# This also emits the terminal-prompt SVG shots (apps/web/screenshots/terminal.capture.ts).
 capture:
     npx nx run web:capture
+
+# Re-record the local-terminal approval prompt fixture from the real plugin
+# binary (apps/web/screenshots/terminal/prompts.json). Run after changing the
+# prompt wording in the plugin; tests/terminal_prompt.rs guards it from drifting.
+record-terminal-prompts:
+    cargo build -p allowlister-remote-plugin --bin allowlister-remote-plugin
+    python3 scripts/record-terminal-prompts.py
 
 upgrade:
     npm update
