@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/nickderobertis/allowlister-remote/compare/v0.5.0...v0.6.0) (2026-06-20)
+
+
+### Features
+
+* realtime PWA↔plugin approval sync via Rust broker and daemon ([#50](https://github.com/nickderobertis/allowlister-remote/issues/50)) ([d919c14](https://github.com/nickderobertis/allowlister-remote/commit/d919c14db40185cfc0ccb0ad7cb791897a9d627c))
+
 ## [0.5.0](https://github.com/nickderobertis/allowlister-remote/compare/v0.4.0...v0.5.0) (2026-06-20)
 
 
