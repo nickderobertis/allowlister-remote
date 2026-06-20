@@ -57,6 +57,11 @@ jobs:
       # install matches the @playwright/test version in package.json rather than
       # the container's bundled one.
       capture-command: |
+        # Log the runner's CPU model. ubuntu-latest hands out heterogeneous
+        # CPUs across runs, and rendering must be byte-identical regardless; this
+        # line records which microarchitecture a given capture ran on so a green
+        # gate across re-runs visibly samples different CPUs. Renders no bytes.
+        echo "runner CPU: $(grep -m1 'model name' /proc/cpuinfo | cut -d: -f2- | sed 's/^ *//')"
         npm ci
         npx playwright install --with-deps chromium
         npx next build apps/web

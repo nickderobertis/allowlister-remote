@@ -10,12 +10,24 @@ import { defineConfig, devices } from "@playwright/test";
 // produces identical bytes on every machine. Stability flags (e.g.
 // --single-process) are deliberately omitted — they are unsafe for an
 // interactive SPA and change no bytes.
+//
+// We deliberately drop the README's --use-gl=angle / --use-angle=swiftshader
+// and instead force every pixel — raster AND compositing — through CPU Skia.
+// SwiftShader is a software GL renderer, but it dispatches on CPU SIMD and is
+// not bit-identical across microarchitectures; --disable-skia-runtime-opts (the
+// README's "decisive" CPU-independence flag) governs Skia, NOT SwiftShader. So
+// routing compositing through SwiftShader reintroduced CPU-dependent bytes on
+// the densest, most-blended shot (tool-json desktop), making the strict gate
+// flaky across ubuntu-latest's heterogeneous runners (same commit, re-run flips
+// pass/fail). screencomp's own README confirms the CPU-raster path
+// (--disable-gpu + --disable-skia-runtime-opts, no SwiftShader) stays
+// byte-identical to CI; --disable-gpu-compositing keeps the compositor on Skia
+// too so nothing falls back to a GL context.
 const DETERMINISM_ARGS = [
   "--disable-skia-runtime-opts",
   "--disable-gpu",
   "--disable-gpu-rasterization",
-  "--use-gl=angle",
-  "--use-angle=swiftshader",
+  "--disable-gpu-compositing",
   "--force-color-profile=srgb",
   "--font-render-hinting=none",
   "--disable-lcd-text",
