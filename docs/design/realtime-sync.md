@@ -168,23 +168,33 @@ the size-optimized plugin binary):
   web decision down to the plugin, local-terminal decision up dismissing web,
   and plugin-exit withdrawal.
 
+* **Plugin** (`crates/allowlister-remote-plugin`) — daemon mode: a unix-socket
+  client that auto-starts the daemon if none is listening (detached, own process
+  group, sibling-binary resolution), races the `/dev/tty` prompt against the
+  relayed decision, and falls back to the existing HTTP path. Opt-in via
+  `--use-daemon` / `--broker-url` / `--daemon-socket`. **Done + tested.**
+* **Service worker + page** (`apps/web`) — `public/sw.js` holds one WebSocket to
+  `/ws/pwa`, subscribes, relays broker events to all clients via `postMessage`,
+  and reconnects with capped backoff; `src/pwa/broker-bridge.ts` is the page-side
+  bridge; `App.tsx` adds a live-sync effect alongside the 2 s poll fallback,
+  gated on `NEXT_PUBLIC_ALLOWLISTER_BROKER_URL`. **Done + tested** (SW bridge and
+  page bridge unit-tested; the live `App` wiring is e2e-scoped).
+
 Remaining:
 
-* **Plugin**: daemon auto-start + unix-socket client, with the existing HTTP
-  long-poll preserved as fallback. *(in progress)*
-* **Service worker + page**: WebSocket to `/ws/pwa`, `postMessage` bridge to the
-  React UI; swap `App.tsx`'s 2 s poll for live events.
 * **Packaging**: ship the daemon binary alongside the plugin in the per-platform
-  npm packages; broker deployment.
-* **Heartbeat/reconnect**, session scoping, and the multi-instance pub/sub.
+  npm packages; broker deployment + `wss://` TLS.
+* **Heartbeat/reconnect refinements**, per-user session scoping, and the
+  multi-instance pub/sub (Redis) for horizontal broker scale.
+* **Playwright e2e** through the full broker + daemon + plugin chain.
 
 ## 9. Phased rollout
 
 1. ✅ Broker mediation core (WS, routing, fan-out, withdrawal).
 2. ✅ Daemon (unix multiplexing + single upstream + plugin routing).
-3. ⏳ Plugin daemon-client + auto-start (HTTP fallback retained).
-4. ⏳ Service worker + page wiring.
-5. Heartbeat/reconnect, packaging, session scoping.
+3. ✅ Plugin daemon-client + auto-start (HTTP fallback retained).
+4. ✅ Service worker + page wiring (live sync alongside the poll fallback).
+5. ⏳ Heartbeat/reconnect refinements, packaging, `wss://`, session scoping.
 6. (If needed) shared pub/sub for horizontal scale.
 
 ## 10. Early prototypes

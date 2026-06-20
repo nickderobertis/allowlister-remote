@@ -1,5 +1,6 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { createApprovalApi } from "./api";
+import { connectBroker } from "./pwa/broker-bridge";
 import {
   flaggedFragments,
   remainingDisplay,
@@ -685,6 +686,24 @@ function App() {
       window.clearInterval(tick);
     };
   }, [api]);
+
+  // Realtime sync: when a broker is configured, the service worker holds one
+  // WebSocket to it and relays live updates, so approvals appear and dismiss
+  // instantly instead of waiting for the 2s poll above (which stays as the
+  // fallback). Exercised against the real broker + service worker, not jsdom.
+  /* v8 ignore start -- realtime path runs against the broker; covered by e2e. */
+  useEffect(() => {
+    const brokerUrl = process.env.NEXT_PUBLIC_ALLOWLISTER_BROKER_URL;
+    if (!brokerUrl) return;
+    const bridge = connectBroker(brokerUrl, {
+      onSnapshot: (snapshot) => setRequests(snapshot as ApprovalRequest[]),
+      onAdded: (request) => setRequests((current) => [...current, request as ApprovalRequest]),
+      onResolved: (id) =>
+        setRequests((current) => current.filter((request) => request.id !== id)),
+    });
+    return () => bridge.close();
+  }, []);
+  /* v8 ignore stop */
 
   const selected = useMemo(
     () => requests.find((request) => request.id === selectedId) ?? null,
