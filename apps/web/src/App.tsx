@@ -1,7 +1,5 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { createApprovalApi } from "./api";
-import { normalizeBrokerRequest } from "./approval-normalize";
-import { connectBroker } from "./pwa/broker-bridge";
 import {
   flaggedFragments,
   remainingDisplay,
@@ -9,6 +7,7 @@ import {
   toolParamSummary,
   triggeredRules,
 } from "./approval";
+import { normalizeBrokerRequest } from "./approval-normalize";
 import { ThemeToggle } from "./components/theme-toggle";
 import { Badge } from "./components/ui/badge";
 import { Button } from "./components/ui/button";
@@ -17,6 +16,7 @@ import { Kbd } from "./components/ui/kbd";
 import { SHORTCUT_GROUPS, useIsDesktop, useKeyboardShortcuts } from "./lib/keyboard";
 import { ThemeProvider } from "./lib/theme";
 import { cn } from "./lib/utils";
+import { connectBroker } from "./pwa/broker-bridge";
 import {
   type ApprovalRequest,
   type ApprovalVerdict,

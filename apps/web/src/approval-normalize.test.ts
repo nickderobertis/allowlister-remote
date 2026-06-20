@@ -54,7 +54,11 @@ describe("normalizePluginRequest", () => {
   });
 
   it("defaults unknown verdicts and missing fields", () => {
-    const request = normalizePluginRequest({ subject: "shell", current_verdict: "maybe" }, "id-4", 0);
+    const request = normalizePluginRequest(
+      { subject: "shell", current_verdict: "maybe" },
+      "id-4",
+      0,
+    );
     expect(request.currentVerdict).toBe("defer");
     expect(request.harness).toBe("allowlister");
     expect(request.protocolVersion).toBe(2);
