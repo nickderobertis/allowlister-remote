@@ -22,13 +22,23 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#050816",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#f8fafc" },
+    { media: "(prefers-color-scheme: dark)", color: "#050816" },
+  ],
 };
+
+// Runs before first paint to seed the `.dark` class from the stored preference (or
+// the OS setting) so there's no light-then-dark flash. The storage key mirrors
+// THEME_STORAGE_KEY in src/lib/theme.tsx, which manages the class thereafter.
+const themeBootstrap = `(function(){try{var k="allowlister-remote-theme";var p=localStorage.getItem(k)||"system";var d=p==="dark"||(p==="system"&&window.matchMedia("(prefers-color-scheme: dark)").matches);var r=document.documentElement;r.classList.toggle("dark",d);r.style.colorScheme=d?"dark":"light";}catch(e){}})();`;
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body>
+        {/* biome-ignore lint/security/noDangerouslySetInnerHtml: trusted inline theme bootstrap */}
+        <script dangerouslySetInnerHTML={{ __html: themeBootstrap }} />
         <RegisterServiceWorker />
         {children}
       </body>

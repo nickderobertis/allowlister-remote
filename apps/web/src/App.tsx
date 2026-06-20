@@ -7,11 +7,13 @@ import {
   toolParamSummary,
   triggeredRules,
 } from "./approval";
+import { ThemeToggle } from "./components/theme-toggle";
 import { Badge } from "./components/ui/badge";
 import { Button } from "./components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./components/ui/card";
 import { Kbd } from "./components/ui/kbd";
 import { SHORTCUT_GROUPS, useIsDesktop, useKeyboardShortcuts } from "./lib/keyboard";
+import { ThemeProvider } from "./lib/theme";
 import { cn } from "./lib/utils";
 import {
   type ApprovalRequest,
@@ -768,13 +770,16 @@ function App() {
   }
 
   return (
-    <>
+    <ThemeProvider>
+      <div className="fixed right-4 top-4 z-40">
+        <ThemeToggle />
+      </div>
       {content}
       {isDesktop && !showShortcuts ? <ShortcutsHint onOpen={() => setShowShortcuts(true)} /> : null}
       {isDesktop && showShortcuts ? (
         <ShortcutsOverlay onClose={() => setShowShortcuts(false)} />
       ) : null}
-    </>
+    </ThemeProvider>
   );
 }
 
