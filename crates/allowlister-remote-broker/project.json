@@ -1,0 +1,53 @@
+{
+  "name": "allowlister-remote-broker",
+  "projectType": "application",
+  "root": "crates/allowlister-remote-broker",
+  "sourceRoot": "crates/allowlister-remote-broker/src",
+  "tags": ["scope:broker", "type:service", "lang:rust"],
+  "targets": {
+    "format": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo fmt --manifest-path crates/allowlister-remote-broker/Cargo.toml",
+        "cwd": "."
+      }
+    },
+    "fmt-check": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo fmt --manifest-path crates/allowlister-remote-broker/Cargo.toml --check",
+        "cwd": "."
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo clippy -p allowlister-remote-broker --all-targets -- -D warnings",
+        "cwd": "."
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo check -p allowlister-remote-broker --all-targets",
+        "cwd": "."
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo test -p allowlister-remote-broker",
+        "cwd": "."
+      }
+    },
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo build -p allowlister-remote-broker",
+        "cwd": "."
+      },
+      "outputs": ["{workspaceRoot}/target/debug/allowlister-remote-broker"],
+      "cache": false
+    }
+  }
+}

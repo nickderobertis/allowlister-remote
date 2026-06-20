@@ -2,6 +2,7 @@
 members = [
   "crates/allowlister-remote-broker",
   "crates/allowlister-remote-daemon",
+  "crates/allowlister-remote-e2e",
   "crates/allowlister-remote-plugin",
 ]
 resolver = "2"
