@@ -1,5 +1,9 @@
 [workspace]
-members = ["crates/allowlister-remote-plugin"]
+members = [
+  "crates/allowlister-remote-broker",
+  "crates/allowlister-remote-daemon",
+  "crates/allowlister-remote-plugin",
+]
 resolver = "2"
 
 # Small, fast-starting release binary: thin LTO + a single codegen unit for

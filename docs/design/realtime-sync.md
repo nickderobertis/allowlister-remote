@@ -1,16 +1,19 @@
 # Design: realtime PWA ↔ plugin synchronization
 
-Status: **proposal** · Branch: `claude/pwa-allowlister-communication-gnte6g`
+Status: **in progress** · Branch: `claude/pwa-allowlister-communication-gnte6g`
 
-This document proposes replacing the current poll-based approval transport with
-a realtime, long-lived design suitable for approvals that stay open for hours or
-days, while keeping delivery latency to roughly one round-trip. It is backed by
-two runnable prototypes that validate the riskiest mechanics; see
-[`prototypes/`](./prototypes/) and the [Validation](#validation) section.
+Replace the poll-based approval transport with a realtime design built around a
+dedicated Rust **connection broker**, suitable for approvals that stay open for
+hours or days while keeping delivery latency to roughly one round-trip. The
+broker and the host **daemon** are written in Rust (axum + tokio) for the
+highest-performance hot path; the existing Next.js app keeps serving the PWA.
+
+Backed by runnable code and tests — see [Implementation status](#implementation-status)
+and the early-stage [`prototypes/`](./prototypes/).
 
 ## 1. Today's architecture
 
-Three HTTP channels, all mediated by the Next.js app's in-memory store
+Three HTTP channels mediated by the Next.js app's in-memory store
 (`apps/web/src/server/store.ts`); nothing talks peer-to-peer.
 
 | Actor | Call | Endpoint |
@@ -21,223 +24,173 @@ Three HTTP channels, all mediated by the Next.js app's in-memory store
 | PWA → server | list pending | `GET /api/approval-requests` (2 s poll) |
 | PWA → server | submit decision | `POST /api/approval-requests/{id}/decision` |
 
-The store holds two maps (`requests`, `decisions`) on `globalThis`; a decision
-recorded in either map is the single arbitration point, so whichever side
-(local `/dev/tty` or web) writes first wins and the loser observes it on its
-next poll (`crates/allowlister-remote-plugin/src/main.rs`,
-`apps/web/src/App.tsx`).
-
 ### Why change it
 
-* **Churn over long waits.** A single pending approval polled at 150 ms is
-  ~24k requests/hour, ~575k/day. Approvals here have *no timeout by default*
-  (`timeoutMs <= 0` ⇒ `expiresAt: null`), so a request can sit for days.
-* **Latency floor.** 150 ms polling averages ~75 ms delivery; the browser's
-  2 s poll is far worse.
+* **Churn over long waits.** Approvals have *no timeout by default*
+  (`timeoutMs <= 0` ⇒ `expiresAt: null`), so a request can sit for days. At a
+  150 ms poll that is ~24k requests/hour, ~575k/day, for a single approval.
+* **Latency floor.** 150 ms polling averages ~75 ms delivery; the browser's 2 s
+  poll is far worse.
 * **Per-invocation connections.** The plugin is spawned **once per gated
-  command** (see `CLAUDE.md`; the hot path is heavily optimized — static musl,
-  `-no-pie`, dropping `ld.so`). Each process opening its own long-lived
-  connection means a fresh TLS handshake + auth on exactly that hot path, and N
-  concurrent connections for N concurrent gated commands.
+  command** (`CLAUDE.md`; the hot path is heavily optimized). A short-lived
+  process is the wrong place to hold an hours-long connection — a fresh TLS/auth
+  handshake on every gated command, and N connections for N concurrent commands.
 
 ## 2. Constraint: the plugin host is not reachable
 
 In a full web deployment the plugin host sits behind NAT/firewalls with no
-inbound connectivity. **The server can never dial the plugin.** This is already
-satisfied by today's design and both transports below: every connection is
-*client-initiated outbound* from the host, and the server only ever replies on a
-connection the host already opened. So reachability is not the thing that forces
-a new design — the per-invocation process model is.
+inbound connectivity. **The server can never dial the host.** Every connection
+is therefore *client-initiated outbound*; the server only ever replies on a
+connection a client already opened. This holds for both edges below.
 
-## 3. Proposed architecture: broker + client-side daemon
+## 3. Architecture: a dedicated broker mediating daemons ↔ PWAs
+
+The Rust broker's sole job is to **mediate connections** between many instances
+of two clients. It is not the web UI and does not replace Next.js.
 
 ```
    gated command (ephemeral, per invocation)
         │  owns stdin (payload), stdout (verdict), /dev/tty (local prompt)
-   ┌────▼─────────┐   unix domain socket    ┌──────────────┐   1 outbound stream   ┌──────────┐
-   │   plugin     │◀──────────────────────▶│    daemon     │◀────────────────────▶│  broker   │
-   │ (Rust, short)│   REGISTER / DECISION   │ (Rust, long)  │  SSE down + POST up   │ (Next.js) │
-   └──────────────┘                         └──────────────┘                       └────▲─────┘
-                                                                                        │ SSE down
-                                                                              ┌─────────┴────────┐
-                                                                              │   PWA (browser)   │
-                                                                              └───────────────────┘
+   ┌────▼─────────┐   unix domain socket    ┌──────────────┐   1 WebSocket (out)   ┌──────────────┐
+   │   plugin     │◀──────────────────────▶│    daemon     │◀────────────────────▶│              │
+   │ (Rust, short)│  create / decision/ack  │ (Rust, tokio) │   /ws/daemon          │  broker      │
+   └──────────────┘                         └──────────────┘                       │ (Rust, axum) │
+                                                                                   │              │
+   ┌──────────────┐                         ┌──────────────┐   1 WebSocket (out)   │  in-memory   │
+   │  PWA page(s) │◀──postMessage──────────▶│ service      │◀────────────────────▶│  routing     │
+   │ (React UI)   │                         │ worker       │   /ws/pwa             │  only        │
+   └──────────────┘                         └──────────────┘                       └──────────────┘
 ```
 
-The plugin process **cannot** be replaced by the daemon: it owns `stdin` (the
-allowlister payload), `stdout` (the verdict it must return — the `write_response`
-contract in `main.rs`), and `/dev/tty` (the local prompt, bound to *that*
-process's controlling terminal). So responsibilities split by lifetime:
+Responsibilities split by lifetime — the plugin process **cannot** be replaced
+by the daemon because it owns `stdin`/`stdout` (the `write_response` contract in
+`main.rs`) and `/dev/tty` (the local prompt, bound to that process's terminal):
 
 | Tier | Lifetime | Owns | Talks to |
 | --- | --- | --- | --- |
 | **Plugin** | seconds–hours, per command | stdin/stdout + `/dev/tty` prompt | local **daemon** over a unix socket |
-| **Daemon** | days, one per host/user | the single upstream stream, auth/session, reconnect, request↔process routing | **broker** over one connection |
-| **Broker** | always (the Next.js app) | request/decision state, fan-out, connection mgmt | daemons + PWAs |
+| **Daemon** | days, one per host/user | the single upstream WebSocket, request↔plugin routing | **broker** at `/ws/daemon` |
+| **Service worker** | the browser session | the single upstream WebSocket, page fan-out via `postMessage` | **broker** at `/ws/pwa` |
+| **Broker** | always (new Rust service) | ephemeral routing state: which daemon owns which pending request, the set of subscribed PWAs | daemons + service workers |
 
-The local-vs-web race is unchanged in spirit; it just moves. The plugin still
-races its `/dev/tty` decision against a "remote" decision, but "remote" is now
-the daemon over a microsecond-scale unix socket instead of HTTPS. A local win is
-relayed by the daemon upstream (a `POST`) so the pending web card is dismissed.
+The local-vs-web race is unchanged in spirit; it moves to the daemon. The plugin
+races its `/dev/tty` decision against a decision relayed from the daemon (over a
+microsecond unix socket, not HTTPS). A local win is relayed by the daemon
+upstream so the pending web card is dismissed; the broker resolves whichever
+side is first and is idempotent for the loser.
 
-## 4. Transport choice
+## 4. Transport: WebSockets on both broker edges
 
-**Plugin ↔ daemon: unix domain socket, line/JSON-framed.** Local IPC, no TLS, no
-auth per message — the daemon already authenticated upstream. The socket *is*
-the liveness signal: if the plugin is killed (Ctrl-C'd command), the socket
-closes and the daemon withdraws the request upstream.
+A dedicated axum broker changes the earlier transport call. The first draft of
+this doc recommended SSE-down + POST-up *because the broker was a Next.js route
+handler, which cannot perform a WebSocket upgrade.* With a standalone axum
+service that blocker is gone, and the mediation is genuinely **bidirectional and
+multi-instance**, so **WebSocket is the right, highest-performance choice for
+both edges** (service worker ↔ broker and daemon ↔ broker). axum has first-class
+WebSocket support; tokio-tungstenite is the daemon's client.
 
-**Daemon/PWA ↔ broker: SSE down + plain POST up.**
+* **Plugin ↔ daemon: unix domain socket, newline-delimited JSON.** Local IPC, no
+  TLS or per-message auth. The socket *is* the liveness signal: if the plugin is
+  killed (Ctrl-C'd command) the socket closes and the daemon withdraws the
+  request upstream.
+* **Long-poll fallback** stays available for the plugin's legacy direct-to-Next
+  path when no daemon/broker is reachable (today's behavior, unchanged).
 
-* SSE is one-directional server→client push, which is all the downstream needs
-  (decisions, cancellations). It runs over ordinary HTTP, works behind proxies,
-  and `EventSource` has built-in auto-reconnect for the browser. The daemon uses
-  the same `text/event-stream` endpoint.
-* Upstream writes (create-request, relay-local-decision) are ordinary `POST`s —
-  no persistent client→server channel needed.
-* **Not WebSockets.** The traffic is request/response plus notifications, not a
-  high-frequency bidirectional stream, and Next.js App Router route handlers
-  can't perform the WS upgrade without a custom server. WebSockets stay an
-  option *only* for the daemon's upstream if its multiplex volume ever warrants
-  a dedicated socket service; the PWA never needs them.
-* **Long-poll is the fallback.** A hanging `GET .../decision` capped at ~25 s
-  gives one-RTT delivery with zero new protocol, for environments where SSE is
-  blocked. It degrades to ordinary polling if the cap is lowered.
+### Wire protocol (broker)
 
-### Why long waits are safe
+daemon → broker: `create {request:{id,…}}`, `decision {requestId,verdict,reason}`
+(local relay), `withdraw {requestId}`.
+broker → daemon: `decision {requestId,verdict,reason}` (web decision routed to owner).
+PWA → broker: `subscribe`, `decision {requestId,verdict,reason}`.
+broker → PWA: `snapshot {requests:[…]}`, `added {request}`, `resolved {requestId}`.
 
-The key inversion: **the logical wait is days, but no single connection is held
-for days.** Long-poll hangs are capped at ~25 s and re-issued; SSE connections
-are kept alive with heartbeats and resumed on drop. Short physical connections
-are *more* robust across hostile intermediaries, not less.
+### Wire protocol (plugin ↔ daemon)
 
-Keepalive strategy:
+plugin → daemon: `create {payload:{…allowlister body…}}` (daemon assigns the id),
+`decision {verdict,reason}` (local terminal).
+daemon → plugin: `decision {verdict,reason}` (web), `ack` (local relay forwarded).
 
-1. **Cap every hang** (~25 s long-poll, ~15–25 s heartbeat) under the shortest
-   proxy/LB idle timeout (commonly 30–60 s).
-2. **SSE heartbeats**: emit `:ping\n\n` every ~15 s; set `Cache-Control:
-   no-cache` and `X-Accel-Buffering: no` to defeat proxy buffering.
-3. **Lossless resume**: every event carries a monotonic id; on reconnect the
-   client sends `Last-Event-ID` (browser does this automatically) / a `?since=`
-   cursor, and the broker replays everything after it. Over day-long sessions
-   reconnects are routine — they must not drop a decision.
-4. **Daemon reconnect/backoff**: the request `id` is the durable handle, so
-   re-subscribing after a drop just resumes.
-5. **Runtime**: these handlers must run on the **Node** runtime as
-   streaming/dynamic responses (`export const runtime = "nodejs"`,
-   `export const dynamic = "force-dynamic"`) — not edge, not static.
+## 5. Surviving hours/days
 
-## 5. Server-side changes (the store)
+The key inversion: **the logical wait is days, but no single message exchange is
+held for days.** Connections are kept alive deliberately, and resumed losslessly
+when they drop.
 
-`store.ts` is currently pure data maps. It grows a small notification primitive:
+1. **Heartbeats.** WebSocket Ping/Pong (or an app-level keepalive) every ~15–25 s
+   keeps idle connections under typical proxy/LB idle timeouts (30–60 s).
+2. **Auto-reconnect.** The daemon reconnects to the broker with backoff; the
+   request `id` is the durable handle, so re-subscription resumes. The browser's
+   service worker reconnects the same way.
+3. **Lossless resume.** On reconnect the daemon re-announces its still-pending
+   requests and the PWA re-`subscribe`s for a fresh snapshot, so a decision that
+   landed during a gap is not missed. (A monotonic per-connection event cursor is
+   a later refinement if snapshots become large.)
+4. **Service-worker lifetime.** Browsers may evict an idle service worker; an
+   open WebSocket keeps it alive while connected, and reconnect-on-activate
+   re-establishes it. Delivery while the app is fully closed is **out of scope**
+   (it needs Web Push / VAPID, which `CLAUDE.md` lists as excluded).
 
-* an `EventEmitter` (or a set of waiter promises) plus a monotonic, replayable
-  event log keyed by a sequence number;
-* `enqueuePluginRequest` and `decideRequest` emit `added` / `decided` events
-  after mutating state;
-* a new `waitForDecision(id, deadlineMs)` that resolves on a `decided` event or
-  the deadline — this replaces the plugin's 150 ms poll loop with a single
-  hanging request;
-* `eventsSince(seq)` for SSE replay.
-
-Endpoints:
-
-* `GET /api/plugin/requests/{id}/decision` → hang via `waitForDecision`, return
-  `200 {verdict,reason}` or `202 {status:"pending"}` at the cap. **Wire shape
-  unchanged** — only the timing changes, so the existing
-  `interpret_decision`/202-pending contract in the plugin still holds.
-* `GET /api/events` (new) → SSE `ReadableStream`: replay `eventsSince(lastId)`,
-  then live events, with heartbeats.
-
-Session ownership for fan-out: the create `POST` is authenticated as a daemon
-session; the broker tags each request with the owning session, and only pushes a
-request's `decided`/`cancelled` events down that session's stream. One stream
-correctly carries all of one host's in-flight requests.
-
-## 6. Client-side changes
-
-* **PWA**: swap `App.tsx`'s 2 s `setInterval` for an `EventSource` on
-  `/api/events`; keep `POST .../decision` as-is. The `DemoApprovalApi` path is
-  untouched.
-* **Plugin**: replace the network loop in `main.rs` with a unix-socket
-  handshake to the daemon (register the request, await a `DECISION`, race
-  `/dev/tty` locally). The pure helpers in `lib.rs`
-  (`triage`, `build_create_body`, `interpret_decision`, `parse_local_input`)
-  are reused unchanged. A direct-HTTPS fallback (today's long-poll) stays for
-  when no daemon is reachable.
-* **Daemon** (new, Rust): one persistent SSE subscription to the broker; a unix
-  listener fanning short-lived plugin connections; a registry mapping
-  `request_id → waiting plugin connection`; reconnect/backoff/heartbeat handling
-  in one place.
-
-## 7. Failure modes (decide explicitly)
+## 6. Failure modes
 
 | Situation | Behavior |
 | --- | --- |
-| Daemon not running | Plugin auto-spawns it (agent-style), else falls back to direct HTTPS long-poll. |
+| No daemon running | Plugin **auto-starts** it, else falls back to direct HTTPS long-poll. |
 | Daemon crashes mid-wait | Plugin detects socket close; reconnect to a restarted daemon, else direct fallback, else **fail-closed** (`ask`/deny). |
-| Plugin killed / command Ctrl-C'd | Socket close ⇒ daemon **withdraws** the request upstream so the PWA stops showing a stale prompt (today it lingers until expiry). |
-| Broker unreachable | Daemon retries with backoff; plugin honors `--timeout-ms` if set, else waits, surfacing status to `/dev/tty`. |
+| Plugin killed / command Ctrl-C'd | Socket close ⇒ daemon **withdraws** the request upstream so the PWA stops showing a stale prompt. *(implemented + tested)* |
+| Daemon disconnects from broker | Broker withdraws all that daemon's pending requests so no PWA is left with a dead prompt. *(implemented + tested)* |
+| Broker unreachable | Daemon retries with backoff; plugin honors `--timeout-ms` if set, else waits. |
 
-Recommended default: **fail-closed** when no decision channel can be
-established, consistent with an approval tool.
+Recommended default: **fail-closed** when no decision channel can be established.
 
-## 8. The multi-instance caveat
+## 7. Multi-instance / multi-tenant
 
-This assumes a **single broker process**, which `globalThis.__allowlisterRemoteState`
-already requires. Multiple broker instances break in-process fan-out (a waiter
-or SSE on instance A won't see a decision posted to instance B). Crossing that
-line means adding a shared pub/sub (e.g. Redis) and durable state — the same
-items `CLAUDE.md` lists as intentionally out of scope for this scaffold. The
-daemon does not move that boundary; it just makes it the obvious next milestone
-if the broker scales horizontally.
+The broker holds only in-memory routing state, so a single broker process is
+assumed. Horizontal scale needs a shared pub/sub (e.g. Redis) for cross-instance
+fan-out. Per-user request scoping (so a PWA only sees its own host's requests)
+also lands here; today, consistent with the existing store and `CLAUDE.md`'s
+"no auth", all subscribed PWAs see all pending requests. Both are deferred and
+called out as the next milestone, not silently assumed away.
+
+## 8. Implementation status
+
+New Rust workspace crates (kept separate so they never pull async runtimes into
+the size-optimized plugin binary):
+
+* **`crates/allowlister-remote-broker`** — axum WebSocket mediator. `Broker`
+  holds the routing state; `app()` builds the router with `/ws/daemon`,
+  `/ws/pwa`, `/healthz`. **Done + tested.**
+  `tests/mediation.rs` (4 tests, real WS clients): fan-out to multiple PWAs,
+  web-decision routing back to the owning daemon, local-terminal relay without
+  echo, late-subscribe snapshot, and daemon-disconnect withdrawal.
+* **`crates/allowlister-remote-daemon`** — tokio daemon: one broker WebSocket +
+  a unix-socket listener multiplexing plugins; `serve(Config)`. **Done + tested.**
+  `tests/end_to_end.rs` (3 tests, real broker + daemon + fake plugin + fake PWA):
+  web decision down to the plugin, local-terminal decision up dismissing web,
+  and plugin-exit withdrawal.
+
+Remaining:
+
+* **Plugin**: daemon auto-start + unix-socket client, with the existing HTTP
+  long-poll preserved as fallback. *(in progress)*
+* **Service worker + page**: WebSocket to `/ws/pwa`, `postMessage` bridge to the
+  React UI; swap `App.tsx`'s 2 s poll for live events.
+* **Packaging**: ship the daemon binary alongside the plugin in the per-platform
+  npm packages; broker deployment.
+* **Heartbeat/reconnect**, session scoping, and the multi-instance pub/sub.
 
 ## 9. Phased rollout
 
-1. **Store notification primitive + long-poll** the plugin decision endpoint
-   (biggest, lowest-risk win; wire shape unchanged). *(broker-proto validated)*
-2. **SSE `/api/events` + PWA `EventSource`** with heartbeats and `Last-Event-ID`
-   resume. *(broker-proto validated)*
-3. **Daemon**: unix-socket multiplexing + single upstream subscription +
-   request routing; plugin talks to the daemon with direct-HTTPS fallback.
-   *(daemon-proto validated)*
-4. **Session ownership / fan-out scoping** and explicit failure-mode policy.
-5. (If needed) shared pub/sub for horizontal scale.
+1. ✅ Broker mediation core (WS, routing, fan-out, withdrawal).
+2. ✅ Daemon (unix multiplexing + single upstream + plugin routing).
+3. ⏳ Plugin daemon-client + auto-start (HTTP fallback retained).
+4. ⏳ Service worker + page wiring.
+5. Heartbeat/reconnect, packaging, session scoping.
+6. (If needed) shared pub/sub for horizontal scale.
 
-## 10. Validation
+## 10. Early prototypes
 
-Both prototypes are runnable and assert their claims; see
-[`prototypes/README.md`](./prototypes/README.md). Measured results:
-
-**`broker-proto.mjs`** (transport mechanics, plain Node):
-
-```
-PASS  long-poll hangs while pending
-PASS  long-poll released with the decision
-PASS  delivery latency is ~one RTT  (5ms)
-PASS  delivery faster than the old 150ms poll  (5ms)
-PASS  SSE pushed the decided event
-PASS  Last-Event-ID reconnect replays the missed event
-PASS  SSE emits heartbeats
-ALL PASS — 7/7
-```
-
-**`daemon-proto.rs`** (client-side multiplexing, std-only Rust, real unix socket):
-
-```
-PASS  all 4 plugins resolved over one socket
-PASS  r1 routed to its upstream verdict
-PASS  r2 routed to its upstream verdict
-PASS  r3 routed despite out-of-order delivery
-PASS  l1 won the local-terminal race
-PASS  daemon relayed l1's local decision upstream
-PASS  daemon did NOT relay remote-decided requests
-ALL PASS
-```
-
-Together these de-risk: one-RTT delivery without polling churn (≈5 ms vs ≥75 ms
-average), SSE push + lossless reconnect for day-long sessions, and a single
-daemon multiplexing many ephemeral plugins with correct id-routing and the
-local-first race relayed upstream. What they intentionally do **not** cover —
-deferred to implementation — is real auth/session handshaking, the daemon's
-production reconnect/backoff, and Next.js runtime wiring.
+Before the crates above, two throwaway prototypes in [`prototypes/`](./prototypes/)
+validated the core mechanics (long-poll release latency, SSE push + Last-Event-ID
+resume; unix-socket multiplexing + id-routing + local-first relay). They informed
+the design and the transport decision; the broker/daemon crates now supersede
+them as the real, tested implementation.
