@@ -15,12 +15,7 @@
 // scales with command size — the web counterpart of `triage_scaling`.
 
 import { bench, describe } from "vitest";
-import {
-  flaggedFragments,
-  requestHeadline,
-  toolParamSummary,
-  triggeredRules,
-} from "../approval";
+import { flaggedFragments, requestHeadline, toolParamSummary, triggeredRules } from "../approval";
 import { demoRequests } from "../fixtures";
 import type { AllowlisterFragment, ShellApprovalRequest, ToolApprovalRequest } from "../types";
 import { isShellRequest, isToolRequest } from "../types";

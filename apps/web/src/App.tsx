@@ -286,7 +286,9 @@ function ShellScript({ fragments }: { fragments: AllowlisterFragment[] }) {
                   <code className={cn("font-mono text-sm", fragmentTone(fragment.verdict))}>
                     {fragment.display}
                   </code>
-                  {fragment.verdict === "allow" ? null : <VerdictBadge verdict={fragment.verdict} />}
+                  {fragment.verdict === "allow" ? null : (
+                    <VerdictBadge verdict={fragment.verdict} />
+                  )}
                 </button>
                 {open ? (
                   <dl className="flex flex-col gap-2 rounded-md border border-border bg-background px-3 py-2 text-sm">
@@ -299,11 +301,15 @@ function ShellScript({ fragments }: { fragments: AllowlisterFragment[] }) {
                       </dd>
                     </div>
                     <div className="flex flex-col gap-0.5">
-                      <dt className="text-xs uppercase tracking-wide text-muted-foreground">Role</dt>
+                      <dt className="text-xs uppercase tracking-wide text-muted-foreground">
+                        Role
+                      </dt>
                       <dd className="font-mono text-sm">{fragment.role}</dd>
                     </div>
                     <div className="flex flex-col gap-0.5">
-                      <dt className="text-xs uppercase tracking-wide text-muted-foreground">Rule</dt>
+                      <dt className="text-xs uppercase tracking-wide text-muted-foreground">
+                        Rule
+                      </dt>
                       <dd className="font-mono text-sm">{fragment.rule ?? "no matching rule"}</dd>
                     </div>
                     {fragment.reason ? (

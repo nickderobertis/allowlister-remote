@@ -15,43 +15,41 @@ describe("approval server store", () => {
   });
 
   it("records allowlister's structured shell fragments verbatim", () => {
-    const request = enqueuePluginRequest(
-      {
-        protocol_version: 2,
-        subject: "shell",
-        command: "npm ci\nnpm publish --access public\ngit push origin main",
-        cwd: "/workspace/app",
-        harness: "codex",
-        current_verdict: "ask",
-        current_reason: "2 commands need approval: ...",
-        fragments: [
-          {
-            display: "npm ci",
-            argv: ["npm", "ci"],
-            role: "standalone",
-            verdict: "allow",
-            rule: "allow npm scripts",
-            reason: "allowed by 'allow npm scripts'",
-          },
-          {
-            display: "npm publish --access public",
-            argv: ["npm", "publish", "--access", "public"],
-            role: "standalone",
-            verdict: "ask",
-            rule: "ask before publishing a package",
-            reason: "needs approval per rule 'ask before publishing a package'",
-          },
-          {
-            display: "git push origin main",
-            argv: ["git", "push", "origin", "main"],
-            role: "standalone",
-            verdict: "ask",
-            rule: "ask before pushing to a remote",
-            reason: "needs approval per rule 'ask before pushing to a remote'",
-          },
-        ],
-      },
-    );
+    const request = enqueuePluginRequest({
+      protocol_version: 2,
+      subject: "shell",
+      command: "npm ci\nnpm publish --access public\ngit push origin main",
+      cwd: "/workspace/app",
+      harness: "codex",
+      current_verdict: "ask",
+      current_reason: "2 commands need approval: ...",
+      fragments: [
+        {
+          display: "npm ci",
+          argv: ["npm", "ci"],
+          role: "standalone",
+          verdict: "allow",
+          rule: "allow npm scripts",
+          reason: "allowed by 'allow npm scripts'",
+        },
+        {
+          display: "npm publish --access public",
+          argv: ["npm", "publish", "--access", "public"],
+          role: "standalone",
+          verdict: "ask",
+          rule: "ask before publishing a package",
+          reason: "needs approval per rule 'ask before publishing a package'",
+        },
+        {
+          display: "git push origin main",
+          argv: ["git", "push", "origin", "main"],
+          role: "standalone",
+          verdict: "ask",
+          rule: "ask before pushing to a remote",
+          reason: "needs approval per rule 'ask before pushing to a remote'",
+        },
+      ],
+    });
 
     expect(request).toMatchObject({
       subject: "shell",
@@ -71,22 +69,20 @@ describe("approval server store", () => {
   });
 
   it("records a tool call's canonical params and raw input", () => {
-    const request = enqueuePluginRequest(
-      {
-        protocol_version: 2,
-        subject: "tool",
-        cwd: "/workspace/app",
-        harness: "claude-code",
-        current_verdict: "defer",
-        current_reason: "no rule matched tool `mcp__github__create_issue`",
-        tool: {
-          name: "mcp__github__create_issue",
-          capability: "mcp",
-          params: { mcp_server: "github", mcp_tool: "create_issue" },
-          raw: { owner: "acme", repo: "app", title: "bug" },
-        },
+    const request = enqueuePluginRequest({
+      protocol_version: 2,
+      subject: "tool",
+      cwd: "/workspace/app",
+      harness: "claude-code",
+      current_verdict: "defer",
+      current_reason: "no rule matched tool `mcp__github__create_issue`",
+      tool: {
+        name: "mcp__github__create_issue",
+        capability: "mcp",
+        params: { mcp_server: "github", mcp_tool: "create_issue" },
+        raw: { owner: "acme", repo: "app", title: "bug" },
       },
-    );
+    });
 
     expect(request.subject).toBe("tool");
     if (!isToolRequest(request)) throw new Error("expected a tool request");

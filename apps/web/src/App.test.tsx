@@ -74,9 +74,7 @@ describe("App inbox", () => {
     expect(within(script).getByText('echo "release complete"')).toBeInTheDocument();
 
     // Clicking a fragment reveals that fragment's details (role, rule, reason).
-    await user.click(
-      within(script).getByRole("button", { name: /npm publish --access public/ }),
-    );
+    await user.click(within(script).getByRole("button", { name: /npm publish --access public/ }));
     expect(within(script).getByText(/needs approval per rule/)).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Allow once" }));

@@ -1,10 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  flaggedFragments,
-  requestHeadline,
-  toolParamSummary,
-  triggeredRules,
-} from "./approval";
+import { flaggedFragments, requestHeadline, toolParamSummary, triggeredRules } from "./approval";
 import { demoRequests } from "./fixtures";
 import {
   isShellRequest,
