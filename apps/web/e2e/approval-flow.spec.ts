@@ -10,8 +10,10 @@ test("lists concurrent requests in the inbox and approves one from the list", as
   await expect(
     list.getByText("gh pr merge 42 --squash --delete-branch", { exact: true }),
   ).toBeVisible();
-  // The longer release script headlines on its first flagged fragment.
+  // The longer release script lists each of its flagged fragments inline on the
+  // one card, not just the first.
   await expect(list.getByText("npm publish --access public", { exact: true })).toBeVisible();
+  await expect(list.getByText("git push origin main --tags", { exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Allow gh pr merge 42 --squash --delete-branch" }).click();
 
@@ -50,9 +52,12 @@ test("opens a tool call and switches between formatted and JSON views", async ({
 
   await expect(page.getByRole("heading", { name: "Approve this tool call" })).toBeVisible();
   await expect(page.getByLabel("Tool call formatted view")).toContainText("capability: mcp");
+  // The formatted view lists the arguments the agent passed...
+  await expect(page.getByLabel("Tool call formatted view")).toContainText("Production is down");
 
+  // ...and the JSON view shows just those arguments (the verbatim raw input).
   await page.getByRole("button", { name: "JSON" }).click();
   await expect(page.getByLabel("Tool call JSON view")).toContainText(
-    '"name": "mcp__github__create_issue"',
+    '"title": "Production is down"',
   );
 });
