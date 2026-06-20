@@ -40,6 +40,13 @@ jobs:
             artifact: allowlister-remote-plugin-win32-x64.exe
     steps:
       - uses: actions/checkout@v6
+      - name: Resolve plugin version from tag
+        shell: bash
+        # The crate Cargo.toml carries a 0.0.0 placeholder; the published binary's
+        # version is the release tag, injected at compile time (option_env! in
+        # main.rs) so `--version` matches the npm package version stamped from the
+        # same tag. Set for every matrix leg.
+        run: echo "ALLOWLISTER_REMOTE_PLUGIN_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
       - name: Add Rust target
         run: rustup target add ${{ matrix.target }}
       - name: Install musl C toolchain

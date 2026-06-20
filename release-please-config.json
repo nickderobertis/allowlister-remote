@@ -7,7 +7,7 @@
   "group-pull-request-title-pattern": "chore: release ${branch}",
   "packages": {
     ".": {
-      "release-type": "rust",
+      "release-type": "simple",
       "component": "allowlister-remote-plugin"
     }
   }

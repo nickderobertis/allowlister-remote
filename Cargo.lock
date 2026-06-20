@@ -13,7 +13,7 @@ dependencies = [
 
 [[package]]
 name = "allowlister-remote-plugin"
-version = "0.3.0"
+version = "0.0.0"
 dependencies = [
  "criterion",
  "reqwest",

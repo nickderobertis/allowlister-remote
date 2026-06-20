@@ -113,9 +113,20 @@ fn submit_local_decision(client: &Client, server_url: &str, id: &str, decision: 
         .send();
 }
 
+/// Plugin version reported by `--version` and the HTTP user-agent. Release
+/// builds inject the published version from the git tag via
+/// `ALLOWLISTER_REMOTE_PLUGIN_VERSION` (see `publish.yml`), mirroring how the npm
+/// packages are stamped from the tag; dev and test builds fall back to the
+/// crate's `Cargo.toml` version so local runs and `cargo test` report a stable
+/// value.
+const VERSION: &str = match option_env!("ALLOWLISTER_REMOTE_PLUGIN_VERSION") {
+    Some(version) => version,
+    None => env!("CARGO_PKG_VERSION"),
+};
+
 fn main() {
     if env::args().any(|argument| argument == "--version" || argument == "-V") {
-        println!("{}", env!("CARGO_PKG_VERSION"));
+        println!("{VERSION}");
         return;
     }
 
@@ -156,10 +167,7 @@ fn main() {
     let poll_ms: u64 = arg(&args, "--poll-ms", "150").parse().unwrap_or(150);
 
     let client = Client::builder()
-        .user_agent(concat!(
-            "allowlister-remote-plugin/",
-            env!("CARGO_PKG_VERSION")
-        ))
+        .user_agent(format!("allowlister-remote-plugin/{VERSION}"))
         .no_proxy()
         .timeout(Duration::from_secs(30))
         .build()
