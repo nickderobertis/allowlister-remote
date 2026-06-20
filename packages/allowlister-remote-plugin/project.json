@@ -32,7 +32,8 @@
         "commands": [
           "node --check packages/allowlister-remote-plugin/lib/platform.mjs",
           "node --check packages/allowlister-remote-plugin/install.mjs",
-          "node --check packages/allowlister-remote-plugin/bin/allowlister-remote-plugin"
+          "node --check packages/allowlister-remote-plugin/bin/allowlister-remote-plugin",
+          "node --check packages/allowlister-remote-plugin/test/install.test.mjs"
         ],
         "cwd": ".",
         "parallel": false
@@ -41,8 +42,12 @@
     "test": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "node packages/allowlister-remote-plugin/test/platform.test.mjs",
-        "cwd": "."
+        "commands": [
+          "node packages/allowlister-remote-plugin/test/platform.test.mjs",
+          "node packages/allowlister-remote-plugin/test/install.test.mjs"
+        ],
+        "cwd": ".",
+        "parallel": false
       }
     },
     "build": {

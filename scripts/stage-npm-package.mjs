@@ -2,10 +2,12 @@
 
 // Stage the release-built native binaries into the per-platform npm packages.
 //
-// Each platform package ships exactly one native binary at `bin/`. At publish
-// time the parent `@nickderobertis/allowlister-remote-plugin` package declares
-// these as optional dependencies, so npm installs only the one matching the
-// host and links its binary directly onto the command path.
+// Each platform package ships two native binaries at `bin/`: the plugin and the
+// daemon it auto-starts. At publish time the parent
+// `@nickderobertis/allowlister-remote-plugin` package declares these as optional
+// dependencies, so npm installs only the one matching the host and links both
+// binaries directly onto the command path (the daemon as a sibling of the
+// plugin, where the plugin resolves it).
 
 import { chmodSync, cpSync, existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
@@ -13,33 +15,29 @@ import { join } from "node:path";
 const [, , artifactsDir = "dist/release-artifacts"] = process.argv;
 const packagesDir = "packages";
 
+// Each platform ships both the plugin and the daemon; `suffix` is the platform's
+// executable extension (`.exe` on Windows, empty elsewhere).
 const platforms = [
-  {
-    artifact: "allowlister-remote-plugin-darwin-arm64",
-    pkg: "allowlister-remote-plugin-darwin-arm64",
-    binary: "allowlister-remote-plugin",
-  },
-  {
-    artifact: "allowlister-remote-plugin-linux-x64",
-    pkg: "allowlister-remote-plugin-linux-x64",
-    binary: "allowlister-remote-plugin",
-  },
-  {
-    artifact: "allowlister-remote-plugin-win32-x64.exe",
-    pkg: "allowlister-remote-plugin-win32-x64",
-    binary: "allowlister-remote-plugin.exe",
-  },
+  { pkg: "allowlister-remote-plugin-darwin-arm64", target: "darwin-arm64", suffix: "" },
+  { pkg: "allowlister-remote-plugin-linux-x64", target: "linux-x64", suffix: "" },
+  { pkg: "allowlister-remote-plugin-win32-x64", target: "win32-x64", suffix: ".exe" },
 ];
+const binaries = ["allowlister-remote-plugin", "allowlister-remote-daemon"];
 
-for (const { artifact, pkg, binary } of platforms) {
-  const artifactPath = findArtifact(artifactsDir, artifact);
+let stagedCount = 0;
+for (const { pkg, target, suffix } of platforms) {
   const binDir = join(packagesDir, pkg, "bin");
   rmSync(binDir, { force: true, recursive: true });
   mkdirSync(binDir, { recursive: true });
-  const outputPath = join(binDir, binary);
-  cpSync(artifactPath, outputPath);
-  if (!binary.endsWith(".exe")) {
-    chmodSync(outputPath, 0o755);
+  for (const binary of binaries) {
+    const artifact = `${binary}-${target}${suffix}`;
+    const artifactPath = findArtifact(artifactsDir, artifact);
+    const outputPath = join(binDir, `${binary}${suffix}`);
+    cpSync(artifactPath, outputPath);
+    if (suffix !== ".exe") {
+      chmodSync(outputPath, 0o755);
+    }
+    stagedCount += 1;
   }
 }
 
@@ -63,4 +61,4 @@ function findArtifact(root, name) {
   throw new Error(`Missing release artifact ${name} under ${root}`);
 }
 
-console.log(`staged ${platforms.length} native binaries into per-platform packages`);
+console.log(`staged ${stagedCount} native binaries into per-platform packages`);

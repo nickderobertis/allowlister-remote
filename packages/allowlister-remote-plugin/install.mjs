@@ -1,4 +1,4 @@
-// Post-install step: link the native binary directly onto the command path.
+// Post-install step: link the native binaries directly onto the command path.
 //
 // npm has already installed the one platform package that matches this host
 // (the others are skipped by their `os`/`cpu` fields). On macOS and Linux we
@@ -7,6 +7,10 @@
 // this the command on PATH is the Rust executable itself -- no Node process is
 // spawned per invocation, which matters because allowlister can call the plugin
 // hundreds of times in a single agent session.
+//
+// We also drop the `allowlister-remote-daemon` binary next to it in the same
+// `bin/` directory so the plugin's sibling lookup (`resolve_daemon_bin`) finds
+// the daemon it auto-starts without it having to be separately on PATH.
 //
 // On Windows npm generates `.cmd`/`.ps1` shims that invoke the launcher through
 // Node, so replacing the target in place would break them; we keep the JS
@@ -17,7 +21,7 @@ import { chmodSync, copyFileSync, existsSync, readFileSync, realpathSync } from 
 import { createRequire } from "node:module";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { binarySpecifier } from "./lib/platform.mjs";
+import { binarySpecifier, daemonSpecifier } from "./lib/platform.mjs";
 
 const require = createRequire(import.meta.url);
 // Resolve symlinks so a workspace link does not make us look like an install.
@@ -65,8 +69,13 @@ if (inWorkspaceCheckout(here)) {
       const onPath = join(here, "bin", "allowlister-remote-plugin");
       copyFileSync(native, onPath);
       chmodSync(onPath, 0o755);
+      // Place the daemon next to the plugin so its sibling lookup succeeds.
+      const daemon = require.resolve(daemonSpecifier());
+      const daemonOnPath = join(here, "bin", "allowlister-remote-daemon");
+      copyFileSync(daemon, daemonOnPath);
+      chmodSync(daemonOnPath, 0o755);
       console.log(
-        "allowlister-remote-plugin: linked the native binary directly onto the command path",
+        "allowlister-remote-plugin: linked the native plugin and daemon binaries directly onto the command path",
       );
     }
   } catch (error) {

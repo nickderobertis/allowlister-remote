@@ -53,9 +53,20 @@ if [[ "$(head -c 2 "$resolved")" == "#!" ]]; then
 fi
 echo "smoke-e2e: command resolves directly to the native binary at $resolved"
 
-# Point allowlister at the resolved native binary so the e2e exercises the Rust
-# plugin process directly, exactly as a hot-path invocation would.
+# The daemon the plugin auto-starts must be installed as a sibling so the
+# plugin's `resolve_daemon_bin` sibling lookup finds it.
+daemon_bin="$(dirname "$plugin_bin")/allowlister-remote-daemon"
+if [[ ! -x "$daemon_bin" ]]; then
+  echo "smoke-e2e: daemon binary missing next to the plugin on PATH" >&2
+  exit 1
+fi
+resolved_daemon="$(node -e 'console.log(require("node:fs").realpathSync(process.argv[1]))' "$daemon_bin")"
+echo "smoke-e2e: daemon resolves to the native binary at $resolved_daemon"
+
+# Point allowlister at the resolved native binaries so the e2e exercises the Rust
+# plugin and daemon processes directly, exactly as a hot-path invocation would.
 export ALLOWLISTER_REMOTE_PLUGIN_BIN="$resolved"
+export ALLOWLISTER_REMOTE_DAEMON_BIN="$resolved_daemon"
 echo "smoke-e2e: running Playwright approval flow against the published plugin binary"
 (cd apps/web && npx playwright test --config playwright.config.ts)
 
