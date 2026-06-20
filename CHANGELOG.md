@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.4.0](https://github.com/nickderobertis/allowlister-remote/compare/v0.3.0...v0.4.0) (2026-06-20)
+
+
+### Features
+
+* **web:** full desktop keyboard navigation with in-UI shortcut hints ([#36](https://github.com/nickderobertis/allowlister-remote/issues/36)) ([000e8a9](https://github.com/nickderobertis/allowlister-remote/commit/000e8a9fa7cf4cb5afd9e47963ea2a194665f889))
+* **web:** render real allowlister v2 data and tool-call approvals ([#31](https://github.com/nickderobertis/allowlister-remote/issues/31)) ([6aa329c](https://github.com/nickderobertis/allowlister-remote/commit/6aa329c3ad920183bff06088f7f637f2299619c0))
+
+
+### Bug Fixes
+
+* **release:** drive releases from all paths via simple release-type + tag-stamped version ([#44](https://github.com/nickderobertis/allowlister-remote/issues/44)) ([8fe47f6](https://github.com/nickderobertis/allowlister-remote/commit/8fe47f6a8d9133c4fb1ba0d2b2bce9d47486c622))
+
+
+### Performance Improvements
+
+* **plugin:** cut per-invocation startup on the no-network hot path ([#38](https://github.com/nickderobertis/allowlister-remote/issues/38)) ([028b7c9](https://github.com/nickderobertis/allowlister-remote/commit/028b7c9c7b8d0fa6f61bf66c9ef0e0e5f51652b6))
+* **plugin:** ship the linux binary as a static musl build ([#39](https://github.com/nickderobertis/allowlister-remote/issues/39)) ([ba5b2f2](https://github.com/nickderobertis/allowlister-remote/commit/ba5b2f26299f11602fed02617e7332e73b1df8c8))
+
 ## [0.3.0](https://github.com/nickderobertis/allowlister-remote/compare/v0.2.4...v0.3.0) (2026-06-19)
 
 
