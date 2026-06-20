@@ -74,7 +74,12 @@ function runPlugin(command: string) {
   let stdout = "";
   child.stdout.on("data", (chunk) => (stdout += String(chunk)));
   child.stdin.write(
-    JSON.stringify({ subject: "shell", current_verdict: "defer", command, cwd: "/workspace/repo" }),
+    JSON.stringify({
+      subject: "shell",
+      current_verdict: "defer",
+      command,
+      project: "github.com/acme/repo",
+    }),
   );
   child.stdin.end();
   return {

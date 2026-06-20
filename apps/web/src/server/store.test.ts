@@ -19,7 +19,7 @@ describe("approval server store", () => {
       protocol_version: 2,
       subject: "shell",
       command: "npm ci\nnpm publish --access public\ngit push origin main",
-      cwd: "/workspace/app",
+      project: "github.com/acme/app",
       harness: "codex",
       current_verdict: "ask",
       current_reason: "2 commands need approval: ...",
@@ -54,7 +54,7 @@ describe("approval server store", () => {
     expect(request).toMatchObject({
       subject: "shell",
       harness: "codex",
-      cwd: "/workspace/app",
+      project: "github.com/acme/app",
       currentVerdict: "ask",
       protocolVersion: 2,
     });
@@ -72,7 +72,7 @@ describe("approval server store", () => {
     const request = enqueuePluginRequest({
       protocol_version: 2,
       subject: "tool",
-      cwd: "/workspace/app",
+      project: "github.com/acme/app",
       harness: "claude-code",
       current_verdict: "defer",
       current_reason: "no rule matched tool `mcp__github__create_issue`",

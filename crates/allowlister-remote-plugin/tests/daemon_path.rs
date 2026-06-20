@@ -38,7 +38,7 @@ fn plugin_hands_off_to_daemon_and_returns_its_decision() {
         thread::sleep(Duration::from_millis(200));
     });
 
-    let input = r#"{"protocol_version":2,"subject":"shell","current_verdict":"defer","command":"gh pr merge 42","cwd":"/repo"}"#;
+    let input = r#"{"protocol_version":2,"subject":"shell","current_verdict":"defer","command":"gh pr merge 42","cwd":"/repo","project":"github.com/acme/app"}"#;
     let mut child = Command::new(plugin())
         .args(["--daemon-socket", &socket])
         .stdin(Stdio::piped())

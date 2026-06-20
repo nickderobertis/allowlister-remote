@@ -117,7 +117,7 @@ enum Event {
 
 /// Run the approval exchange over the daemon socket. Diverges: it always exits
 /// the process via `write_response`.
-pub fn run_via_daemon(stream: UnixStream, create_body: Value, summary: &str, cwd: &str) -> ! {
+pub fn run_via_daemon(stream: UnixStream, create_body: Value, summary: &str, project: &str) -> ! {
     let mut writer = stream.try_clone().expect("clone daemon socket");
     let reader = BufReader::new(stream);
 
@@ -131,7 +131,7 @@ pub fn run_via_daemon(stream: UnixStream, create_body: Value, summary: &str, cwd
     let (tx, rx) = mpsc::channel::<Event>();
 
     // The local `/dev/tty` prompt feeds the same channel as the daemon socket.
-    let (local_rx, _status) = crate::start_local_prompt(summary, cwd);
+    let (local_rx, _status) = crate::start_local_prompt(summary, project);
     if let Some(local_rx) = local_rx {
         let tx_local = tx.clone();
         thread::spawn(move || {

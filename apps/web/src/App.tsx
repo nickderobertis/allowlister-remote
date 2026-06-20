@@ -202,10 +202,8 @@ function ContextCard({ request, children }: { request: ApprovalRequest; children
             <dd className="font-mono text-sm">{request.harness}</dd>
           </div>
           <div className="flex flex-col gap-1">
-            <dt className="text-xs uppercase tracking-wide text-muted-foreground">
-              Working directory
-            </dt>
-            <dd className="font-mono text-sm">{request.cwd}</dd>
+            <dt className="text-xs uppercase tracking-wide text-muted-foreground">Project</dt>
+            <dd className="font-mono text-sm">{request.project}</dd>
           </div>
           <div className="flex flex-col gap-1">
             <dt className="text-xs uppercase tracking-wide text-muted-foreground">Request id</dt>

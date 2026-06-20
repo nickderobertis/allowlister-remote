@@ -30,14 +30,14 @@ pub fn payload(command: &str, verdict: &str, reason: Option<&str>) -> String {
     let reason = reason
         .map(|reason| format!(r#","current_reason":"{reason}""#))
         .unwrap_or_default();
-    format!(r#"{{"current_verdict":"{verdict}","command":"{command}","cwd":"/tmp"{reason}}}"#)
+    format!(r#"{{"current_verdict":"{verdict}","command":"{command}","project":"/tmp"{reason}}}"#)
 }
 
 /// A fully-populated payload — every field the create body forwards — so the
 /// build step does real work for every key rather than filling nulls.
 pub fn rich_payload(command: &str) -> String {
     format!(
-        r#"{{"current_verdict":"defer","current_reason":"needs approval","command":"{command}","cwd":"/home/user/project","harness":"codex"}}"#
+        r#"{{"current_verdict":"defer","current_reason":"needs approval","command":"{command}","cwd":"/home/user/project","project":"github.com/acme/app","harness":"codex"}}"#
     )
 }
 

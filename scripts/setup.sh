@@ -68,7 +68,7 @@ ensure_just() {
 # script's "resolve latest" GitHub API call, which is rate-limited (HTTP 403) for
 # the unauthenticated requests this dev container makes (no GITHUB_TOKEN). CI
 # installs latest because it runs with a token. Override with ALLOWLISTER_VERSION.
-ALLOWLISTER_VERSION="${ALLOWLISTER_VERSION:-v0.5.0}"
+ALLOWLISTER_VERSION="${ALLOWLISTER_VERSION:-v0.5.2}"
 ensure_allowlister() {
   if have allowlister; then
     ok "allowlister present ($(allowlister --version 2>/dev/null || echo unknown))"

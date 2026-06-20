@@ -9,6 +9,9 @@ export type PluginPayload = {
   protocol_version?: unknown;
   subject?: unknown;
   command?: unknown;
+  // allowlister's git-aware project identity (v0.5.1+); `cwd` is the older
+  // working-directory field we still read as a fallback.
+  project?: unknown;
   cwd?: unknown;
   harness?: unknown;
   current_verdict?: unknown;
@@ -77,7 +80,7 @@ export function normalizePluginRequest(input: PluginPayload, id: string): Approv
     id,
     protocolVersion: Number(input.protocol_version ?? 2),
     harness: String(input.harness ?? "allowlister"),
-    cwd: String(input.cwd ?? ""),
+    project: String(input.project ?? input.cwd ?? ""),
     currentVerdict: asVerdict(input.current_verdict),
     currentReason: String(input.current_reason ?? ""),
   };

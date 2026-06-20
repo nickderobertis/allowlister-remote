@@ -11,7 +11,7 @@ for allowlister, not setup glue for agent sessions.
 - Surfaces the fragments that actually tripped the gate first, rather than making
   a human parse an entire shell script — using allowlister's own per-fragment
   verdicts and matched rule names (protocol v2), not inferred guesses.
-- Preserves the real allowlister context verbatim: harness, cwd, current verdict,
+- Preserves the real allowlister context verbatim: harness, project, current verdict,
   current reason, and the structured, role-tagged fragment decomposition with each
   fragment's verdict and matching rule.
 - Handles non-shell tool calls (capabilities like `read`/`write`/`edit` and MCP
@@ -111,7 +111,7 @@ static `allow`; only the flagged ones surface for approval):
     "protocolVersion": 2,
     "subject": "shell",
     "harness": "codex",
-    "cwd": "/workspace/app",
+    "project": "github.com/acme/app",
     "command": "npm test\ngit push origin main",
     "currentVerdict": "ask",
     "currentReason": "1 command needs approval: `git push origin main` (standalone): needs approval per rule 'ask before pushing to a remote'",
@@ -146,7 +146,7 @@ verbatim `raw` input) for `command`/`fragments`:
   "protocolVersion": 2,
   "subject": "tool",
   "harness": "claude-code",
-  "cwd": "/workspace/app",
+  "project": "github.com/acme/app",
   "currentVerdict": "defer",
   "currentReason": "no rule matched tool `mcp__github__create_issue`",
   "tool": {

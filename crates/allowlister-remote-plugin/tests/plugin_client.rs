@@ -116,7 +116,7 @@ fn waits_through_pending_until_remote_decision() {
     // The plugin always waits indefinitely; it stays through `pending`.
     let url = spawn_pending_then_decide_server();
     let output = run_plugin(
-        r#"{"current_verdict":"defer","command":"gh pr merge 42","cwd":"/tmp"}"#,
+        r#"{"current_verdict":"defer","command":"gh pr merge 42","project":"/tmp"}"#,
         &["--server-url", &url, "--poll-ms", "10"],
     );
 
@@ -127,7 +127,7 @@ fn waits_through_pending_until_remote_decision() {
 #[test]
 fn static_allow_verdict_defers_without_contacting_server() {
     let output = run_plugin(
-        r#"{"current_verdict":"allow","command":"git status","cwd":"/tmp"}"#,
+        r#"{"current_verdict":"allow","command":"git status","project":"/tmp"}"#,
         &["--server-url", "http://127.0.0.1:9"],
     );
 
@@ -141,7 +141,7 @@ fn static_allow_verdict_defers_without_contacting_server() {
 #[test]
 fn unavailable_server_falls_back_to_ask() {
     let output = run_plugin(
-        r#"{"current_verdict":"defer","command":"gh pr merge 42","cwd":"/tmp"}"#,
+        r#"{"current_verdict":"defer","command":"gh pr merge 42","project":"/tmp"}"#,
         &["--server-url", "http://127.0.0.1:9"],
     );
 
@@ -156,7 +156,7 @@ fn unavailable_server_falls_back_to_ask() {
 fn posts_request_and_returns_remote_decision() {
     let (url, requests) = spawn_server();
     let output = run_plugin(
-        r#"{"current_verdict":"defer","current_reason":"needs approval","command":"gh pr merge 42","cwd":"/tmp","harness":"codex"}"#,
+        r#"{"current_verdict":"defer","current_reason":"needs approval","command":"gh pr merge 42","project":"/tmp","harness":"codex"}"#,
         &["--server-url", &url, "--poll-ms", "10"],
     );
 

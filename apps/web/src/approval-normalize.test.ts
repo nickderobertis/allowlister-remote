@@ -9,7 +9,7 @@ describe("normalizePluginRequest", () => {
         protocol_version: 2,
         subject: "shell",
         command: "gh pr merge 42",
-        cwd: "/repo",
+        project: "github.com/acme/app",
         current_verdict: "defer",
         current_reason: "needs review",
         fragments: [
@@ -20,9 +20,25 @@ describe("normalizePluginRequest", () => {
     );
     expect(request.id).toBe("id-1");
     expect(request.currentVerdict).toBe("defer");
+    expect(request.project).toBe("github.com/acme/app");
     if (!isShellRequest(request)) throw new Error("expected shell");
     expect(request.command).toBe("gh pr merge 42");
     expect(request.fragments[0]?.verdict).toBe("ask");
+  });
+
+  it("prefers the git-aware project but falls back to cwd for older payloads", () => {
+    // allowlister's resolved project identity wins when present.
+    expect(
+      normalizePluginRequest(
+        { subject: "shell", command: "ls", project: "github.com/acme/app", cwd: "/workspace/app" },
+        "id-project",
+      ).project,
+    ).toBe("github.com/acme/app");
+    // A payload from a pre-0.5.1 host carries only cwd; we still show it.
+    expect(
+      normalizePluginRequest({ subject: "shell", command: "ls", cwd: "/workspace/app" }, "id-cwd")
+        .project,
+    ).toBe("/workspace/app");
   });
 
   it("falls back to a whole-command fragment when none are provided", () => {

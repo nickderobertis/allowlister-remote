@@ -84,8 +84,8 @@ trap cleanup EXIT
 allow="$sandbox/allow.json"
 defer="$sandbox/defer.json"
 malformed="$sandbox/malformed.json"
-printf '{"current_verdict":"allow","command":"git status","cwd":"/tmp"}\n' >"$allow"
-printf '{"current_verdict":"defer","command":"gh pr merge 42","cwd":"/tmp","harness":"codex"}\n' >"$defer"
+printf '{"current_verdict":"allow","command":"git status","project":"/tmp"}\n' >"$allow"
+printf '{"current_verdict":"defer","command":"gh pr merge 42","project":"/tmp","harness":"codex"}\n' >"$defer"
 printf 'not json\n' >"$malformed"
 
 # An unreachable server URL — 127.0.0.1:9 (the discard port) refuses instantly —

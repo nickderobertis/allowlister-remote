@@ -66,7 +66,7 @@ describe("App inbox", () => {
     expect(within(flagged).getByText("git push origin main --tags")).toBeInTheDocument();
     expect(within(flagged).queryByText("npm ci")).not.toBeInTheDocument();
     expect(within(flagged).getByText("ask before publishing a package")).toBeInTheDocument();
-    expect(screen.getByText("/workspace/acme-api")).toBeInTheDocument();
+    expect(screen.getByText("github.com/acme/acme-api")).toBeInTheDocument();
 
     // The interactive script lists every fragment in order, colored by permission.
     const script = screen.getByLabelText("Script");

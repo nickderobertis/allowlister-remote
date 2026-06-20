@@ -38,7 +38,9 @@ interface ApprovalRequestBase {
   id: string;
   protocolVersion: number;
   harness: string;
-  cwd: string;
+  // The git-aware project identity allowlister resolved: a normalized git remote
+  // URL, the repository root, or the working directory when outside any repo.
+  project: string;
   currentVerdict: ApprovalVerdict;
   currentReason: string;
 }

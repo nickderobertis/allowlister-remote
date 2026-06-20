@@ -48,7 +48,7 @@ npm install --prefix "$tmp_dir/prefix" -g "$tmp_dir/$parent_tgz" --silent
 
 cmd="$tmp_dir/prefix/bin/allowlister-remote-plugin"
 "$cmd" --version >/dev/null
-printf '{"current_verdict":"allow","command":"git status","cwd":"/tmp"}' \
+printf '{"current_verdict":"allow","command":"git status","project":"/tmp"}' \
   | "$cmd" --server-url http://127.0.0.1:9 \
   | grep '"verdict":"defer"' >/dev/null
 

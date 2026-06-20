@@ -96,6 +96,20 @@ pub fn request_summary(input: &Value) -> String {
         .to_string()
 }
 
+/// The git-aware project identity allowlister resolved for the command: a
+/// normalized git remote URL, the repository root, or — outside any repo — the
+/// working directory it ran in. Prefers `project` (added in allowlister v0.5.1)
+/// and falls back to `cwd` so a payload from an older host still names where the
+/// command ran. Borrows out of the input rather than allocating.
+pub fn request_project(input: &Value) -> &str {
+    input
+        .get("project")
+        .and_then(Value::as_str)
+        .filter(|project| !project.is_empty())
+        .or_else(|| input.get("cwd").and_then(Value::as_str))
+        .unwrap_or("")
+}
+
 /// Outcome of [`triage`].
 #[derive(Debug, PartialEq)]
 pub enum Triage {
@@ -245,6 +259,28 @@ mod tests {
             "write"
         );
         assert_eq!(request_summary(&serde_json::json!({})), "");
+    }
+
+    #[test]
+    fn request_project_prefers_project_then_falls_back_to_cwd() {
+        // The git-aware identity wins when allowlister resolved one.
+        assert_eq!(
+            request_project(&serde_json::json!({
+                "project": "github.com/acme/app",
+                "cwd": "/workspace/app",
+            })),
+            "github.com/acme/app"
+        );
+        // An older payload without `project` (or an empty one) shows the cwd.
+        assert_eq!(
+            request_project(&serde_json::json!({ "cwd": "/workspace/app" })),
+            "/workspace/app"
+        );
+        assert_eq!(
+            request_project(&serde_json::json!({ "project": "", "cwd": "/repo" })),
+            "/repo"
+        );
+        assert_eq!(request_project(&serde_json::json!({})), "");
     }
 
     #[test]

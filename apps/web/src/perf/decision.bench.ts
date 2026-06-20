@@ -39,7 +39,7 @@ function longScript(fragments: number): ShellApprovalRequest {
     protocolVersion: 2,
     subject: "shell",
     harness: "codex",
-    cwd: "/workspace/acme-api",
+    project: "github.com/acme/acme-api",
     command: frags.map((f) => f.display).join("\n"),
     currentVerdict: "ask",
     currentReason: "synthetic",

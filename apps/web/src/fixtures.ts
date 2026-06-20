@@ -1,10 +1,10 @@
 import type { ApprovalRequest } from "./types";
 
-// These fixtures are transcribed from real allowlister v0.5.0 (protocol v2)
+// These fixtures are transcribed from real allowlister v0.5.2 (protocol v2)
 // plugin payloads captured by running `allowlister check --json` against sample
 // commands, scripts, and a config — so the demo and screenshots reflect the
-// actual wire data, not invented shapes. Only the harness names and working
-// directories are dressed up to read like a real project.
+// actual wire data, not invented shapes. Only the harness names and project
+// identities are dressed up to read like a real project.
 export const demoRequests: ApprovalRequest[] = [
   // A one-off command that matched no rule, so allowlister defers the whole
   // thing to the remote plugin: a single standalone fragment.
@@ -13,7 +13,7 @@ export const demoRequests: ApprovalRequest[] = [
     protocolVersion: 2,
     subject: "shell",
     harness: "codex",
-    cwd: "/workspace/acme-api",
+    project: "github.com/acme/acme-api",
     command: "gh pr merge 42 --squash --delete-branch",
     currentVerdict: "defer",
     currentReason: "no rule matched `gh pr merge 42 --squash --delete-branch` (standalone)",
@@ -36,7 +36,7 @@ export const demoRequests: ApprovalRequest[] = [
     protocolVersion: 2,
     subject: "shell",
     harness: "claude-code",
-    cwd: "/workspace/acme-api",
+    project: "github.com/acme/acme-api",
     command:
       'set -euo pipefail\nnpm ci\nnpm run build\ncargo test --workspace\ngit add -A\nnpm publish --access public\ngit push origin main --tags\necho "release complete"',
     currentVerdict: "ask",
@@ -117,7 +117,7 @@ export const demoRequests: ApprovalRequest[] = [
     protocolVersion: 2,
     subject: "tool",
     harness: "claude-code",
-    cwd: "/workspace/acme-api",
+    project: "github.com/acme/acme-api",
     currentVerdict: "defer",
     currentReason: "no rule matched tool `mcp__github__create_issue`",
     tool: {
@@ -138,7 +138,7 @@ export const demoRequests: ApprovalRequest[] = [
     protocolVersion: 2,
     subject: "tool",
     harness: "codex",
-    cwd: "/workspace/acme-api",
+    project: "github.com/acme/acme-api",
     currentVerdict: "defer",
     currentReason: "no rule matched tool `write`",
     tool: {

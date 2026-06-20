@@ -1,6 +1,6 @@
 use allowlister_remote_plugin::{
-    build_create_body, interpret_decision, parse_local_input, request_summary, static_decision,
-    LocalDecision, RemoteDecision,
+    build_create_body, interpret_decision, parse_local_input, request_project, request_summary,
+    static_decision, LocalDecision, RemoteDecision,
 };
 
 // Daemon mode is built on Unix domain sockets, so it is Unix-only; Windows uses
@@ -56,7 +56,7 @@ fn write_response(verdict: &str, reason: impl Into<String>) -> ! {
 /// both are `None` and the plugin waits on the remote decision alone.
 fn start_local_prompt(
     command: &str,
-    cwd: &str,
+    project: &str,
 ) -> (Option<Receiver<LocalDecision>>, Option<impl Write>) {
     let Ok(tty) = OpenOptions::new().read(true).write(true).open("/dev/tty") else {
         return (None, None);
@@ -67,7 +67,7 @@ fn start_local_prompt(
 
     let _ = writeln!(
         prompt_writer,
-        "\nallowlister-remote approval required\n  command: {command}\n  cwd: {cwd}\nApprove here or in the web app. [a]llow / [d]eny: "
+        "\nallowlister-remote approval required\n  command: {command}\n  project: {project}\nApprove here or in the web app. [a]llow / [d]eny: "
     );
 
     let (tx, rx) = mpsc::channel();
@@ -203,12 +203,8 @@ fn main() {
             };
             if let Some(stream) = daemon::connect_or_start(&config) {
                 let summary = request_summary(&input);
-                let cwd = input
-                    .get("cwd")
-                    .and_then(Value::as_str)
-                    .unwrap_or("")
-                    .to_string();
-                daemon::run_via_daemon(stream, build_create_body(&input), &summary, &cwd);
+                let project = request_project(&input).to_string();
+                daemon::run_via_daemon(stream, build_create_body(&input), &summary, &project);
             }
             // Daemon unreachable: fall through to the direct HTTP path.
         }
@@ -236,8 +232,8 @@ fn main() {
     // For a shell payload this is the command; for a tool call it is the tool
     // name, so the local prompt always names the action awaiting approval.
     let summary = request_summary(&input);
-    let cwd = input.get("cwd").and_then(Value::as_str).unwrap_or("");
-    let (mut local_rx, mut status_writer) = start_local_prompt(&summary, cwd);
+    let project = request_project(&input);
+    let (mut local_rx, mut status_writer) = start_local_prompt(&summary, project);
 
     let poll_interval = Duration::from_millis(poll_ms);
 

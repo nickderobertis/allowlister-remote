@@ -32,7 +32,7 @@ test("opens a shell approval and shows the interactive script", async ({ page })
   // Only the two tripping fragments are surfaced for attention.
   await expect(page.getByLabel("Flagged commands")).toContainText("npm publish --access public");
   await expect(page.getByLabel("Flagged commands")).toContainText("git push origin main --tags");
-  await expect(page.getByText("/workspace/acme-api")).toBeVisible();
+  await expect(page.getByText("github.com/acme/acme-api")).toBeVisible();
 
   // The interactive script lists every fragment in order, statically allowed ones
   // included; clicking a fragment discloses its rule and reason.

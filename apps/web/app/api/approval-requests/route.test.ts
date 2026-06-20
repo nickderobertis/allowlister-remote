@@ -20,7 +20,7 @@ describe("Next approval API routes", () => {
     const created = await enqueue(
       jsonRequest({
         command: "gh pr merge 42 --delete-branch",
-        cwd: "/workspace/repo",
+        project: "github.com/acme/repo",
         current_verdict: "defer",
         current_reason: "requires human review",
       }),

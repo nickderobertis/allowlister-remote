@@ -51,7 +51,7 @@ fail() {
 # A static allow payload exercises the no-network fast path: stdin read + JSON
 # parse + triage + defer response, with no socket to a server.
 write_payload() {
-    printf '{"current_verdict":"allow","command":"git status","cwd":"/tmp"}\n' >"$1"
+    printf '{"current_verdict":"allow","command":"git status","project":"/tmp"}\n' >"$1"
 }
 
 mode="${1:-engine}"
