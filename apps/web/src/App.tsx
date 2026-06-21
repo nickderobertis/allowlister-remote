@@ -1,6 +1,12 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { createApprovalApi } from "./api";
-import { flaggedFragments, requestHeadline, toolCallLines, triggeredRules } from "./approval";
+import {
+  flaggedFragments,
+  requestHeadline,
+  scriptContextLines,
+  toolCallLines,
+  triggeredRules,
+} from "./approval";
 import { normalizeBrokerRequest } from "./approval-normalize";
 import { ThemeToggle } from "./components/theme-toggle";
 import { Badge } from "./components/ui/badge";
@@ -67,37 +73,58 @@ function Eyebrow({ request }: { request: ApprovalRequest }) {
   );
 }
 
-// The inbox card previews up to this many lines of the request inline — flagged
-// script commands for a shell request, tool-call arguments for a tool request —
-// so the operator can size it up without opening it; the rest folds into a count.
-const INBOX_LINE_LIMIT = 5;
+// A shell card leads with its flagged commands, then fills the rest of its line
+// budget with surrounding script context: at most INBOX_SHELL_SCRIPT_LINES of
+// context, and at most INBOX_SHELL_LINES of flagged + context together. A tool
+// card shows the tool name plus its arguments, INBOX_TOOL_LINES (name included)
+// in all. The remainder of each section folds into a "+N more" count.
+const INBOX_SHELL_LINES = 10;
+const INBOX_SHELL_SCRIPT_LINES = 5;
+const INBOX_TOOL_LINES = 8;
 
-// The card's inline preview: the request's own data, capped at INBOX_LINE_LIMIT
-// lines. A shell request shows its flagged script commands (coloured by verdict);
-// a tool request shows the tool name plus the verbatim arguments the agent passed.
-function InboxPreview({ request }: { request: ApprovalRequest }) {
-  if (request.subject === "shell") {
-    const fragments = flaggedFragments(request);
-    const shown = fragments.slice(0, INBOX_LINE_LIMIT);
-    const hidden = fragments.length - shown.length;
-    return (
-      <span className="flex flex-col gap-1">
-        {shown.map((fragment) => (
-          <code
-            className={cn("font-mono text-base", fragmentTone(fragment.verdict))}
-            key={`${fragment.role}-${fragment.display}`}
-          >
-            {fragment.display}
-          </code>
-        ))}
-        {hidden > 0 ? (
-          <span className="text-xs text-muted-foreground">+{hidden} more flagged command(s)</span>
-        ) : null}
-      </span>
-    );
-  }
+// A shell request's inbox preview: its flagged commands (coloured by verdict)
+// first, then as much surrounding script context as the line budget allows.
+function ShellPreview({ request }: { request: ShellApprovalRequest }) {
+  const flagged = flaggedFragments(request);
+  const shownFlagged = flagged.slice(0, INBOX_SHELL_LINES);
+  const scriptBudget = Math.min(INBOX_SHELL_SCRIPT_LINES, INBOX_SHELL_LINES - shownFlagged.length);
+  const context = scriptContextLines(request);
+  const shownContext = context.slice(0, scriptBudget);
+  const hiddenFlagged = flagged.length - shownFlagged.length;
+  const hiddenContext = context.length - shownContext.length;
+
+  return (
+    <span className="flex flex-col gap-1">
+      {shownFlagged.map((fragment) => (
+        <code
+          className={cn("font-mono text-base", fragmentTone(fragment.verdict))}
+          key={`${fragment.role}-${fragment.display}`}
+        >
+          {fragment.display}
+        </code>
+      ))}
+      {hiddenFlagged > 0 ? (
+        <span className="text-xs text-muted-foreground">
+          +{hiddenFlagged} more flagged command(s)
+        </span>
+      ) : null}
+      {shownContext.map((line) => (
+        <code className="whitespace-pre font-mono text-sm text-muted-foreground" key={line}>
+          {line}
+        </code>
+      ))}
+      {hiddenContext > 0 ? (
+        <span className="text-xs text-muted-foreground">+{hiddenContext} more script line(s)</span>
+      ) : null}
+    </span>
+  );
+}
+
+// A tool request's inbox preview: the tool name plus the verbatim arguments the
+// agent passed, INBOX_TOOL_LINES in all (the name counts as one).
+function ToolPreview({ request }: { request: ToolApprovalRequest }) {
   const lines = toolCallLines(request);
-  const shown = lines.slice(0, INBOX_LINE_LIMIT);
+  const shown = lines.slice(0, INBOX_TOOL_LINES - 1);
   const hidden = lines.length - shown.length;
   return (
     <span className="flex flex-col gap-1">
@@ -111,6 +138,16 @@ function InboxPreview({ request }: { request: ApprovalRequest }) {
         <span className="text-xs text-muted-foreground">+{hidden} more argument(s)</span>
       ) : null}
     </span>
+  );
+}
+
+// The card's inline preview, dispatched on the request's subject so the operator
+// can size up the request's own data without opening it.
+function InboxPreview({ request }: { request: ApprovalRequest }) {
+  return request.subject === "shell" ? (
+    <ShellPreview request={request} />
+  ) : (
+    <ToolPreview request={request} />
   );
 }
 

@@ -4,8 +4,8 @@
 // (crates/allowlister-remote-plugin/benches/engine.rs): they isolate the pure
 // functions every render runs to turn an allowlister payload into what the
 // operator sees — filtering the flagged fragments, collecting triggered rules,
-// the request headline, the tool-param summary, and the tool-call argument lines
-// — without React, the DOM, or
+// the surrounding script context, the request headline, the tool-param summary,
+// and the tool-call argument lines — without React, the DOM, or
 // the network in any timed loop. React rendering and
 // the full browser load are covered by the Lighthouse layer and the e2e suite,
 // not here.
@@ -19,6 +19,7 @@ import { bench, describe } from "vitest";
 import {
   flaggedFragments,
   requestHeadline,
+  scriptContextLines,
   toolCallLines,
   toolParamSummary,
   triggeredRules,
@@ -67,6 +68,14 @@ describe("triggeredRules", () => {
   for (const request of shellRequests) {
     bench(request.id, () => {
       triggeredRules(request);
+    });
+  }
+});
+
+describe("scriptContextLines", () => {
+  for (const request of shellRequests) {
+    bench(request.id, () => {
+      scriptContextLines(request);
     });
   }
 });

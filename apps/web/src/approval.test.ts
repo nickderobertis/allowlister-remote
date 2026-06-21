@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   flaggedFragments,
   requestHeadline,
+  scriptContextLines,
   toolCallLines,
   toolParamSummary,
   triggeredRules,
@@ -62,6 +63,23 @@ describe("shell approval helpers", () => {
   it("headlines a shell request with its first flagged fragment", () => {
     expect(requestHeadline(script)).toBe("npm publish --access public");
     expect(requestHeadline(oneOff)).toBe("gh pr merge 42 --squash --delete-branch");
+  });
+
+  it("returns the script lines around the flagged commands, in source order", () => {
+    // The flagged `npm publish` / `git push` lines are dropped (they show as
+    // flagged fragments); the surrounding context keeps its source indentation.
+    expect(scriptContextLines(script)).toEqual([
+      "set -euo pipefail",
+      "npm run build",
+      "for attempt in $(seq 1 30); do",
+      "  curl -fsS https://api.acme.dev/healthz",
+      "  sleep 10",
+      "done",
+    ]);
+  });
+
+  it("has no surrounding context when the whole command is a single flagged line", () => {
+    expect(scriptContextLines(oneOff)).toEqual([]);
   });
 });
 

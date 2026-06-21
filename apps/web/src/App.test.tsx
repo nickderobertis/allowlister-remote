@@ -47,6 +47,18 @@ describe("App inbox", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("previews the surrounding script context beneath a shell card's flagged commands", async () => {
+    render(<App />);
+
+    const list = await screen.findByRole("list", { name: "Pending approvals" });
+    // The flagged commands lead the card...
+    expect(within(list).getByText("npm publish --access public")).toBeInTheDocument();
+    expect(within(list).getByText("git push origin main --tags")).toBeInTheDocument();
+    // ...then the surrounding (non-flagged) script lines follow for context.
+    expect(within(list).getByText("set -euo pipefail")).toBeInTheDocument();
+    expect(within(list).getByText("npm run build")).toBeInTheDocument();
+  });
+
   it("allows a request directly from the inbox list without opening it", async () => {
     const user = userEvent.setup();
     render(<App />);
