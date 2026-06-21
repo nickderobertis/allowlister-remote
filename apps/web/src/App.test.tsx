@@ -67,6 +67,8 @@ describe("App inbox", () => {
     expect(within(flagged).queryByText("npm ci")).not.toBeInTheDocument();
     expect(within(flagged).getByText("ask before publishing a package")).toBeInTheDocument();
     expect(screen.getByText("/workspace/acme-api")).toBeInTheDocument();
+    // The Context card surfaces the harness session id (protocol v3).
+    expect(screen.getByText("9f3c1a2b7e4d")).toBeInTheDocument();
 
     // The interactive script lists every fragment in order, colored by permission.
     const script = screen.getByLabelText("Script");
@@ -81,6 +83,21 @@ describe("App inbox", () => {
     await waitFor(() => {
       expect(screen.getByRole("list", { name: "Pending approvals" })).toBeInTheDocument();
     });
+  });
+
+  it("renders 'no session' when the harness did not supply a session id", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    // The one-off request comes from a harness (codex) with no session id.
+    await user.click(
+      await screen.findByRole("button", {
+        name: "Open approval for gh pr merge 42 --squash --delete-branch",
+      }),
+    );
+
+    expect(screen.getByText("Approve shell command")).toBeInTheDocument();
+    expect(screen.getByText("no session")).toBeInTheDocument();
   });
 
   it("opens a tool call and toggles between formatted and JSON views", async () => {

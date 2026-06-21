@@ -16,11 +16,12 @@ describe("approval server store", () => {
 
   it("records allowlister's structured shell fragments verbatim", () => {
     const request = enqueuePluginRequest({
-      protocol_version: 2,
+      protocol_version: 3,
       subject: "shell",
       command: "npm ci\nnpm publish --access public\ngit push origin main",
       cwd: "/workspace/app",
       harness: "codex",
+      session_id: "9f3c1a2b7e4d",
       current_verdict: "ask",
       current_reason: "2 commands need approval: ...",
       fragments: [
@@ -54,9 +55,10 @@ describe("approval server store", () => {
     expect(request).toMatchObject({
       subject: "shell",
       harness: "codex",
+      sessionId: "9f3c1a2b7e4d",
       cwd: "/workspace/app",
       currentVerdict: "ask",
-      protocolVersion: 2,
+      protocolVersion: 3,
     });
     if (!isShellRequest(request)) throw new Error("expected a shell request");
     expect(request.fragments.map((fragment) => fragment.display)).toEqual([

@@ -30,6 +30,11 @@ fn plugin_hands_off_to_daemon_and_returns_its_decision() {
             create.contains("\"command\":\"gh pr merge 42\""),
             "got {create}"
         );
+        // The harness session id (protocol v3) is forwarded verbatim to the daemon.
+        assert!(
+            create.contains("\"session_id\":\"9f3c1a2b\""),
+            "got {create}"
+        );
         writeln!(
             stream,
             "{{\"type\":\"decision\",\"requestId\":\"x\",\"verdict\":\"allow\",\"reason\":\"approved\"}}"
@@ -38,7 +43,7 @@ fn plugin_hands_off_to_daemon_and_returns_its_decision() {
         thread::sleep(Duration::from_millis(200));
     });
 
-    let input = r#"{"protocol_version":2,"subject":"shell","current_verdict":"defer","command":"gh pr merge 42","cwd":"/repo"}"#;
+    let input = r#"{"protocol_version":3,"subject":"shell","session_id":"9f3c1a2b","current_verdict":"defer","command":"gh pr merge 42","cwd":"/repo"}"#;
     let mut child = Command::new(plugin())
         .args(["--daemon-socket", &socket])
         .stdin(Stdio::piped())

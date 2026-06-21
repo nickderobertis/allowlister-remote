@@ -36,9 +36,10 @@ function longScript(fragments: number): ShellApprovalRequest {
   }));
   return {
     id: "bench-long",
-    protocolVersion: 2,
+    protocolVersion: 3,
     subject: "shell",
     harness: "codex",
+    sessionId: "9f3c1a2b7e4d",
     cwd: "/workspace/acme-api",
     command: frags.map((f) => f.display).join("\n"),
     currentVerdict: "ask",

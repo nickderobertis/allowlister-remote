@@ -202,6 +202,10 @@ function ContextCard({ request, children }: { request: ApprovalRequest; children
             <dd className="font-mono text-sm">{request.harness}</dd>
           </div>
           <div className="flex flex-col gap-1">
+            <dt className="text-xs uppercase tracking-wide text-muted-foreground">Session</dt>
+            <dd className="font-mono text-sm">{request.sessionId ?? "no session"}</dd>
+          </div>
+          <div className="flex flex-col gap-1">
             <dt className="text-xs uppercase tracking-wide text-muted-foreground">
               Working directory
             </dt>

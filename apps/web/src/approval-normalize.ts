@@ -1,6 +1,6 @@
 import type { AllowlisterFragment, ApprovalRequest, ApprovalVerdict, ToolCall } from "./types";
 
-// The plugin forwards allowlister's protocol-v2 payload verbatim, so this mirrors
+// The plugin forwards allowlister's protocol-v3 payload verbatim, so this mirrors
 // that wire shape. Everything is unknown because it crosses a process boundary; we
 // narrow it as we build the request. Shared by
 // the HTTP store (server) and the broker bridge (client) so both paths produce
@@ -11,6 +11,9 @@ export type PluginPayload = {
   command?: unknown;
   cwd?: unknown;
   harness?: unknown;
+  // allowlister protocol v3: the harness's session id. Omitted entirely when the
+  // harness did not supply one.
+  session_id?: unknown;
   current_verdict?: unknown;
   current_reason?: unknown;
   fragments?: unknown;
@@ -75,8 +78,11 @@ function readTool(raw: unknown): ToolCall {
 export function normalizePluginRequest(input: PluginPayload, id: string): ApprovalRequest {
   const base = {
     id,
-    protocolVersion: Number(input.protocol_version ?? 2),
+    protocolVersion: Number(input.protocol_version ?? 3),
     harness: String(input.harness ?? "allowlister"),
+    // Only a non-empty string is a real session id; a missing/garbled field is
+    // "no session" (null), which the UI renders as such rather than "".
+    sessionId: typeof input.session_id === "string" && input.session_id ? input.session_id : null,
     cwd: String(input.cwd ?? ""),
     currentVerdict: asVerdict(input.current_verdict),
     currentReason: String(input.current_reason ?? ""),
