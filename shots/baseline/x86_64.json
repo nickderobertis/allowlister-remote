@@ -134,42 +134,42 @@
       "toggles": {
         "theme": "dark"
       },
-      "hash": "1945ef7d00cd2d6aeeb58a953ed9ffdb23bf456b1d78e2b2a1e1515fbec583e8"
+      "hash": "d391120b84e1c24740b4eb854127e0e1d11a5ea9389a538e18f51dc25cab187a"
     },
     {
       "name": "terminal-script",
       "toggles": {
         "theme": "light"
       },
-      "hash": "bdc5ce2d36d546f25c2aba33a3c19101e2a34efdcaee9a95227e08bc0f5be268"
+      "hash": "c53f2962d43293e389e2e62bcf437b99e20e70ce74c4d13bd36ef657a27c2a00"
     },
     {
       "name": "terminal-shell",
       "toggles": {
         "theme": "dark"
       },
-      "hash": "6aa9acd3cca1bccebd5c7e3b5c7dc8020359d690fab8303a5798777a62a2e7ce"
+      "hash": "0153ed9f3bf6b87a932970d1da6f467c64ba57ce66646c7768b276629666041b"
     },
     {
       "name": "terminal-shell",
       "toggles": {
         "theme": "light"
       },
-      "hash": "4e9238468965be9a187fd956adc53fca1fcd6d31cc0a257fc21ec1ead28e61e6"
+      "hash": "e72212673033fbf4f6cc1ff7f5d6430918e1d5b2e5a160e248be7b0d3c848072"
     },
     {
       "name": "terminal-tool",
       "toggles": {
         "theme": "dark"
       },
-      "hash": "7ea86a840d436bc4e571a924bdc4e0c229f652819608a9847ff9278f516e60c7"
+      "hash": "daccc4b2205245660cb81068aeb8763057745bb9600a11a6755e798507b267f4"
     },
     {
       "name": "terminal-tool",
       "toggles": {
         "theme": "light"
       },
-      "hash": "213144a5f0919ec409746f632789db25d71d0824407bda862cda66496e81d428"
+      "hash": "f9f38935cd176257e923858a644796826035e06a8fd02350997601b63d2dd0bb"
     },
     {
       "name": "tool-capability",

@@ -48,6 +48,18 @@ SCENARIOS = [
             "current_verdict": "defer",
             "command": "gh pr merge 42 --squash --delete-branch",
             "cwd": "~/src/allowlister-remote",
+            # A single standalone fragment that matched no rule: the prompt
+            # surfaces it under "needs your attention" with no rule line.
+            "fragments": [
+                {
+                    "display": "gh pr merge 42 --squash --delete-branch",
+                    "argv": ["gh", "pr", "merge", "42", "--squash", "--delete-branch"],
+                    "role": "standalone",
+                    "verdict": "defer",
+                    "rule": None,
+                    "reason": "no matching rule",
+                }
+            ],
         },
     },
     {
@@ -65,8 +77,10 @@ SCENARIOS = [
     {
         # The terminal twin of the web gallery's `shell-script` card: a release
         # script where only `npm publish` and `git push` tripped the gate. The
-        # prompt prints the whole multi-line command verbatim under `command:`,
-        # so this shot shows how a script renders at the terminal.
+        # prompt surfaces just those two fragments under "needs your attention"
+        # (each with the rule that flagged it), then prints the whole multi-line
+        # command verbatim under "full command" — so the operator approves the
+        # action, not the wall of shell, exactly as the web app does.
         "name": "terminal-script",
         "command": (
             "set -euo pipefail\nnpm ci\nnpm run build\ncargo test --workspace\n"
@@ -77,13 +91,25 @@ SCENARIOS = [
         "payload": {
             "protocol_version": 2,
             "subject": "shell",
-            "current_verdict": "defer",
+            "current_verdict": "ask",
             "command": (
                 "set -euo pipefail\nnpm ci\nnpm run build\ncargo test --workspace\n"
                 'git add -A\nnpm publish --access public\ngit push origin main --tags\n'
                 'echo "release complete"'
             ),
             "cwd": "/workspace/acme-api",
+            # Six fragments are allowed by static rules; only `npm publish` and
+            # `git push` trip an `ask`, so only those two are flagged.
+            "fragments": [
+                {"display": "set -euo pipefail", "argv": ["set", "-euo", "pipefail"], "role": "standalone", "verdict": "allow", "rule": "allow set builtins", "reason": "allowed by 'allow set builtins'"},
+                {"display": "npm ci", "argv": ["npm", "ci"], "role": "standalone", "verdict": "allow", "rule": "allow npm scripts", "reason": "allowed by 'allow npm scripts'"},
+                {"display": "npm run build", "argv": ["npm", "run", "build"], "role": "standalone", "verdict": "allow", "rule": "allow npm scripts", "reason": "allowed by 'allow npm scripts'"},
+                {"display": "cargo test --workspace", "argv": ["cargo", "test", "--workspace"], "role": "standalone", "verdict": "allow", "rule": "allow cargo", "reason": "allowed by 'allow cargo'"},
+                {"display": "git add -A", "argv": ["git", "add", "-A"], "role": "standalone", "verdict": "allow", "rule": "allow git add", "reason": "allowed by 'allow git add'"},
+                {"display": "npm publish --access public", "argv": ["npm", "publish", "--access", "public"], "role": "standalone", "verdict": "ask", "rule": "ask before publishing a package", "reason": "needs approval per rule 'ask before publishing a package'"},
+                {"display": "git push origin main --tags", "argv": ["git", "push", "origin", "main", "--tags"], "role": "standalone", "verdict": "ask", "rule": "ask before pushing to a remote", "reason": "needs approval per rule 'ask before pushing to a remote'"},
+                {"display": 'echo "release complete"', "argv": ["echo", '"release complete"'], "role": "standalone", "verdict": "allow", "rule": "allow echo", "reason": "allowed by 'allow echo'"},
+            ],
         },
     },
 ]
@@ -185,6 +211,10 @@ def main() -> None:
                 "name": scenario["name"],
                 "command": scenario["command"],
                 "cwd": scenario["cwd"],
+                # The fragments the binary saw, persisted so the Rust guard
+                # (tests/terminal_prompt.rs) can re-derive the flagged set and
+                # rebuild this exact prompt from `local_prompt`.
+                "fragments": scenario["payload"].get("fragments", []),
                 "prompt": prompt,
             }
         )

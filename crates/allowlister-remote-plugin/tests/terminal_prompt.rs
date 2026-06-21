@@ -11,8 +11,8 @@
 
 use std::path::PathBuf;
 
-use allowlister_remote_plugin::local_prompt;
-use serde_json::Value;
+use allowlister_remote_plugin::{flagged_fragments, local_prompt};
+use serde_json::{json, Value};
 
 #[test]
 fn terminal_fixture_matches_the_real_prompt() {
@@ -34,11 +34,15 @@ fn terminal_fixture_matches_the_real_prompt() {
         let cwd = entry["cwd"].as_str().expect("cwd");
         let recorded = entry["prompt"].as_str().expect("prompt");
 
+        // Re-derive the flagged fragments the binary surfaced from the recorded
+        // payload fragments, exactly as `main`/`daemon` do before prompting.
+        let flagged = flagged_fragments(&json!({ "fragments": entry["fragments"].clone() }));
+
         // The recorder strips the leading newline `local_prompt` opens with, so
         // re-add it before comparing against the live function's output.
         let expected = format!("\n{recorded}");
         assert_eq!(
-            local_prompt(command, cwd),
+            local_prompt(command, cwd, &flagged),
             expected,
             "fixture '{name}' is stale; re-run scripts/record-terminal-prompts.py",
         );
