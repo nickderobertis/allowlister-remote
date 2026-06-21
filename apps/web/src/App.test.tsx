@@ -122,6 +122,11 @@ describe("App inbox", () => {
     // The JSON view shows just the arguments the agent passed.
     expect(json.textContent).toContain('"title": "Production is down"');
     expect(json.textContent).toContain('"owner": "acme"');
+    // Keys and string values are syntax-highlighted into distinctly coloured runs.
+    const keyToken = within(json)
+      .getAllByText('"title"')
+      .find((node) => node.tagName === "SPAN");
+    expect(keyToken).toHaveClass("text-[var(--json-key)]");
   });
 
   it("returns to the inbox from the expanded view via the back control", async () => {
