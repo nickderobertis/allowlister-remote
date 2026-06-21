@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { flaggedFragments, requestHeadline, toolParamSummary, triggeredRules } from "./approval";
+import {
+  flaggedFragments,
+  requestHeadline,
+  scriptContextLines,
+  toolCallLines,
+  toolParamSummary,
+  triggeredRules,
+} from "./approval";
 import { demoRequests } from "./fixtures";
 import {
   isShellRequest,
@@ -57,6 +64,23 @@ describe("shell approval helpers", () => {
     expect(requestHeadline(script)).toBe("npm publish --access public");
     expect(requestHeadline(oneOff)).toBe("gh pr merge 42 --squash --delete-branch");
   });
+
+  it("returns the script lines around the flagged commands, in source order", () => {
+    // The flagged `npm publish` / `git push` lines are dropped (they show as
+    // flagged fragments); the surrounding context keeps its source indentation.
+    expect(scriptContextLines(script)).toEqual([
+      "set -euo pipefail",
+      "npm run build",
+      "for attempt in $(seq 1 30); do",
+      "  curl -fsS https://api.acme.dev/healthz",
+      "  sleep 10",
+      "done",
+    ]);
+  });
+
+  it("has no surrounding context when the whole command is a single flagged line", () => {
+    expect(scriptContextLines(oneOff)).toEqual([]);
+  });
 });
 
 describe("tool approval helpers", () => {
@@ -69,5 +93,25 @@ describe("tool approval helpers", () => {
     expect(toolParamSummary(toolFixture("demo-tool-write"))).toBe(
       "path = /repo/.github/workflows/deploy.yml",
     );
+  });
+
+  it("lists the verbatim tool-call arguments as key = value lines", () => {
+    expect(toolCallLines(mcpTool)).toEqual([
+      "owner = acme",
+      "repo = app",
+      "title = Production is down",
+      "body = sev1",
+    ]);
+    expect(toolCallLines(toolFixture("demo-tool-write"))).toEqual([
+      "path = /repo/.github/workflows/deploy.yml",
+    ]);
+  });
+
+  it("JSON-encodes non-string argument values", () => {
+    const withObject: ToolApprovalRequest = {
+      ...mcpTool,
+      tool: { ...mcpTool.tool, raw: { count: 3, labels: ["bug", "p1"] } },
+    };
+    expect(toolCallLines(withObject)).toEqual(["count = 3", 'labels = ["bug","p1"]']);
   });
 });

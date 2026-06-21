@@ -42,3 +42,25 @@ export function toolParamSummary(request: ToolApprovalRequest): string {
     .map(([key, value]) => `${key} = ${String(value)}`)
     .join(" · ");
 }
+
+// The agent's verbatim tool-call arguments as `key = value` lines — the inbox
+// preview of a tool call, mirroring how a shell card previews its flagged script
+// lines. Uses `raw` (what the agent actually passed), the same set the detail
+// view weighs, so the operator can size up the call without opening it.
+export function toolCallLines(request: ToolApprovalRequest): string[] {
+  return Object.entries(request.tool.raw).map(
+    ([key, value]) => `${key} = ${typeof value === "string" ? value : JSON.stringify(value)}`,
+  );
+}
+
+// The surrounding (non-flagged) lines of a shell request's script, in source
+// order, for the inbox preview the operator reads beneath the flagged commands.
+// The raw command split into lines, with blanks and the lines already shown as
+// flagged fragments removed (compared trimmed, so dedup ignores indentation but
+// display keeps it). Leaves the budget/slicing to the caller.
+export function scriptContextLines(request: ShellApprovalRequest): string[] {
+  const flagged = new Set(flaggedFragments(request).map((fragment) => fragment.display.trim()));
+  return request.command
+    .split("\n")
+    .filter((line) => line.trim().length > 0 && !flagged.has(line.trim()));
+}
