@@ -213,8 +213,17 @@ def main() -> None:
                 "cwd": scenario["cwd"],
                 # The fragments the binary saw, persisted so the Rust guard
                 # (tests/terminal_prompt.rs) can re-derive the flagged set and
-                # rebuild this exact prompt from `local_prompt`.
-                "fragments": scenario["payload"].get("fragments", []),
+                # rebuild this exact prompt from `local_prompt`. Only the fields
+                # the guard reads are kept (display/verdict/rule) — no string
+                # arrays, so the recorder's json.dumps output stays Biome-clean.
+                "fragments": [
+                    {
+                        "display": fragment["display"],
+                        "verdict": fragment["verdict"],
+                        "rule": fragment["rule"],
+                    }
+                    for fragment in scenario["payload"].get("fragments", [])
+                ],
                 "prompt": prompt,
             }
         )

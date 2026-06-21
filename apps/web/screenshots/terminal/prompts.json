@@ -8,18 +8,8 @@
       "fragments": [
         {
           "display": "gh pr merge 42 --squash --delete-branch",
-          "argv": [
-            "gh",
-            "pr",
-            "merge",
-            "42",
-            "--squash",
-            "--delete-branch"
-          ],
-          "role": "standalone",
           "verdict": "defer",
-          "rule": null,
-          "reason": "no matching rule"
+          "rule": null
         }
       ],
       "prompt": "allowlister-remote approval required\n\nNeeds your attention:\n  gh pr merge 42 --squash --delete-branch\n\nFull command:\n  gh pr merge 42 --squash --delete-branch\n\n  cwd: ~/src/allowlister-remote\nApprove here or in the web app. [a]llow / [d]eny: "
@@ -38,100 +28,43 @@
       "fragments": [
         {
           "display": "set -euo pipefail",
-          "argv": [
-            "set",
-            "-euo",
-            "pipefail"
-          ],
-          "role": "standalone",
           "verdict": "allow",
-          "rule": "allow set builtins",
-          "reason": "allowed by 'allow set builtins'"
+          "rule": "allow set builtins"
         },
         {
           "display": "npm ci",
-          "argv": [
-            "npm",
-            "ci"
-          ],
-          "role": "standalone",
           "verdict": "allow",
-          "rule": "allow npm scripts",
-          "reason": "allowed by 'allow npm scripts'"
+          "rule": "allow npm scripts"
         },
         {
           "display": "npm run build",
-          "argv": [
-            "npm",
-            "run",
-            "build"
-          ],
-          "role": "standalone",
           "verdict": "allow",
-          "rule": "allow npm scripts",
-          "reason": "allowed by 'allow npm scripts'"
+          "rule": "allow npm scripts"
         },
         {
           "display": "cargo test --workspace",
-          "argv": [
-            "cargo",
-            "test",
-            "--workspace"
-          ],
-          "role": "standalone",
           "verdict": "allow",
-          "rule": "allow cargo",
-          "reason": "allowed by 'allow cargo'"
+          "rule": "allow cargo"
         },
         {
           "display": "git add -A",
-          "argv": [
-            "git",
-            "add",
-            "-A"
-          ],
-          "role": "standalone",
           "verdict": "allow",
-          "rule": "allow git add",
-          "reason": "allowed by 'allow git add'"
+          "rule": "allow git add"
         },
         {
           "display": "npm publish --access public",
-          "argv": [
-            "npm",
-            "publish",
-            "--access",
-            "public"
-          ],
-          "role": "standalone",
           "verdict": "ask",
-          "rule": "ask before publishing a package",
-          "reason": "needs approval per rule 'ask before publishing a package'"
+          "rule": "ask before publishing a package"
         },
         {
           "display": "git push origin main --tags",
-          "argv": [
-            "git",
-            "push",
-            "origin",
-            "main",
-            "--tags"
-          ],
-          "role": "standalone",
           "verdict": "ask",
-          "rule": "ask before pushing to a remote",
-          "reason": "needs approval per rule 'ask before pushing to a remote'"
+          "rule": "ask before pushing to a remote"
         },
         {
           "display": "echo \"release complete\"",
-          "argv": [
-            "echo",
-            "\"release complete\""
-          ],
-          "role": "standalone",
           "verdict": "allow",
-          "rule": "allow echo",
-          "reason": "allowed by 'allow echo'"
+          "rule": "allow echo"
         }
       ],
       "prompt": "allowlister-remote approval required\n\nNeeds your attention:\n  npm publish --access public\n    ask before publishing a package\n  git push origin main --tags\n    ask before pushing to a remote\n\nFull command:\n  set -euo pipefail\n  npm ci\n  npm run build\n  cargo test --workspace\n  git add -A\n  npm publish --access public\n  git push origin main --tags\n  echo \"release complete\"\n\n  cwd: /workspace/acme-api\nApprove here or in the web app. [a]llow / [d]eny: "
