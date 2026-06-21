@@ -15,9 +15,9 @@
     },
     {
       "name": "terminal-script",
-      "command": "set -euo pipefail\nnpm ci\nnpm run build\ncargo test --workspace\ngit add -A\nnpm publish --access public\ngit push origin main --tags\necho \"release complete\"",
+      "command": "set -euo pipefail\nnpm run build\nfor attempt in $(seq 1 30); do\n  curl -fsS https://api.acme.dev/healthz\n  sleep 10\ndone\nnpm publish --access public\ngit push origin main --tags",
       "cwd": "/workspace/acme-api",
-      "prompt": "allowlister-remote approval required\n  command: set -euo pipefail\nnpm ci\nnpm run build\ncargo test --workspace\ngit add -A\nnpm publish --access public\ngit push origin main --tags\necho \"release complete\"\n  cwd: /workspace/acme-api\nApprove here or in the web app. [a]llow / [d]eny: "
+      "prompt": "allowlister-remote approval required\n  command: set -euo pipefail\nnpm run build\nfor attempt in $(seq 1 30); do\n  curl -fsS https://api.acme.dev/healthz\n  sleep 10\ndone\nnpm publish --access public\ngit push origin main --tags\n  cwd: /workspace/acme-api\nApprove here or in the web app. [a]llow / [d]eny: "
     }
   ]
 }

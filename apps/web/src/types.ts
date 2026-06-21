@@ -8,7 +8,8 @@ export type FragmentRole =
   | "pipe_source"
   | "pipe_filter"
   | "subshell"
-  | "substitution";
+  | "substitution"
+  | "loop_body";
 
 // One role-tagged command from allowlister's structural decomposition. These are
 // delivered verbatim in the plugin payload (protocol v2) — the app no longer
