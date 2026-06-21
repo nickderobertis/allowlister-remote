@@ -64,7 +64,7 @@ describe("App inbox", () => {
     const flagged = screen.getByLabelText("Flagged commands");
     expect(within(flagged).getByText("npm publish --access public")).toBeInTheDocument();
     expect(within(flagged).getByText("git push origin main --tags")).toBeInTheDocument();
-    expect(within(flagged).queryByText("npm ci")).not.toBeInTheDocument();
+    expect(within(flagged).queryByText("npm run build")).not.toBeInTheDocument();
     expect(within(flagged).getByText("ask before publishing a package")).toBeInTheDocument();
     expect(screen.getByText("/workspace/acme-api")).toBeInTheDocument();
     // The Context card surfaces the harness session id (protocol v3).
@@ -73,7 +73,9 @@ describe("App inbox", () => {
     // The interactive script lists every fragment in order, colored by permission.
     const script = screen.getByLabelText("Script");
     expect(within(script).getByText("set -euo pipefail")).toBeInTheDocument();
-    expect(within(script).getByText('echo "release complete"')).toBeInTheDocument();
+    // The indented loop-body fragment renders too (whitespace is normalized away
+    // by the text matcher, but it confirms the loop body is in the script list).
+    expect(within(script).getByText("curl -fsS https://api.acme.dev/healthz")).toBeInTheDocument();
 
     // Clicking a fragment reveals that fragment's details (role, rule, reason).
     await user.click(within(script).getByRole("button", { name: /npm publish --access public/ }));

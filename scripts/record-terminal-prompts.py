@@ -63,15 +63,16 @@ SCENARIOS = [
         },
     },
     {
-        # The terminal twin of the web gallery's `shell-script` card: a release
-        # script where only `npm publish` and `git push` tripped the gate. The
-        # prompt prints the whole multi-line command verbatim under `command:`,
-        # so this shot shows how a script renders at the terminal.
+        # The terminal twin of the web gallery's `shell-script` card: a deploy
+        # script whose `for` loop long-polls the health endpoint, where only
+        # `npm publish` and `git push` tripped the gate. The prompt prints the
+        # whole multi-line command verbatim under `command:`, so this shot shows
+        # how an indented, looping script renders at the terminal.
         "name": "terminal-script",
         "command": (
-            "set -euo pipefail\nnpm ci\nnpm run build\ncargo test --workspace\n"
-            'git add -A\nnpm publish --access public\ngit push origin main --tags\n'
-            'echo "release complete"'
+            "set -euo pipefail\nnpm run build\nfor attempt in $(seq 1 30); do\n"
+            "  curl -fsS https://api.acme.dev/healthz\n  sleep 10\ndone\n"
+            "npm publish --access public\ngit push origin main --tags"
         ),
         "cwd": "/workspace/acme-api",
         "payload": {
@@ -79,9 +80,9 @@ SCENARIOS = [
             "subject": "shell",
             "current_verdict": "defer",
             "command": (
-                "set -euo pipefail\nnpm ci\nnpm run build\ncargo test --workspace\n"
-                'git add -A\nnpm publish --access public\ngit push origin main --tags\n'
-                'echo "release complete"'
+                "set -euo pipefail\nnpm run build\nfor attempt in $(seq 1 30); do\n"
+                "  curl -fsS https://api.acme.dev/healthz\n  sleep 10\ndone\n"
+                "npm publish --access public\ngit push origin main --tags"
             ),
             "cwd": "/workspace/acme-api",
         },
