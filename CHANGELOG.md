@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.7.0](https://github.com/nickderobertis/allowlister-remote/compare/v0.6.1...v0.7.0) (2026-06-21)
+
+
+### Features
+
+* **plugin:** surface flagged fragments at the local terminal prompt ([#60](https://github.com/nickderobertis/allowlister-remote/issues/60)) ([168df72](https://github.com/nickderobertis/allowlister-remote/commit/168df72040b6566800e6919c00c1739642501a18))
+* remove approval timeouts and refine approval UI ([#54](https://github.com/nickderobertis/allowlister-remote/issues/54)) ([1d31a8c](https://github.com/nickderobertis/allowlister-remote/commit/1d31a8c5a8ca7b4bf0c970c00e2778026ae5134a))
+* surface the harness session id from allowlister protocol v3 ([#57](https://github.com/nickderobertis/allowlister-remote/issues/57)) ([ba718fe](https://github.com/nickderobertis/allowlister-remote/commit/ba718fe4affa390995f6f83eceaf57cc3df72caf))
+
 ## [0.6.1](https://github.com/nickderobertis/allowlister-remote/compare/v0.6.0...v0.6.1) (2026-06-20)
 
 
