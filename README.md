@@ -10,10 +10,10 @@ for allowlister, not setup glue for agent sessions.
 
 - Surfaces the fragments that actually tripped the gate first, rather than making
   a human parse an entire shell script — using allowlister's own per-fragment
-  verdicts and matched rule names (protocol v2), not inferred guesses.
-- Preserves the real allowlister context verbatim: harness, cwd, current verdict,
-  current reason, and the structured, role-tagged fragment decomposition with each
-  fragment's verdict and matching rule.
+  verdicts and matched rule names (protocol v3), not inferred guesses.
+- Preserves the real allowlister context verbatim: harness, the harness session id,
+  cwd, current verdict, current reason, and the structured, role-tagged fragment
+  decomposition with each fragment's verdict and matching rule.
 - Handles non-shell tool calls (capabilities like `read`/`write`/`edit` and MCP
   tools such as `mcp__github__create_issue`) separately, with both a formatted
   view (capability, canonical params, raw input) and a verbatim JSON view.
@@ -75,9 +75,10 @@ With the Rust plugin pointed at the Next.js server URL, `allowlister check`
 blocks only for `ask`/`defer` decisions, the PWA displays the flagged command
 fragments (or the tool call), and the selected button releases the original
 allowlister process over the network. The plugin forwards allowlister's
-protocol-v2 payload verbatim — including the structured `fragments` array and, for
-tool calls, the `tool` object — so the app renders the engine's real decomposition
-rather than re-deriving it.
+protocol-v3 payload verbatim — including the structured `fragments` array, for
+tool calls the `tool` object, and the harness `session_id` — so the app renders
+the engine's real decomposition (and the originating harness session) rather than
+re-deriving it.
 
 ## Releases
 

@@ -1,18 +1,21 @@
 import type { ApprovalRequest } from "./types";
 
-// These fixtures are transcribed from real allowlister v0.5.0 (protocol v2)
+// These fixtures are transcribed from real allowlister v0.5.4 (protocol v3)
 // plugin payloads captured by running `allowlister check --json` against sample
 // commands, scripts, and a config — so the demo and screenshots reflect the
-// actual wire data, not invented shapes. Only the harness names and working
-// directories are dressed up to read like a real project.
+// actual wire data, not invented shapes. Only the harness names, session ids,
+// and working directories are dressed up to read like a real project. Protocol
+// v3 carries the harness `session_id`; harnesses that do not expose one (here,
+// codex) omit it, which the app renders as "no session".
 export const demoRequests: ApprovalRequest[] = [
   // A one-off command that matched no rule, so allowlister defers the whole
   // thing to the remote plugin: a single standalone fragment.
   {
     id: "demo-oneoff",
-    protocolVersion: 2,
+    protocolVersion: 3,
     subject: "shell",
     harness: "codex",
+    sessionId: null,
     cwd: "/workspace/acme-api",
     command: "gh pr merge 42 --squash --delete-branch",
     currentVerdict: "defer",
@@ -28,17 +31,22 @@ export const demoRequests: ApprovalRequest[] = [
       },
     ],
   },
-  // A longer release script: six fragments are allowed by static rules and only
-  // two — `npm publish` and `git push` — trip an `ask`, so the operator approves
-  // the action, not the wall of shell.
+  // A multi-line deploy-and-release script with a `for` loop that long-polls the
+  // health endpoint between build and publish. Most fragments are allowed by
+  // static rules — including the indented loop body and the `$(seq …)` command
+  // substitution in the loop header — and only two, `npm publish` and `git push`,
+  // trip an `ask`, so the operator approves the action, not the wall of shell.
+  // The loop body fragments keep their source indentation in `display` so both the
+  // web "Script" view and the terminal prompt show how a nested script renders.
   {
     id: "demo-release-script",
-    protocolVersion: 2,
+    protocolVersion: 3,
     subject: "shell",
     harness: "claude-code",
+    sessionId: "9f3c1a2b7e4d",
     cwd: "/workspace/acme-api",
     command:
-      'set -euo pipefail\nnpm ci\nnpm run build\ncargo test --workspace\ngit add -A\nnpm publish --access public\ngit push origin main --tags\necho "release complete"',
+      "set -euo pipefail\nnpm run build\nfor attempt in $(seq 1 30); do\n  curl -fsS https://api.acme.dev/healthz\n  sleep 10\ndone\nnpm publish --access public\ngit push origin main --tags",
     currentVerdict: "ask",
     currentReason:
       "2 commands need approval: `npm publish --access public` (standalone): needs approval per rule 'ask before publishing a package'; `git push origin main --tags` (standalone): needs approval per rule 'ask before pushing to a remote'",
@@ -52,14 +60,6 @@ export const demoRequests: ApprovalRequest[] = [
         reason: "allowed by 'allow set builtins'",
       },
       {
-        display: "npm ci",
-        argv: ["npm", "ci"],
-        role: "standalone",
-        verdict: "allow",
-        rule: "allow npm scripts",
-        reason: "allowed by 'allow npm scripts'",
-      },
-      {
         display: "npm run build",
         argv: ["npm", "run", "build"],
         role: "standalone",
@@ -68,20 +68,28 @@ export const demoRequests: ApprovalRequest[] = [
         reason: "allowed by 'allow npm scripts'",
       },
       {
-        display: "cargo test --workspace",
-        argv: ["cargo", "test", "--workspace"],
-        role: "standalone",
+        display: "seq 1 30",
+        argv: ["seq", "1", "30"],
+        role: "substitution",
         verdict: "allow",
-        rule: "allow cargo",
-        reason: "allowed by 'allow cargo'",
+        rule: "allow coreutils",
+        reason: "allowed by 'allow coreutils'",
       },
       {
-        display: "git add -A",
-        argv: ["git", "add", "-A"],
-        role: "standalone",
+        display: "  curl -fsS https://api.acme.dev/healthz",
+        argv: ["curl", "-fsS", "https://api.acme.dev/healthz"],
+        role: "loop_body",
         verdict: "allow",
-        rule: "allow git add",
-        reason: "allowed by 'allow git add'",
+        rule: "allow health-check probes",
+        reason: "allowed by 'allow health-check probes'",
+      },
+      {
+        display: "  sleep 10",
+        argv: ["sleep", "10"],
+        role: "loop_body",
+        verdict: "allow",
+        rule: "allow sleep",
+        reason: "allowed by 'allow sleep'",
       },
       {
         display: "npm publish --access public",
@@ -99,14 +107,6 @@ export const demoRequests: ApprovalRequest[] = [
         rule: "ask before pushing to a remote",
         reason: "needs approval per rule 'ask before pushing to a remote'",
       },
-      {
-        display: 'echo "release complete"',
-        argv: ["echo", '"release complete"'],
-        role: "standalone",
-        verdict: "allow",
-        rule: "allow echo",
-        reason: "allowed by 'allow echo'",
-      },
     ],
   },
   // A non-shell tool call: an MCP write to GitHub. The plugin sees the canonical
@@ -114,9 +114,10 @@ export const demoRequests: ApprovalRequest[] = [
   // views.
   {
     id: "demo-tool-mcp",
-    protocolVersion: 2,
+    protocolVersion: 3,
     subject: "tool",
     harness: "claude-code",
+    sessionId: "9f3c1a2b7e4d",
     cwd: "/workspace/acme-api",
     currentVerdict: "defer",
     currentReason: "no rule matched tool `mcp__github__create_issue`",
@@ -135,9 +136,10 @@ export const demoRequests: ApprovalRequest[] = [
   // A capability tool call: a file write to a sensitive path.
   {
     id: "demo-tool-write",
-    protocolVersion: 2,
+    protocolVersion: 3,
     subject: "tool",
     harness: "codex",
+    sessionId: null,
     cwd: "/workspace/acme-api",
     currentVerdict: "defer",
     currentReason: "no rule matched tool `write`",

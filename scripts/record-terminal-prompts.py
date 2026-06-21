@@ -43,7 +43,7 @@ SCENARIOS = [
         "command": "gh pr merge 42 --squash --delete-branch",
         "cwd": "~/src/allowlister-remote",
         "payload": {
-            "protocol_version": 2,
+            "protocol_version": 3,
             "subject": "shell",
             "current_verdict": "defer",
             "command": "gh pr merge 42 --squash --delete-branch",
@@ -67,7 +67,7 @@ SCENARIOS = [
         "command": "mcp__github__create_issue",
         "cwd": "~/src/allowlister-remote",
         "payload": {
-            "protocol_version": 2,
+            "protocol_version": 3,
             "subject": "tool",
             "current_verdict": "defer",
             "tool": {"name": "mcp__github__create_issue", "capability": "mcp"},
@@ -75,40 +75,43 @@ SCENARIOS = [
         },
     },
     {
-        # The terminal twin of the web gallery's `shell-script` card: a release
-        # script where only `npm publish` and `git push` tripped the gate. The
-        # prompt surfaces just those two fragments under "needs your attention"
-        # (each with the rule that flagged it), then prints the whole multi-line
-        # command verbatim under "full command" — so the operator approves the
-        # action, not the wall of shell, exactly as the web app does.
+        # The terminal twin of the web gallery's `shell-script` card: a deploy
+        # script whose `for` loop long-polls the health endpoint, where only
+        # `npm publish` and `git push` tripped the gate. The prompt surfaces just
+        # those two fragments under "needs your attention" (each with the rule
+        # that flagged it), then prints the whole multi-line command verbatim
+        # under "full command" — so the operator approves the action, not the
+        # wall of shell (including the indented loop body), exactly as the web
+        # app does.
         "name": "terminal-script",
         "command": (
-            "set -euo pipefail\nnpm ci\nnpm run build\ncargo test --workspace\n"
-            'git add -A\nnpm publish --access public\ngit push origin main --tags\n'
-            'echo "release complete"'
+            "set -euo pipefail\nnpm run build\nfor attempt in $(seq 1 30); do\n"
+            "  curl -fsS https://api.acme.dev/healthz\n  sleep 10\ndone\n"
+            "npm publish --access public\ngit push origin main --tags"
         ),
         "cwd": "/workspace/acme-api",
         "payload": {
-            "protocol_version": 2,
+            "protocol_version": 3,
             "subject": "shell",
             "current_verdict": "ask",
             "command": (
-                "set -euo pipefail\nnpm ci\nnpm run build\ncargo test --workspace\n"
-                'git add -A\nnpm publish --access public\ngit push origin main --tags\n'
-                'echo "release complete"'
+                "set -euo pipefail\nnpm run build\nfor attempt in $(seq 1 30); do\n"
+                "  curl -fsS https://api.acme.dev/healthz\n  sleep 10\ndone\n"
+                "npm publish --access public\ngit push origin main --tags"
             ),
             "cwd": "/workspace/acme-api",
-            # Six fragments are allowed by static rules; only `npm publish` and
-            # `git push` trip an `ask`, so only those two are flagged.
+            # Mirrors the web gallery's deploy-script decomposition: the loop body
+            # and the `$(seq …)` substitution are allowed by static rules, and
+            # only `npm publish` and `git push` trip an `ask`, so only those two
+            # are flagged.
             "fragments": [
                 {"display": "set -euo pipefail", "argv": ["set", "-euo", "pipefail"], "role": "standalone", "verdict": "allow", "rule": "allow set builtins", "reason": "allowed by 'allow set builtins'"},
-                {"display": "npm ci", "argv": ["npm", "ci"], "role": "standalone", "verdict": "allow", "rule": "allow npm scripts", "reason": "allowed by 'allow npm scripts'"},
                 {"display": "npm run build", "argv": ["npm", "run", "build"], "role": "standalone", "verdict": "allow", "rule": "allow npm scripts", "reason": "allowed by 'allow npm scripts'"},
-                {"display": "cargo test --workspace", "argv": ["cargo", "test", "--workspace"], "role": "standalone", "verdict": "allow", "rule": "allow cargo", "reason": "allowed by 'allow cargo'"},
-                {"display": "git add -A", "argv": ["git", "add", "-A"], "role": "standalone", "verdict": "allow", "rule": "allow git add", "reason": "allowed by 'allow git add'"},
+                {"display": "seq 1 30", "argv": ["seq", "1", "30"], "role": "substitution", "verdict": "allow", "rule": "allow coreutils", "reason": "allowed by 'allow coreutils'"},
+                {"display": "  curl -fsS https://api.acme.dev/healthz", "argv": ["curl", "-fsS", "https://api.acme.dev/healthz"], "role": "loop_body", "verdict": "allow", "rule": "allow health-check probes", "reason": "allowed by 'allow health-check probes'"},
+                {"display": "  sleep 10", "argv": ["sleep", "10"], "role": "loop_body", "verdict": "allow", "rule": "allow sleep", "reason": "allowed by 'allow sleep'"},
                 {"display": "npm publish --access public", "argv": ["npm", "publish", "--access", "public"], "role": "standalone", "verdict": "ask", "rule": "ask before publishing a package", "reason": "needs approval per rule 'ask before publishing a package'"},
                 {"display": "git push origin main --tags", "argv": ["git", "push", "origin", "main", "--tags"], "role": "standalone", "verdict": "ask", "rule": "ask before pushing to a remote", "reason": "needs approval per rule 'ask before pushing to a remote'"},
-                {"display": 'echo "release complete"', "argv": ["echo", '"release complete"'], "role": "standalone", "verdict": "allow", "rule": "allow echo", "reason": "allowed by 'allow echo'"},
             ],
         },
     },

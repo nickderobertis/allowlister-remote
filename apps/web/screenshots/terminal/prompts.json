@@ -23,7 +23,7 @@
     },
     {
       "name": "terminal-script",
-      "command": "set -euo pipefail\nnpm ci\nnpm run build\ncargo test --workspace\ngit add -A\nnpm publish --access public\ngit push origin main --tags\necho \"release complete\"",
+      "command": "set -euo pipefail\nnpm run build\nfor attempt in $(seq 1 30); do\n  curl -fsS https://api.acme.dev/healthz\n  sleep 10\ndone\nnpm publish --access public\ngit push origin main --tags",
       "cwd": "/workspace/acme-api",
       "fragments": [
         {
@@ -32,24 +32,24 @@
           "rule": "allow set builtins"
         },
         {
-          "display": "npm ci",
-          "verdict": "allow",
-          "rule": "allow npm scripts"
-        },
-        {
           "display": "npm run build",
           "verdict": "allow",
           "rule": "allow npm scripts"
         },
         {
-          "display": "cargo test --workspace",
+          "display": "seq 1 30",
           "verdict": "allow",
-          "rule": "allow cargo"
+          "rule": "allow coreutils"
         },
         {
-          "display": "git add -A",
+          "display": "  curl -fsS https://api.acme.dev/healthz",
           "verdict": "allow",
-          "rule": "allow git add"
+          "rule": "allow health-check probes"
+        },
+        {
+          "display": "  sleep 10",
+          "verdict": "allow",
+          "rule": "allow sleep"
         },
         {
           "display": "npm publish --access public",
@@ -60,14 +60,9 @@
           "display": "git push origin main --tags",
           "verdict": "ask",
           "rule": "ask before pushing to a remote"
-        },
-        {
-          "display": "echo \"release complete\"",
-          "verdict": "allow",
-          "rule": "allow echo"
         }
       ],
-      "prompt": "allowlister-remote approval required\n\nNeeds your attention:\n  npm publish --access public\n    ask before publishing a package\n  git push origin main --tags\n    ask before pushing to a remote\n\nFull command:\n  set -euo pipefail\n  npm ci\n  npm run build\n  cargo test --workspace\n  git add -A\n  npm publish --access public\n  git push origin main --tags\n  echo \"release complete\"\n\n  cwd: /workspace/acme-api\nApprove here or in the web app. [a]llow / [d]eny: "
+      "prompt": "allowlister-remote approval required\n\nNeeds your attention:\n  npm publish --access public\n    ask before publishing a package\n  git push origin main --tags\n    ask before pushing to a remote\n\nFull command:\n  set -euo pipefail\n  npm run build\n  for attempt in $(seq 1 30); do\n    curl -fsS https://api.acme.dev/healthz\n    sleep 10\n  done\n  npm publish --access public\n  git push origin main --tags\n\n  cwd: /workspace/acme-api\nApprove here or in the web app. [a]llow / [d]eny: "
     }
   ]
 }

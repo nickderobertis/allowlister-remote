@@ -154,9 +154,10 @@ pub fn static_decision(stdin: &str) -> Option<bool> {
 }
 
 /// Build the JSON body POSTed to open an approval request. allowlister's
-/// protocol-v2 payload is forwarded verbatim — `protocol_version`, `subject`,
-/// `command`, `fragments`, `tool`, and the pre-plugin verdict/reason — so the
-/// server records the real structured decomposition instead of re-deriving it.
+/// protocol-v3 payload is forwarded verbatim — `protocol_version`, `subject`,
+/// `command`, `fragments`, `tool`, the harness `session_id`, and the pre-plugin
+/// verdict/reason — so the server records the real structured decomposition
+/// (and the originating harness session) instead of re-deriving it.
 pub fn build_create_body(input: &Value) -> Value {
     match input {
         Value::Object(_) => input.clone(),
@@ -324,14 +325,16 @@ mod tests {
 
     #[test]
     fn static_allow_defers_but_defer_and_ask_reach_server() {
-        // A protocol-v2 shell payload: the create body forwards the structured
-        // fragments verbatim, not just the flat command/verdict fields.
-        let body = r#"{"protocol_version":2,"subject":"shell","current_verdict":"defer","command":"gh pr merge 42","fragments":[{"display":"gh pr merge 42","verdict":"defer","role":"standalone","rule":null}]}"#;
+        // A protocol-v3 shell payload: the create body forwards the structured
+        // fragments and the harness session id verbatim, not just the flat
+        // command/verdict fields.
+        let body = r#"{"protocol_version":3,"subject":"shell","session_id":"9f3c1a2b","current_verdict":"defer","command":"gh pr merge 42","fragments":[{"display":"gh pr merge 42","verdict":"defer","role":"standalone","rule":null}]}"#;
         match triage(body).expect("valid payload") {
             Triage::NeedsApproval(create) => {
                 assert_eq!(create["command"], "gh pr merge 42");
                 assert_eq!(create["subject"], "shell");
-                assert_eq!(create["protocol_version"], 2);
+                assert_eq!(create["protocol_version"], 3);
+                assert_eq!(create["session_id"], "9f3c1a2b");
                 assert_eq!(create["fragments"][0]["display"], "gh pr merge 42");
             }
             Triage::Defer => panic!("defer verdict must reach the server"),

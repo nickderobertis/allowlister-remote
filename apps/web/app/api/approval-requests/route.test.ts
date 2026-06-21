@@ -21,6 +21,8 @@ describe("Next approval API routes", () => {
       jsonRequest({
         command: "gh pr merge 42 --delete-branch",
         cwd: "/workspace/repo",
+        harness: "claude-code",
+        session_id: "9f3c1a2b7e4d",
         current_verdict: "defer",
         current_reason: "requires human review",
       }),
@@ -35,6 +37,8 @@ describe("Next approval API routes", () => {
       id,
       command: "gh pr merge 42 --delete-branch",
       currentVerdict: "defer",
+      // The harness session id (protocol v3) survives the HTTP round-trip.
+      sessionId: "9f3c1a2b7e4d",
     });
 
     const pending = await pollDecision(new Request("http://localhost"), {

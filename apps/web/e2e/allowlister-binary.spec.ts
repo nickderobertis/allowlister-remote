@@ -62,7 +62,7 @@ function runAllowlister(cwd: string, command: string): Running {
 }
 
 // Evaluate a non-shell tool call (`allowlister check --tool …`) instead of a
-// shell command, so the e2e drives the real protocol-v2 `tool` payload end to
+// shell command, so the e2e drives the real protocol-v3 `tool` payload end to
 // end: the binary emits it, the plugin forwards it, and the app renders it.
 function runAllowlisterTool(cwd: string, tool: string, raw: string): Running {
   const child = spawn(
