@@ -1,18 +1,21 @@
 import type { ApprovalRequest } from "./types";
 
-// These fixtures are transcribed from real allowlister v0.5.0 (protocol v2)
+// These fixtures are transcribed from real allowlister v0.5.4 (protocol v3)
 // plugin payloads captured by running `allowlister check --json` against sample
 // commands, scripts, and a config — so the demo and screenshots reflect the
-// actual wire data, not invented shapes. Only the harness names and working
-// directories are dressed up to read like a real project.
+// actual wire data, not invented shapes. Only the harness names, session ids,
+// and working directories are dressed up to read like a real project. Protocol
+// v3 carries the harness `session_id`; harnesses that do not expose one (here,
+// codex) omit it, which the app renders as "no session".
 export const demoRequests: ApprovalRequest[] = [
   // A one-off command that matched no rule, so allowlister defers the whole
   // thing to the remote plugin: a single standalone fragment.
   {
     id: "demo-oneoff",
-    protocolVersion: 2,
+    protocolVersion: 3,
     subject: "shell",
     harness: "codex",
+    sessionId: null,
     cwd: "/workspace/acme-api",
     command: "gh pr merge 42 --squash --delete-branch",
     currentVerdict: "defer",
@@ -33,9 +36,10 @@ export const demoRequests: ApprovalRequest[] = [
   // the action, not the wall of shell.
   {
     id: "demo-release-script",
-    protocolVersion: 2,
+    protocolVersion: 3,
     subject: "shell",
     harness: "claude-code",
+    sessionId: "9f3c1a2b7e4d",
     cwd: "/workspace/acme-api",
     command:
       'set -euo pipefail\nnpm ci\nnpm run build\ncargo test --workspace\ngit add -A\nnpm publish --access public\ngit push origin main --tags\necho "release complete"',
@@ -114,9 +118,10 @@ export const demoRequests: ApprovalRequest[] = [
   // views.
   {
     id: "demo-tool-mcp",
-    protocolVersion: 2,
+    protocolVersion: 3,
     subject: "tool",
     harness: "claude-code",
+    sessionId: "9f3c1a2b7e4d",
     cwd: "/workspace/acme-api",
     currentVerdict: "defer",
     currentReason: "no rule matched tool `mcp__github__create_issue`",
@@ -135,9 +140,10 @@ export const demoRequests: ApprovalRequest[] = [
   // A capability tool call: a file write to a sensitive path.
   {
     id: "demo-tool-write",
-    protocolVersion: 2,
+    protocolVersion: 3,
     subject: "tool",
     harness: "codex",
+    sessionId: null,
     cwd: "/workspace/acme-api",
     currentVerdict: "defer",
     currentReason: "no rule matched tool `write`",

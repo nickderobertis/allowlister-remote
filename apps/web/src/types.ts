@@ -38,6 +38,10 @@ interface ApprovalRequestBase {
   id: string;
   protocolVersion: number;
   harness: string;
+  // The coding harness's own session identifier, stable for the lifetime of one
+  // harness session (allowlister protocol v3). null when the harness did not
+  // supply one — allowlister omits the field entirely in that case.
+  sessionId: string | null;
   cwd: string;
   currentVerdict: ApprovalVerdict;
   currentReason: string;

@@ -43,7 +43,7 @@ SCENARIOS = [
         "command": "gh pr merge 42 --squash --delete-branch",
         "cwd": "~/src/allowlister-remote",
         "payload": {
-            "protocol_version": 2,
+            "protocol_version": 3,
             "subject": "shell",
             "current_verdict": "defer",
             "command": "gh pr merge 42 --squash --delete-branch",
@@ -55,7 +55,7 @@ SCENARIOS = [
         "command": "mcp__github__create_issue",
         "cwd": "~/src/allowlister-remote",
         "payload": {
-            "protocol_version": 2,
+            "protocol_version": 3,
             "subject": "tool",
             "current_verdict": "defer",
             "tool": {"name": "mcp__github__create_issue", "capability": "mcp"},
@@ -75,7 +75,7 @@ SCENARIOS = [
         ),
         "cwd": "/workspace/acme-api",
         "payload": {
-            "protocol_version": 2,
+            "protocol_version": 3,
             "subject": "shell",
             "current_verdict": "defer",
             "command": (
