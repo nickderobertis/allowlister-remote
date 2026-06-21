@@ -17,17 +17,88 @@ pub struct LocalDecision {
     pub reason: String,
 }
 
+/// A fragment allowlister flagged for the operator, reduced to what the terminal
+/// prompt surfaces: the command text that tripped the gate and the rule that
+/// flagged it (if any). This is one row of the web app's "needs your attention"
+/// list, rendered as plain text instead of a card.
+pub struct FlaggedFragment {
+    pub display: String,
+    pub rule: Option<String>,
+}
+
+/// The fragments the operator must actually weigh: allowlister already decided
+/// the rest are `allow`, so anything else (ask/deny/defer) is what gets
+/// surfaced. Mirrors the web app's `flaggedFragments` (in `apps/web/src/approval.ts`),
+/// including its fallback to the full set when — unexpectedly — nothing is
+/// flagged. A payload with no `fragments` (a tool call) yields an empty list, so
+/// the prompt simply omits the fragment block and shows the action alone.
+pub fn flagged_fragments(input: &Value) -> Vec<FlaggedFragment> {
+    let Some(fragments) = input.get("fragments").and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    let to_flagged = |fragment: &Value| FlaggedFragment {
+        display: fragment
+            .get("display")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
+        rule: fragment
+            .get("rule")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+    };
+    let flagged: Vec<FlaggedFragment> = fragments
+        .iter()
+        .filter(|fragment| fragment.get("verdict").and_then(Value::as_str) != Some("allow"))
+        .map(to_flagged)
+        .collect();
+    if flagged.is_empty() {
+        fragments.iter().map(to_flagged).collect()
+    } else {
+        flagged
+    }
+}
+
 /// The exact text the plugin writes to `/dev/tty` to open a local approval
-/// prompt: the awaiting command (or tool name) and its cwd, then the
-/// allow/deny instruction. Extracted here as a pure function so the binary's
-/// real terminal surface is unit-testable and so the visual-docs capture can
-/// render the genuine prompt from a fixture pinned to this output (see
+/// prompt. It mirrors the web app's shell-detail flow: first the fragments
+/// allowlister flagged ("needs your attention" — the command that tripped plus
+/// its rule), then the full command, the cwd, and the allow/deny instruction.
+/// For a tool call there are no fragments, so the prompt shows the action alone.
+/// Extracted here as a pure function so the binary's real terminal surface is
+/// unit-testable and so the visual-docs capture can render the genuine prompt
+/// from a fixture pinned to this output (see
 /// `apps/web/screenshots/terminal.capture.ts`). The caller appends the trailing
 /// newline (`writeln!`), so this returns the line block without it.
-pub fn local_prompt(command: &str, cwd: &str) -> String {
-    format!(
-        "\nallowlister-remote approval required\n  command: {command}\n  cwd: {cwd}\nApprove here or in the web app. [a]llow / [d]eny: "
-    )
+pub fn local_prompt(command: &str, cwd: &str, flagged: &[FlaggedFragment]) -> String {
+    let mut prompt = String::from("\nallowlister-remote approval required\n");
+
+    if !flagged.is_empty() {
+        prompt.push_str("\nNeeds your attention:\n");
+        for fragment in flagged {
+            prompt.push_str("  ");
+            prompt.push_str(&fragment.display);
+            prompt.push('\n');
+            if let Some(rule) = &fragment.rule {
+                prompt.push_str("    ");
+                prompt.push_str(rule);
+                prompt.push('\n');
+            }
+        }
+    }
+
+    // The full command always follows the flagged fragments, each line indented
+    // so a multi-line script reads as one block (a tool call is a single line).
+    prompt.push_str("\nFull command:\n");
+    for line in command.split('\n') {
+        prompt.push_str("  ");
+        prompt.push_str(line);
+        prompt.push('\n');
+    }
+
+    prompt.push_str(&format!(
+        "\n  cwd: {cwd}\nApprove here or in the web app. [a]llow / [d]eny: "
+    ));
+    prompt
 }
 
 /// Map a line typed at the terminal onto an allow/deny verdict, ignoring
@@ -181,11 +252,66 @@ mod tests {
     use super::*;
 
     #[test]
-    fn local_prompt_lays_out_command_cwd_and_instruction() {
+    fn local_prompt_surfaces_flagged_fragments_then_the_full_command() {
+        // Mirrors the web app: a "needs your attention" block (the flagged
+        // fragment plus its rule) precedes the full command and the cwd.
+        let flagged = [
+            FlaggedFragment {
+                display: "npm publish --access public".to_string(),
+                rule: Some("ask before publishing a package".to_string()),
+            },
+            FlaggedFragment {
+                display: "git push origin main --tags".to_string(),
+                rule: None,
+            },
+        ];
         assert_eq!(
-            local_prompt("gh pr merge 42", "~/src/app"),
-            "\nallowlister-remote approval required\n  command: gh pr merge 42\n  cwd: ~/src/app\nApprove here or in the web app. [a]llow / [d]eny: "
+            local_prompt("npm ci\nnpm publish --access public", "~/src/app", &flagged),
+            "\nallowlister-remote approval required\n\nNeeds your attention:\n  npm publish --access public\n    ask before publishing a package\n  git push origin main --tags\n\nFull command:\n  npm ci\n  npm publish --access public\n\n  cwd: ~/src/app\nApprove here or in the web app. [a]llow / [d]eny: "
         );
+    }
+
+    #[test]
+    fn local_prompt_without_fragments_shows_the_action_alone() {
+        // A tool call has no fragments: no "needs your attention" block, just the
+        // action under "Full command:".
+        assert_eq!(
+            local_prompt("mcp__github__create_issue", "~/src/app", &[]),
+            "\nallowlister-remote approval required\n\nFull command:\n  mcp__github__create_issue\n\n  cwd: ~/src/app\nApprove here or in the web app. [a]llow / [d]eny: "
+        );
+    }
+
+    #[test]
+    fn flagged_fragments_picks_non_allow_then_falls_back_to_all() {
+        // Only the ask/deny/defer fragments are flagged; the allowed ones drop.
+        let shell = serde_json::json!({
+            "fragments": [
+                {"display": "npm ci", "verdict": "allow", "rule": "allow npm scripts"},
+                {"display": "npm publish --access public", "verdict": "ask", "rule": "ask before publishing a package"},
+                {"display": "echo done", "verdict": "defer", "rule": null},
+            ]
+        });
+        let flagged = flagged_fragments(&shell);
+        assert_eq!(flagged.len(), 2);
+        assert_eq!(flagged[0].display, "npm publish --access public");
+        assert_eq!(
+            flagged[0].rule.as_deref(),
+            Some("ask before publishing a package")
+        );
+        assert_eq!(flagged[1].display, "echo done");
+        assert_eq!(flagged[1].rule, None);
+
+        // All-allow is unexpected at a prompt, but falls back to the full set
+        // rather than rendering an empty block.
+        let all_allow = serde_json::json!({
+            "fragments": [{"display": "npm ci", "verdict": "allow", "rule": "allow npm scripts"}]
+        });
+        let fallback = flagged_fragments(&all_allow);
+        assert_eq!(fallback.len(), 1);
+        assert_eq!(fallback[0].display, "npm ci");
+
+        // A tool call (no fragments) yields an empty list.
+        assert!(flagged_fragments(&serde_json::json!({"tool": {"name": "write"}})).is_empty());
     }
 
     #[test]

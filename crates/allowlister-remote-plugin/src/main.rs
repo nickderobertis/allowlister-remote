@@ -1,6 +1,6 @@
 use allowlister_remote_plugin::{
-    build_create_body, interpret_decision, local_prompt, parse_local_input, request_summary,
-    static_decision, LocalDecision, RemoteDecision,
+    build_create_body, flagged_fragments, interpret_decision, local_prompt, parse_local_input,
+    request_summary, static_decision, FlaggedFragment, LocalDecision, RemoteDecision,
 };
 
 // Daemon mode is built on Unix domain sockets, so it is Unix-only; Windows uses
@@ -57,6 +57,7 @@ fn write_response(verdict: &str, reason: impl Into<String>) -> ! {
 fn start_local_prompt(
     command: &str,
     cwd: &str,
+    flagged: &[FlaggedFragment],
 ) -> (Option<Receiver<LocalDecision>>, Option<impl Write>) {
     let Ok(tty) = OpenOptions::new().read(true).write(true).open("/dev/tty") else {
         return (None, None);
@@ -65,7 +66,7 @@ fn start_local_prompt(
         return (None, None);
     };
 
-    let _ = writeln!(prompt_writer, "{}", local_prompt(command, cwd));
+    let _ = writeln!(prompt_writer, "{}", local_prompt(command, cwd, flagged));
 
     let (tx, rx) = mpsc::channel();
     thread::spawn(move || {
@@ -233,8 +234,9 @@ fn main() {
     // For a shell payload this is the command; for a tool call it is the tool
     // name, so the local prompt always names the action awaiting approval.
     let summary = request_summary(&input);
+    let flagged = flagged_fragments(&input);
     let cwd = input.get("cwd").and_then(Value::as_str).unwrap_or("");
-    let (mut local_rx, mut status_writer) = start_local_prompt(&summary, cwd);
+    let (mut local_rx, mut status_writer) = start_local_prompt(&summary, cwd, &flagged);
 
     let poll_interval = Duration::from_millis(poll_ms);
 
