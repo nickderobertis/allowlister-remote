@@ -12,6 +12,7 @@ import { ThemeToggle } from "./components/theme-toggle";
 import { Badge } from "./components/ui/badge";
 import { Button } from "./components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./components/ui/card";
+import { JsonView } from "./components/ui/json-view";
 import { Kbd } from "./components/ui/kbd";
 import { SHORTCUT_GROUPS, useIsDesktop, useKeyboardShortcuts } from "./lib/keyboard";
 import { ThemeProvider } from "./lib/theme";
@@ -506,9 +507,7 @@ function ToolDetail({
             </section>
           ) : (
             <section aria-label="Tool call JSON view">
-              <pre className="overflow-x-auto rounded-md border border-border bg-background p-3 text-xs">
-                {JSON.stringify(request.tool.raw, null, 2)}
-              </pre>
+              <JsonView value={request.tool.raw} />
             </section>
           )}
         </CardContent>
