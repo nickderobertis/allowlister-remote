@@ -8,7 +8,7 @@
 //! broker. This keeps the long upstream connection in the daemon (one per host)
 //! instead of opening one per gated command.
 
-use allowlister_remote_plugin::{interpret_decision, RemoteDecision};
+use allowlister_remote_plugin::{flagged_fragments, interpret_decision, RemoteDecision};
 use serde_json::{json, Value};
 use std::env;
 use std::io::{BufRead, BufReader, Write};
@@ -131,7 +131,10 @@ pub fn run_via_daemon(stream: UnixStream, create_body: Value, summary: &str, cwd
     let (tx, rx) = mpsc::channel::<Event>();
 
     // The local `/dev/tty` prompt feeds the same channel as the daemon socket.
-    let (local_rx, _status) = crate::start_local_prompt(summary, cwd);
+    // It shows the same flagged fragments + full command as the HTTP path; the
+    // create body is the forwarded payload, so the fragments come straight off it.
+    let flagged = flagged_fragments(&create_body);
+    let (local_rx, _status) = crate::start_local_prompt(summary, cwd, &flagged);
     if let Some(local_rx) = local_rx {
         let tx_local = tx.clone();
         thread::spawn(move || {
