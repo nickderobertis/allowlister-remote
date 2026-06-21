@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.0](https://github.com/nickderobertis/allowlister-remote/compare/v0.7.0...v0.8.0) (2026-06-21)
+
+
+### Features
+
+* **web:** preview script and tool-call data on inbox cards ([#62](https://github.com/nickderobertis/allowlister-remote/issues/62)) ([3407869](https://github.com/nickderobertis/allowlister-remote/commit/340786956ba345403033d191774d373dc8b1a809))
+* **web:** syntax-highlight the tool call JSON view ([#61](https://github.com/nickderobertis/allowlister-remote/issues/61)) ([d6d1536](https://github.com/nickderobertis/allowlister-remote/commit/d6d1536294be6dab43f280e983a397e5eed2dd78))
+
 ## [0.7.0](https://github.com/nickderobertis/allowlister-remote/compare/v0.6.1...v0.7.0) (2026-06-21)
 
 
