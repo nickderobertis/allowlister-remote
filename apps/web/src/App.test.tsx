@@ -34,6 +34,19 @@ describe("App inbox", () => {
     expect(screen.getByText(/4 pending approvals/)).toBeInTheDocument();
   });
 
+  it("previews tool-call arguments on the inbox card instead of the prose reason", async () => {
+    render(<App />);
+
+    const list = await screen.findByRole("list", { name: "Pending approvals" });
+    // The tool card previews the verbatim arguments the agent passed.
+    expect(within(list).getByText("title = Production is down")).toBeInTheDocument();
+    expect(within(list).getByText("owner = acme")).toBeInTheDocument();
+    // The prose `currentReason` is dropped from the inbox; the data stands in.
+    expect(
+      within(list).queryByText("no rule matched tool `mcp__github__create_issue`"),
+    ).not.toBeInTheDocument();
+  });
+
   it("allows a request directly from the inbox list without opening it", async () => {
     const user = userEvent.setup();
     render(<App />);

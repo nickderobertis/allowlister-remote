@@ -42,3 +42,13 @@ export function toolParamSummary(request: ToolApprovalRequest): string {
     .map(([key, value]) => `${key} = ${String(value)}`)
     .join(" · ");
 }
+
+// The agent's verbatim tool-call arguments as `key = value` lines — the inbox
+// preview of a tool call, mirroring how a shell card previews its flagged script
+// lines. Uses `raw` (what the agent actually passed), the same set the detail
+// view weighs, so the operator can size up the call without opening it.
+export function toolCallLines(request: ToolApprovalRequest): string[] {
+  return Object.entries(request.tool.raw).map(
+    ([key, value]) => `${key} = ${typeof value === "string" ? value : JSON.stringify(value)}`,
+  );
+}

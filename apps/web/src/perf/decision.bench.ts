@@ -4,7 +4,8 @@
 // (crates/allowlister-remote-plugin/benches/engine.rs): they isolate the pure
 // functions every render runs to turn an allowlister payload into what the
 // operator sees — filtering the flagged fragments, collecting triggered rules,
-// the request headline, and the tool-param summary — without React, the DOM, or
+// the request headline, the tool-param summary, and the tool-call argument lines
+// — without React, the DOM, or
 // the network in any timed loop. React rendering and
 // the full browser load are covered by the Lighthouse layer and the e2e suite,
 // not here.
@@ -15,7 +16,13 @@
 // scales with command size — the web counterpart of `triage_scaling`.
 
 import { bench, describe } from "vitest";
-import { flaggedFragments, requestHeadline, toolParamSummary, triggeredRules } from "../approval";
+import {
+  flaggedFragments,
+  requestHeadline,
+  toolCallLines,
+  toolParamSummary,
+  triggeredRules,
+} from "../approval";
 import { demoRequests } from "../fixtures";
 import type { AllowlisterFragment, ShellApprovalRequest, ToolApprovalRequest } from "../types";
 import { isShellRequest, isToolRequest } from "../types";
@@ -76,6 +83,14 @@ describe("toolParamSummary", () => {
   for (const request of toolRequests as ToolApprovalRequest[]) {
     bench(request.id, () => {
       toolParamSummary(request);
+    });
+  }
+});
+
+describe("toolCallLines", () => {
+  for (const request of toolRequests as ToolApprovalRequest[]) {
+    bench(request.id, () => {
+      toolCallLines(request);
     });
   }
 });

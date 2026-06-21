@@ -1,6 +1,6 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { createApprovalApi } from "./api";
-import { flaggedFragments, requestHeadline, triggeredRules } from "./approval";
+import { flaggedFragments, requestHeadline, toolCallLines, triggeredRules } from "./approval";
 import { normalizeBrokerRequest } from "./approval-normalize";
 import { ThemeToggle } from "./components/theme-toggle";
 import { Badge } from "./components/ui/badge";
@@ -67,9 +67,73 @@ function Eyebrow({ request }: { request: ApprovalRequest }) {
   );
 }
 
-// The inbox card lists up to this many flagged commands inline so the operator
-// can size up a request without opening it; anything beyond folds into a count.
-const INBOX_FRAGMENT_LIMIT = 5;
+// The inbox card previews up to this many lines of the request inline — flagged
+// script commands for a shell request, tool-call arguments for a tool request —
+// so the operator can size it up without opening it; the rest folds into a count.
+const INBOX_LINE_LIMIT = 5;
+
+// The card's inline preview: the request's own data, capped at INBOX_LINE_LIMIT
+// lines. A shell request shows its flagged script commands (coloured by verdict);
+// a tool request shows the tool name plus the verbatim arguments the agent passed.
+function InboxPreview({ request }: { request: ApprovalRequest }) {
+  if (request.subject === "shell") {
+    const fragments = flaggedFragments(request);
+    const shown = fragments.slice(0, INBOX_LINE_LIMIT);
+    const hidden = fragments.length - shown.length;
+    return (
+      <span className="flex flex-col gap-1">
+        {shown.map((fragment) => (
+          <code
+            className={cn("font-mono text-base", fragmentTone(fragment.verdict))}
+            key={`${fragment.role}-${fragment.display}`}
+          >
+            {fragment.display}
+          </code>
+        ))}
+        {hidden > 0 ? (
+          <span className="text-xs text-muted-foreground">+{hidden} more flagged command(s)</span>
+        ) : null}
+      </span>
+    );
+  }
+  const lines = toolCallLines(request);
+  const shown = lines.slice(0, INBOX_LINE_LIMIT);
+  const hidden = lines.length - shown.length;
+  return (
+    <span className="flex flex-col gap-1">
+      <code className="font-mono text-base text-foreground">{request.tool.name}</code>
+      {shown.map((line) => (
+        <code className="font-mono text-sm text-muted-foreground" key={line}>
+          {line}
+        </code>
+      ))}
+      {hidden > 0 ? (
+        <span className="text-xs text-muted-foreground">+{hidden} more argument(s)</span>
+      ) : null}
+    </span>
+  );
+}
+
+// The card's badges row: a tool request shows its capability; a shell request
+// shows the named rules that fired, or that it deferred to remote approval.
+function InboxBadges({ request }: { request: ApprovalRequest }) {
+  if (request.subject === "tool") {
+    return <Badge variant="outline">{request.tool.capability}</Badge>;
+  }
+  const rules = triggeredRules(request);
+  if (rules.length === 0) {
+    return <Badge variant="outline">deferred to remote approval</Badge>;
+  }
+  return (
+    <>
+      {rules.map((rule) => (
+        <Badge variant="destructive" key={rule}>
+          {rule}
+        </Badge>
+      ))}
+    </>
+  );
+}
 
 function InboxItem({
   request,
@@ -85,10 +149,6 @@ function InboxItem({
   onFocus: () => void;
 }) {
   const headline = requestHeadline(request);
-  const fragments = request.subject === "shell" ? flaggedFragments(request) : [];
-  const shownFragments = fragments.slice(0, INBOX_FRAGMENT_LIMIT);
-  const hiddenFragments = fragments.length - shownFragments.length;
-  const rules = request.subject === "shell" ? triggeredRules(request) : [];
   const itemRef = useRef<HTMLLIElement>(null);
   // The keyboard cursor: keep the focused card visible as the arrows walk the list.
   const highlighted = focused && showHints;
@@ -116,38 +176,9 @@ function InboxItem({
           onClick={() => onOpen(request.id)}
         >
           <Eyebrow request={request} />
-          {request.subject === "shell" ? (
-            <span className="flex flex-col gap-1">
-              {shownFragments.map((fragment) => (
-                <code
-                  className={cn("font-mono text-base", fragmentTone(fragment.verdict))}
-                  key={`${fragment.role}-${fragment.display}`}
-                >
-                  {fragment.display}
-                </code>
-              ))}
-              {hiddenFragments > 0 ? (
-                <span className="text-xs text-muted-foreground">
-                  +{hiddenFragments} more flagged command(s)
-                </span>
-              ) : null}
-            </span>
-          ) : (
-            <code className="font-mono text-base text-foreground">{headline}</code>
-          )}
-          <span className="text-sm text-muted-foreground">{request.currentReason}</span>
+          <InboxPreview request={request} />
           <span className="flex flex-wrap gap-1.5">
-            {request.subject === "tool" ? (
-              <Badge variant="outline">{request.tool.capability}</Badge>
-            ) : rules.length === 0 ? (
-              <Badge variant="outline">deferred to remote approval</Badge>
-            ) : (
-              rules.map((rule) => (
-                <Badge variant="destructive" key={rule}>
-                  {rule}
-                </Badge>
-              ))
-            )}
+            <InboxBadges request={request} />
           </span>
         </button>
 

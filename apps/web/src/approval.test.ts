@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { flaggedFragments, requestHeadline, toolParamSummary, triggeredRules } from "./approval";
+import {
+  flaggedFragments,
+  requestHeadline,
+  toolCallLines,
+  toolParamSummary,
+  triggeredRules,
+} from "./approval";
 import { demoRequests } from "./fixtures";
 import {
   isShellRequest,
@@ -69,5 +75,25 @@ describe("tool approval helpers", () => {
     expect(toolParamSummary(toolFixture("demo-tool-write"))).toBe(
       "path = /repo/.github/workflows/deploy.yml",
     );
+  });
+
+  it("lists the verbatim tool-call arguments as key = value lines", () => {
+    expect(toolCallLines(mcpTool)).toEqual([
+      "owner = acme",
+      "repo = app",
+      "title = Production is down",
+      "body = sev1",
+    ]);
+    expect(toolCallLines(toolFixture("demo-tool-write"))).toEqual([
+      "path = /repo/.github/workflows/deploy.yml",
+    ]);
+  });
+
+  it("JSON-encodes non-string argument values", () => {
+    const withObject: ToolApprovalRequest = {
+      ...mcpTool,
+      tool: { ...mcpTool.tool, raw: { count: 3, labels: ["bug", "p1"] } },
+    };
+    expect(toolCallLines(withObject)).toEqual(["count = 3", 'labels = ["bug","p1"]']);
   });
 });

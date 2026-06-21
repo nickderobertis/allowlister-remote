@@ -5,8 +5,8 @@ test("lists concurrent requests in the inbox and approves one from the list", as
 
   await expect(page.getByRole("heading", { name: "Approvals inbox" })).toBeVisible();
   const list = page.getByRole("list", { name: "Pending approvals" });
-  // Match the headline <code> exactly so the substring inside each card's reason
-  // line does not also match.
+  // Each card previews its flagged script lines directly, so match exactly to pin
+  // the command line itself.
   await expect(
     list.getByText("gh pr merge 42 --squash --delete-branch", { exact: true }),
   ).toBeVisible();
