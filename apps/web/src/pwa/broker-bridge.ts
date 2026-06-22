@@ -1,9 +1,10 @@
 // Page-side bridge to the Rust broker, mediated by the service worker. The
 // worker owns the single WebSocket (one per browser, shared across tabs); the
 // page asks it to connect, listens for the broker events it relays via
-// postMessage, and sends decisions back through it. Falls back gracefully (a
-// no-op handle) when there is no service worker, so the caller can keep using
-// HTTP polling.
+// postMessage, and sends decisions back through it. The broker is the only
+// transport for approval requests; when there is no controlling service worker
+// this returns an inert handle and the caller surfaces that as an error (there
+// is no HTTP fallback).
 
 type BrokerEventHandlers = {
   onSnapshot?: (requests: unknown[]) => void;

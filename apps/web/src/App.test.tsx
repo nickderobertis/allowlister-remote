@@ -1,7 +1,41 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
+import { brokerRequestPayloads } from "./test/broker-fixtures";
+
+// The broker bridge is the app's only source of requests, so the unit tests
+// drive it directly: connectBroker is mocked to capture the handlers App
+// registers (so a test can push a snapshot / added / resolved event) and to
+// record the decisions App sends back. /api/config and navigator.serviceWorker
+// are stubbed so the connect effect runs under jsdom.
+type BrokerHandlers = {
+  onSnapshot?: (requests: unknown[]) => void;
+  onAdded?: (request: unknown) => void;
+  onResolved?: (requestId: string) => void;
+  onStatus?: (status: string) => void;
+};
+
+const broker = vi.hoisted(() => ({
+  handlers: null as BrokerHandlers | null,
+  url: null as string | null,
+  decisions: [] as { requestId: string; verdict: string; reason: string }[],
+  closed: false,
+}));
+
+vi.mock("./pwa/broker-bridge", () => ({
+  connectBroker: (url: string, handlers: BrokerHandlers) => {
+    broker.url = url;
+    broker.handlers = handlers;
+    return {
+      decide: (decision: { requestId: string; verdict: string; reason: string }) =>
+        broker.decisions.push(decision),
+      close: () => {
+        broker.closed = true;
+      },
+    };
+  },
+}));
 
 function setDesktop(matches: boolean) {
   window.matchMedia = vi.fn().mockImplementation((query: string) => ({
@@ -16,13 +50,139 @@ function setDesktop(matches: boolean) {
   }));
 }
 
+function setServiceWorker(present: boolean) {
+  Object.defineProperty(navigator, "serviceWorker", {
+    configurable: true,
+    value: present
+      ? { controller: {}, addEventListener: vi.fn(), removeEventListener: vi.fn() }
+      : undefined,
+  });
+}
+
+function stubConfig(response: unknown | (() => Promise<never>)) {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () =>
+      typeof response === "function"
+        ? response()
+        : ({ json: async () => response }) as Response,
+    ),
+  );
+}
+
 function focusedHeadline(): string | null {
   return document.querySelector('[aria-current="true"]')?.textContent ?? null;
 }
 
+// Render the app, wait for the connect effect to register broker handlers, then
+// push the snapshot of pending requests the way the broker would on subscribe.
+async function renderApp() {
+  const view = render(<App />);
+  await waitFor(() => expect(broker.handlers).not.toBeNull());
+  act(() => broker.handlers?.onSnapshot?.(brokerRequestPayloads));
+  return view;
+}
+
+beforeEach(() => {
+  broker.handlers = null;
+  broker.url = null;
+  broker.decisions = [];
+  broker.closed = false;
+  setServiceWorker(true);
+  stubConfig({ brokerUrl: "ws://test/ws/pwa" });
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+describe("App broker connection", () => {
+  it("connects to the broker URL from /api/config and renders its snapshot", async () => {
+    await renderApp();
+    expect(broker.url).toBe("ws://test/ws/pwa");
+    expect(await screen.findByRole("list", { name: "Pending approvals" })).toBeInTheDocument();
+  });
+
+  it("reports an error when the browser has no service worker", async () => {
+    setServiceWorker(false);
+    render(<App />);
+    expect(
+      await screen.findByText(/no service worker, which allowlister-remote requires/),
+    ).toBeInTheDocument();
+    expect(broker.handlers).toBeNull();
+  });
+
+  it("reports an error when no broker is configured", async () => {
+    stubConfig({ brokerUrl: null });
+    render(<App />);
+    expect(
+      await screen.findByText("No approval broker is configured for this deployment."),
+    ).toBeInTheDocument();
+    expect(broker.handlers).toBeNull();
+  });
+
+  it("reports an error when the config request fails", async () => {
+    stubConfig(() => Promise.reject(new Error("offline")));
+    render(<App />);
+    expect(
+      await screen.findByText("Could not load the approval broker configuration."),
+    ).toBeInTheDocument();
+    expect(broker.handlers).toBeNull();
+  });
+
+  it("adds a newly announced request and ignores a duplicate re-announce", async () => {
+    await renderApp();
+    await screen.findByRole("list", { name: "Pending approvals" });
+
+    const added = {
+      id: "demo-added",
+      subject: "shell",
+      command: "terraform apply",
+      current_verdict: "defer",
+      fragments: [{ display: "terraform apply", verdict: "ask", role: "standalone" }],
+    };
+    act(() => broker.handlers?.onAdded?.(added));
+    expect(await screen.findByText(/5 pending approvals/)).toBeInTheDocument();
+
+    // A re-announce of the same id (e.g. after a broker restart) must not stack.
+    act(() => broker.handlers?.onAdded?.(added));
+    expect(screen.getByText(/5 pending approvals/)).toBeInTheDocument();
+  });
+
+  it("removes a request when the broker resolves it elsewhere", async () => {
+    await renderApp();
+    await screen.findByText("gh pr merge 42 --squash --delete-branch");
+
+    act(() => broker.handlers?.onResolved?.("demo-oneoff"));
+    await waitFor(() => {
+      expect(screen.getByText(/3 pending approvals/)).toBeInTheDocument();
+    });
+    expect(screen.queryByText("gh pr merge 42 --squash --delete-branch")).not.toBeInTheDocument();
+  });
+
+  it("sends decisions back through the broker", async () => {
+    const user = userEvent.setup();
+    await renderApp();
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: "Allow gh pr merge 42 --squash --delete-branch",
+      }),
+    );
+
+    expect(broker.decisions).toEqual([
+      {
+        requestId: "demo-oneoff",
+        verdict: "allow",
+        reason: "allowed in allowlister-remote",
+      },
+    ]);
+  });
+});
+
 describe("App inbox", () => {
   it("lists every pending allowlister request as an inbox entry", async () => {
-    render(<App />);
+    await renderApp();
 
     const list = await screen.findByRole("list", { name: "Pending approvals" });
     const items = within(list).getAllByRole("listitem");
@@ -35,7 +195,7 @@ describe("App inbox", () => {
   });
 
   it("previews tool-call arguments on the inbox card instead of the prose reason", async () => {
-    render(<App />);
+    await renderApp();
 
     const list = await screen.findByRole("list", { name: "Pending approvals" });
     // The tool card previews the verbatim arguments the agent passed.
@@ -48,7 +208,7 @@ describe("App inbox", () => {
   });
 
   it("previews the surrounding script context beneath a shell card's flagged commands", async () => {
-    render(<App />);
+    await renderApp();
 
     const list = await screen.findByRole("list", { name: "Pending approvals" });
     // The flagged commands lead the card...
@@ -61,7 +221,7 @@ describe("App inbox", () => {
 
   it("allows a request directly from the inbox list without opening it", async () => {
     const user = userEvent.setup();
-    render(<App />);
+    await renderApp();
 
     await user.click(
       await screen.findByRole("button", {
@@ -77,7 +237,7 @@ describe("App inbox", () => {
 
   it("opens a shell approval and shows the real per-fragment verdicts", async () => {
     const user = userEvent.setup();
-    render(<App />);
+    await renderApp();
 
     await user.click(
       await screen.findByRole("button", { name: "Open approval for npm publish --access public" }),
@@ -114,7 +274,7 @@ describe("App inbox", () => {
 
   it("renders 'no session' when the harness did not supply a session id", async () => {
     const user = userEvent.setup();
-    render(<App />);
+    await renderApp();
 
     // The one-off request comes from a harness (codex) with no session id.
     await user.click(
@@ -129,7 +289,7 @@ describe("App inbox", () => {
 
   it("opens a tool call and toggles between formatted and JSON views", async () => {
     const user = userEvent.setup();
-    render(<App />);
+    await renderApp();
 
     await user.click(
       await screen.findByRole("button", { name: "Open approval for mcp__github__create_issue" }),
@@ -156,7 +316,7 @@ describe("App inbox", () => {
 
   it("returns to the inbox from the expanded view via the back control", async () => {
     const user = userEvent.setup();
-    render(<App />);
+    await renderApp();
 
     await user.click(await screen.findByRole("button", { name: "Open approval for write" }));
     expect(screen.getByText("Approve this tool call")).toBeInTheDocument();
@@ -168,7 +328,7 @@ describe("App inbox", () => {
 
   it("shows the empty state once every request is decided", async () => {
     const user = userEvent.setup();
-    render(<App />);
+    await renderApp();
 
     for (const name of [
       "Deny gh pr merge 42 --squash --delete-branch",
@@ -188,7 +348,7 @@ describe("App inbox", () => {
 describe("App keyboard navigation (desktop)", () => {
   it("moves the inbox cursor with the up and down arrow keys", async () => {
     const user = userEvent.setup();
-    render(<App />);
+    await renderApp();
     await screen.findByRole("list", { name: "Pending approvals" });
 
     // The first card is the cursor by default.
@@ -209,7 +369,7 @@ describe("App keyboard navigation (desktop)", () => {
 
   it("opens the focused approval with Enter and returns with Escape", async () => {
     const user = userEvent.setup();
-    render(<App />);
+    await renderApp();
     await screen.findByRole("list", { name: "Pending approvals" });
 
     await user.keyboard("{Enter}");
@@ -221,7 +381,7 @@ describe("App keyboard navigation (desktop)", () => {
 
   it("allows the focused approval with the A key", async () => {
     const user = userEvent.setup();
-    render(<App />);
+    await renderApp();
     await screen.findByRole("list", { name: "Pending approvals" });
 
     await user.keyboard("a");
@@ -234,7 +394,7 @@ describe("App keyboard navigation (desktop)", () => {
 
   it("denies the focused approval with the D key", async () => {
     const user = userEvent.setup();
-    render(<App />);
+    await renderApp();
     await screen.findByRole("list", { name: "Pending approvals" });
 
     await user.keyboard("{ArrowDown}");
@@ -248,7 +408,7 @@ describe("App keyboard navigation (desktop)", () => {
 
   it("opens the shortcuts panel with ? and the floating hint, closing with Escape", async () => {
     const user = userEvent.setup();
-    render(<App />);
+    await renderApp();
     await screen.findByRole("list", { name: "Pending approvals" });
 
     await user.keyboard("?");
@@ -266,7 +426,7 @@ describe("App keyboard navigation (desktop)", () => {
 
   it("allows and denies an open approval from the detail view", async () => {
     const user = userEvent.setup();
-    render(<App />);
+    await renderApp();
 
     await user.click(
       await screen.findByRole("button", { name: "Open approval for mcp__github__create_issue" }),
@@ -282,7 +442,7 @@ describe("App keyboard navigation (desktop)", () => {
 
   it("toggles the tool detail view with the F and J keys", async () => {
     const user = userEvent.setup();
-    render(<App />);
+    await renderApp();
 
     await user.click(
       await screen.findByRole("button", { name: "Open approval for mcp__github__create_issue" }),
@@ -298,7 +458,7 @@ describe("App keyboard navigation (desktop)", () => {
 
   it("reveals a script fragment's details when it is clicked", async () => {
     const user = userEvent.setup();
-    render(<App />);
+    await renderApp();
 
     await user.click(
       await screen.findByRole("button", { name: "Open approval for npm publish --access public" }),
@@ -319,7 +479,7 @@ describe("App keyboard navigation (desktop)", () => {
 
   it("focuses a card on hover so the keyboard acts on it", async () => {
     const user = userEvent.setup();
-    render(<App />);
+    await renderApp();
 
     await user.hover(
       await screen.findByRole("button", { name: "Open approval for mcp__github__create_issue" }),
@@ -329,7 +489,7 @@ describe("App keyboard navigation (desktop)", () => {
 
   it("ignores shortcuts while focus sits on a control or a modifier is held", async () => {
     const user = userEvent.setup();
-    render(<App />);
+    await renderApp();
     await screen.findByRole("list", { name: "Pending approvals" });
 
     // Focus an action button: navigation keys must not hijack native behavior.
@@ -348,7 +508,7 @@ describe("App keyboard navigation (mobile)", () => {
   it("does not bind shortcuts or render hints on touch devices", async () => {
     setDesktop(false);
     const user = userEvent.setup();
-    render(<App />);
+    await renderApp();
     await screen.findByRole("list", { name: "Pending approvals" });
 
     expect(focusedHeadline()).toBeNull();
