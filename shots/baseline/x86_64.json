@@ -162,14 +162,14 @@
       "toggles": {
         "theme": "dark"
       },
-      "hash": "daccc4b2205245660cb81068aeb8763057745bb9600a11a6755e798507b267f4"
+      "hash": "f8875db244fb1ba75d7af989c232880ab7d464a9830ed53900ed4bf3d9b20fbb"
     },
     {
       "name": "terminal-tool",
       "toggles": {
         "theme": "light"
       },
-      "hash": "f9f38935cd176257e923858a644796826035e06a8fd02350997601b63d2dd0bb"
+      "hash": "7152f7a1f5445c823855d0b5836e0c4af289727fa60c904a3c940d28ce814c00"
     },
     {
       "name": "tool-capability",

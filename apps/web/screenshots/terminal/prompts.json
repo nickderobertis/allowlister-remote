@@ -19,7 +19,14 @@
       "command": "mcp__github__create_issue",
       "cwd": "~/src/allowlister-remote",
       "fragments": [],
-      "prompt": "allowlister-remote approval required\n\nFull command:\n  mcp__github__create_issue\n\n  cwd: ~/src/allowlister-remote\nApprove here or in the web app. [a]llow / [d]eny: "
+      "tool": {
+        "raw": {
+          "owner": "nickderobertis",
+          "repo": "allowlister-remote",
+          "title": "Add remote approval audit log"
+        }
+      },
+      "prompt": "allowlister-remote approval required\n\nFull command:\n  mcp__github__create_issue\n\nTool input:\n  {\n    \"owner\": \"nickderobertis\",\n    \"repo\": \"allowlister-remote\",\n    \"title\": \"Add remote approval audit log\"\n  }\n\n  cwd: ~/src/allowlister-remote\nApprove here or in the web app. [a]llow / [d]eny: "
     },
     {
       "name": "terminal-script",
