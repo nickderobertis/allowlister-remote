@@ -1,12 +1,13 @@
 name: Performance
 
-# Informational performance suite. On every PR the `bench` job runs the plugin's
-# Criterion engine benchmarks and hyperfine CLI timings, and the `web` job runs
-# the PWA's Vitest micro-benchmarks, deterministic bundle-size report, and a
-# Lighthouse runtime audit. Each posts its own sticky PR comment and a job
-# summary. It is deliberately NOT a quality gate: benchmark timings are noisy on
-# shared CI runners, so these jobs report rather than block — keep them out of
-# branch-protection's required checks. (The hard, deterministic gate is
+# Informational performance suite, gated on Nx affected. The `bench` job runs the
+# plugin's Criterion engine benchmarks and hyperfine CLI timings only when the
+# plugin is affected; the `web` job runs the PWA's Vitest micro-benchmarks,
+# deterministic bundle-size report, and Lighthouse audit only when web is
+# affected (the `changes` job resolves this). Each posts its own sticky PR comment
+# and a job summary. It is deliberately NOT a quality gate: benchmark timings are
+# noisy on shared CI runners, so these jobs report rather than block — keep them
+# out of branch-protection's required checks. (The hard, deterministic gate is
 # check.yml / `just check`.)
 
 on:
@@ -29,8 +30,47 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # Affected gate: perf is measured only for the package a PR actually touches,
+  # so a web-only change skips the Rust suite and a plugin-only change skips the
+  # PWA suite. Non-PR events (push to main, workflow_dispatch) have no base to
+  # diff, so they fall through to running both.
+  changes:
+    name: affected
+    runs-on: ubuntu-latest
+    outputs:
+      plugin: ${{ steps.affected.outputs.plugin }}
+      web: ${{ steps.affected.outputs.web }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - id: affected
+        env:
+          NX_BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          NX_HEAD: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${NX_BASE:-}" || "$NX_BASE" =~ ^0+$ ]]; then
+            echo "plugin=true" >> "$GITHUB_OUTPUT"
+            echo "web=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          affected="$(npx nx show projects --affected --base "$NX_BASE" --head "$NX_HEAD")"
+          echo "affected: $affected"
+          grep -qx 'allowlister-remote-plugin' <<<"$affected" \
+            && echo "plugin=true" >> "$GITHUB_OUTPUT" || echo "plugin=false" >> "$GITHUB_OUTPUT"
+          grep -qx 'web' <<<"$affected" \
+            && echo "web=true" >> "$GITHUB_OUTPUT" || echo "web=false" >> "$GITHUB_OUTPUT"
+
   bench:
     name: benchmarks
+    needs: changes
+    if: needs.changes.outputs.plugin == 'true'
     # A single, consistent runner: timings are only comparable on the same
     # hardware, so this never matrixes across OSes.
     runs-on: ubuntu-latest
@@ -185,6 +225,8 @@ jobs:
 
   web:
     name: web PWA
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
     # A single, consistent runner so the Lighthouse timings stay comparable; the
     # bundle-size numbers are deterministic regardless of host.
     runs-on: ubuntu-latest
