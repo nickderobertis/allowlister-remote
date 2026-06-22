@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/banner.png" alt="Allowlister" width="640" />
+</p>
+
 # allowlister-remote
 
 A standalone, modern progressive web app for approving allowlister dynamic

@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { createApprovalApi } from "./api";
 import {
@@ -65,6 +66,18 @@ function fragmentTone(verdict: ApprovalVerdict): string {
 
 function VerdictBadge({ verdict }: { verdict: ApprovalVerdict }) {
   return <Badge variant={verdictVariant(verdict)}>{verdict}</Badge>;
+}
+
+// A small, unobtrusive brand mark: the shield logo beside the product label.
+// Used in the inbox and empty-state headers so the app is recognizable without
+// crowding the approval content.
+function BrandMark() {
+  return (
+    <p className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+      <Image src="/logo.png" alt="" aria-hidden width={20} height={20} className="h-5 w-5" />
+      allowlister remote
+    </p>
+  );
 }
 
 function Eyebrow({ request }: { request: ApprovalRequest }) {
@@ -698,9 +711,7 @@ function ErrorBanner({ error }: { error: string | null }) {
 function EmptyInbox({ error }: { error: string | null }) {
   return (
     <main className="mx-auto flex max-w-3xl flex-col gap-3 p-8">
-      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        allowlister remote
-      </p>
+      <BrandMark />
       <h1 className="text-2xl font-semibold tracking-tight">No pending approvals</h1>
       <p className="text-muted-foreground">
         Install this PWA on your desktop or phone and keep it ready for the next agent request.
@@ -730,9 +741,7 @@ function InboxView({
   return (
     <main className="mx-auto flex max-w-3xl flex-col gap-6 p-4 sm:p-8">
       <header className="flex flex-col gap-1">
-        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          allowlister remote
-        </p>
+        <BrandMark />
         <h1 className="text-2xl font-semibold tracking-tight">Approvals inbox</h1>
         <p className="text-sm text-muted-foreground">
           {requests.length} pending {requests.length === 1 ? "approval" : "approvals"} ·{" "}
