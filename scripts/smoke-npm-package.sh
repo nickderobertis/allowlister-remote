@@ -48,8 +48,9 @@ npm install --prefix "$tmp_dir/prefix" -g "$tmp_dir/$parent_tgz" --silent
 
 cmd="$tmp_dir/prefix/bin/allowlister-remote-plugin"
 "$cmd" --version >/dev/null
+# A static allow defers without any transport, so this needs no daemon or broker.
 printf '{"current_verdict":"allow","command":"git status","cwd":"/tmp"}' \
-  | "$cmd" --server-url http://127.0.0.1:9 \
+  | "$cmd" \
   | grep '"verdict":"defer"' >/dev/null
 
 # The command on PATH must be the native binary itself, not the JS launcher

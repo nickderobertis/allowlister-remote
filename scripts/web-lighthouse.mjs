@@ -10,9 +10,9 @@
 // informational; the deterministic, trustworthy delta is the bundle-size layer.
 //
 // It builds nothing: it serves the existing `apps/web/.next` with `next start`,
-// runs Lighthouse against it over the demo data path (so the app shell renders
-// without a live plugin, exactly as the e2e and screenshots run), then reports
-// the Performance score and the core Web Vitals.
+// runs Lighthouse against the app shell (no broker is configured, so the inbox
+// renders its resting state), then reports the Performance score and the core
+// Web Vitals.
 //
 // Usage: scripts/web-lighthouse.mjs
 //
@@ -37,9 +37,9 @@ const out = process.env.LH_OUT ?? join(repoRoot, "target/web-perf");
 const port = Number(process.env.LH_PORT ?? 4184);
 const base = `http://127.0.0.1:${port}`;
 
-// The demo data path renders the full inbox without a live plugin, so the audit
-// exercises the real app shell the way the e2e and screenshots do.
-const route = { name: "inbox (demo)", url: `${base}/?demo=1` };
+// No broker is configured here, so the app renders its shell/resting state; the
+// audit measures that real app shell.
+const route = { name: "app shell", url: `${base}/` };
 
 function fail(message) {
   console.error(`FAIL: ${message}`);

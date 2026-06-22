@@ -14,8 +14,10 @@ The single-page approval UI (`src/App.tsx`) has three states:
   call (`ToolDetail`), with allow/deny and view-specific controls.
 - **Empty** — the resting state with no pending approvals.
 
-`page.tsx` mounts `App`; the demo data path (`?demo=1` or non-production) is
-served by `DemoApprovalApi` so e2e and screenshots run without a live plugin.
+`page.tsx` mounts `App`, which connects to the broker (the only request source)
+using the URL from `/api/config` and renders whatever the broker relays. There is
+no demo/offline data path; unit tests drive it through a mocked broker bridge
+(`src/test/broker-fixtures.ts`).
 
 ## Keyboard navigation (desktop only)
 
@@ -90,9 +92,10 @@ the mouse follows on hover; the focused card is ringed and marked
   branches.
 - E2E (`e2e/`, Playwright) must pass in both the `chromium-desktop` and
   `mobile-chrome` projects. The keyboard affordances must not appear or block
-  interaction in the mobile viewport. The `allowlister-binary.spec.ts` suite
-  spawns the real `allowlister` binary and only runs where it is installed;
-  `approval-flow.spec.ts` exercises the UI against the demo data path.
+  interaction in the mobile viewport. The `broker-realtime.spec.ts` suite spawns
+  the real broker, daemon, and plugin binaries and drives the full broker
+  WebSocket path (allow/deny from the inbox and detail view, shell and tool
+  calls); `pwa.spec.ts` and `theme.spec.ts` cover the offline shell and theming.
 
 ## Performance suite
 
@@ -110,8 +113,8 @@ plugin's bench suite:
   `.next/static`, aggregated by stable category (Turbopack content-hashes the
   filenames, so only category totals are comparable across builds).
 - **Lighthouse** (`scripts/web-lighthouse.mjs` / `just lighthouse`): a runtime
-  audit of the built app over the demo data path; wall-clock and noise-prone, so
-  informational only. Needs Chrome on PATH (or `CHROME_PATH`).
+  audit of the built app shell; wall-clock and noise-prone, so informational
+  only. Needs Chrome on PATH (or `CHROME_PATH`).
 
 The `Performance` workflow's `web` job runs all three on every PR and posts a
 sticky comment plus a job summary.

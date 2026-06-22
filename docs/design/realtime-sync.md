@@ -1,6 +1,8 @@
 # Design: realtime PWA ↔ plugin synchronization
 
-Status: **in progress** · Branch: `claude/pwa-allowlister-communication-gnte6g`
+Status: **shipped** — the broker is now the *only* approval transport. The
+poll-based HTTP path described in §1 below has been removed entirely (no
+fallback); §1 is retained as historical context for why the broker exists.
 
 Replace the poll-based approval transport with a realtime design built around a
 dedicated Rust **connection broker**, suitable for approvals that stay open for
@@ -11,10 +13,13 @@ highest-performance hot path; the existing Next.js app keeps serving the PWA.
 Backed by runnable code and tests — see [Implementation status](#implementation-status)
 and the early-stage [`prototypes/`](./prototypes/).
 
-## 1. Today's architecture
+## 1. The original (now-removed) architecture
+
+> Historical: this poll-based HTTP transport and its in-memory store have been
+> deleted; the broker design in the following sections is what ships today.
 
 Three HTTP channels mediated by the Next.js app's in-memory store
-(`apps/web/src/server/store.ts`); nothing talks peer-to-peer.
+(`apps/web/src/server/store.ts`); nothing talked peer-to-peer.
 
 | Actor | Call | Endpoint |
 | --- | --- | --- |

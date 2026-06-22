@@ -27,12 +27,10 @@ for (const { pkg, target, suffix } of platforms) {
   const binDir = join(packagesDir, pkg, "bin");
   rmSync(binDir, { force: true, recursive: true });
   mkdirSync(binDir, { recursive: true });
-  // The daemon is built on Unix domain sockets, so it is Unix-only; Windows ships
-  // the plugin alone and uses its HTTP path.
-  const binaries =
-    target === "win32-x64"
-      ? ["allowlister-remote-plugin"]
-      : ["allowlister-remote-plugin", "allowlister-remote-daemon"];
+  // Every platform ships both binaries: the plugin reaches the broker only
+  // through the daemon it auto-starts (a Unix socket on Unix, a named pipe on
+  // Windows), so the daemon must sit next to the plugin on every OS.
+  const binaries = ["allowlister-remote-plugin", "allowlister-remote-daemon"];
   for (const binary of binaries) {
     const artifact = `${binary}-${target}${suffix}`;
     const artifactPath = findArtifact(artifactsDir, artifact);

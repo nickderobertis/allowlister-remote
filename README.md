@@ -26,38 +26,52 @@ for allowlister, not setup glue for agent sessions.
   its own waiting plugin independently.
 - Lets you tap any request to open a full-screen installable approval view with
   large allow/deny controls suitable for desktop and mobile.
-- Runs as a Next.js app/server and talks to the Rust plugin over HTTP, so the UI can run on a different machine than the allowlister binary.
+- Runs as a Next.js PWA that connects to a WebSocket broker, so the UI can run on
+  a different machine than the allowlister binary.
 
 ## allowlister plugin bridge
 
-The repository ships two pieces that communicate over the network:
+Approval requests flow plugin → daemon → broker → PWA, all over the broker; there
+is no HTTP polling. The repository ships four pieces:
 
 - `allowlister-remote-plugin` is the Rust dynamic allowlister plugin client. It
-  reads the allowlister plugin JSON payload from stdin, posts an approval request
-  to the remote Next.js server, polls for a decision, and then returns the
+  reads the allowlister plugin JSON payload from stdin and hands the approval
+  request to the host **daemon** over local IPC (a Unix-domain socket on Unix, a
+  named pipe on Windows), then waits for the relayed decision and returns the
   `allow` or `deny` verdict to the allowlister process. If allowlister has
   already produced a static `allow` or `deny` verdict, the plugin immediately
-  defers so the binary does not wait for the app.
-- The Next.js app serves the PWA UI and API endpoints. It can run on another
-  host, desktop, phone-accessible LAN address, or tunneled URL while the Rust
-  plugin runs on the machine where the allowlister binary executes.
+  defers without contacting the daemon. The plugin is spawned once per gated
+  command, so it never opens a network socket itself.
+- `allowlister-remote-daemon` is one long-lived process per host. It auto-starts
+  when the plugin first needs it, multiplexes the host's short-lived plugin
+  processes onto a single supervised WebSocket to the broker, and routes each
+  decision back to the right plugin (re-announcing still-pending requests if the
+  link drops).
+- `allowlister-remote-broker` is the WebSocket broker that mediates between
+  daemons (`/ws/daemon`) and PWAs (`/ws/pwa`). It holds pending requests in
+  memory and fans new requests and resolutions out to every connected PWA.
+- The Next.js app serves the PWA UI plus the `/api/config` endpoint that hands
+  the browser the broker URL. The PWA's service worker holds one WebSocket to the
+  broker. It can run on another host, desktop, phone-accessible LAN address, or
+  tunneled URL.
 
-Build and serve the production app:
+Build and serve the production stack (broker, then the app pointed at it):
 
 ```console
-cargo build --release -p allowlister-remote-plugin
+cargo build --release -p allowlister-remote-broker -p allowlister-remote-daemon -p allowlister-remote-plugin
+./target/release/allowlister-remote-broker            # listens on 127.0.0.1:4180
 npx nx run web:build
-npm run start -- --hostname 0.0.0.0 --port 3000
+ALLOWLISTER_REMOTE_BROKER_URL=ws://127.0.0.1:4180 npm run start -- --hostname 0.0.0.0 --port 3000
 ```
 
-Install the released plugin from npm:
+Install the released plugin from npm (the daemon ships alongside it):
 
 ```console
 npm install -g @nickderobertis/allowlister-remote-plugin
 allowlister-remote-plugin --version
 ```
 
-Configure allowlister to use the plugin process:
+Configure allowlister to use the plugin process, pointing it at the broker:
 
 ```jsonc
 {
@@ -66,8 +80,8 @@ Configure allowlister to use the plugin process:
       "name": "allowlister remote",
       "command": [
         "/path/to/allowlister-remote-plugin",
-        "--server-url",
-        "https://allowlister-remote.example.com",
+        "--broker-url",
+        "wss://allowlister-remote-broker.example.com",
       ],
       "timeout_ms": 125000,
     },
@@ -75,14 +89,14 @@ Configure allowlister to use the plugin process:
 }
 ```
 
-With the Rust plugin pointed at the Next.js server URL, `allowlister check`
-blocks only for `ask`/`defer` decisions, the PWA displays the flagged command
-fragments (or the tool call), and the selected button releases the original
-allowlister process over the network. The plugin forwards allowlister's
-protocol-v3 payload verbatim — including the structured `fragments` array, for
-tool calls the `tool` object, and the harness `session_id` — so the app renders
-the engine's real decomposition (and the originating harness session) rather than
-re-deriving it.
+With the plugin pointed at the broker (it auto-starts the daemon, which dials
+that URL), `allowlister check` blocks only for `ask`/`defer` decisions, the PWA
+displays the flagged command fragments (or the tool call), and the selected
+button releases the original allowlister process back through the broker. The
+plugin forwards allowlister's protocol-v3 payload verbatim — including the
+structured `fragments` array, for tool calls the `tool` object, and the harness
+`session_id` — so the app renders the engine's real decomposition (and the
+originating harness session) rather than re-deriving it.
 
 ## Releases
 
@@ -90,11 +104,11 @@ PR titles use Conventional Commits. Once a PR is squash-merged to `main` and the
 required `check`, `install-smoke`, `pr-title`, and `Visual docs / visual-docs`
 checks pass, Release Please opens or updates a release PR using
 `RELEASE_TOKEN`. Merging that release PR versions the Rust crate and creates a
-`vX.Y.Z` tag. The tag workflow builds native plugin binaries for Linux x64, macOS
-arm64, and Windows x64, uploads them to the GitHub Release with checksums, stamps
-the npm carrier package from the tag, publishes
+`vX.Y.Z` tag. The tag workflow builds native plugin and daemon binaries for Linux
+x64, macOS arm64, and Windows x64, uploads them to the GitHub Release with
+checksums, stamps the npm carrier package from the tag, publishes
 `@nickderobertis/allowlister-remote-plugin` to npm with provenance, then installs
-the published package and smoke-tests the real plugin entry point.
+the published package and smoke-tests the real plugin and daemon entry points.
 
 Repository secrets are declared in `gh-secrets.json` and synced with:
 
@@ -102,9 +116,12 @@ Repository secrets are declared in `gh-secrets.json` and synced with:
 gh-secrets sync
 ```
 
-## HTTP server contract
+## Broker request shape
 
-`GET /api/approval-requests` returns pending requests:
+A pending request is delivered to the PWA over the broker (in the `snapshot` it
+sends on subscribe and in each `added` event). It is the plugin's
+`build_create_body` output — allowlister's verbatim protocol-v3 payload plus the
+daemon-assigned `id` — which the app normalizes for display.
 
 A shell request carries allowlister's structured fragment decomposition, where
 each fragment keeps its own verdict and matching rule (most fragments here are a
@@ -164,10 +181,11 @@ verbatim `raw` input) for `command`/`fragments`:
 }
 ```
 
-`POST /api/approval-requests/:id/decision` accepts:
+A decision travels back the other way as a `decision` message over the broker,
+which routes it to the daemon and on to the waiting plugin:
 
 ```json
-{ "requestId": "req_123", "verdict": "allow", "reason": "approved on phone" }
+{ "type": "decision", "requestId": "req_123", "verdict": "allow", "reason": "approved on phone" }
 ```
 
 ## Development
@@ -179,5 +197,6 @@ just check
 just test-e2e
 ```
 
-Open the app with `?demo=1` for a built-in allowlister sample request when no
-bridge is running.
+`just dev` and the e2e suite read the broker URL from
+`ALLOWLISTER_REMOTE_BROKER_URL`; without a reachable broker the inbox stays empty
+(there is no offline demo mode).

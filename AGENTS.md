@@ -5,15 +5,21 @@ allowlister dynamic approval requests.
 
 ## Stack and composition
 
-- **Product shape:** Nx monorepo containing a Next.js web app/PWA with server
-  API endpoints plus a Rust allowlister dynamic plugin client.
-- **Languages:** TypeScript, React, and Next.js for the app/server; Rust for the
-  allowlister plugin client; shell command surface via `just`.
+- **Product shape:** Nx monorepo containing a Next.js web app/PWA plus a Rust
+  allowlister dynamic plugin client, a host daemon, and a broker. The broker is
+  the only transport for approval requests: the plugin hands each request to the
+  per-host daemon over local IPC (a Unix socket or a Windows named pipe), the
+  daemon holds one WebSocket to the broker, and the PWA connects to the broker
+  over a WebSocket (via its service worker). There is no HTTP polling fallback.
+- **Languages:** TypeScript, React, and Next.js for the app; Rust for the
+  allowlister plugin client, daemon, and broker; shell command surface via `just`.
 - **References composed:** `shapes/web-app.md`, `languages/typescript.md`, `ci.md`,
   `references/releasing.md`, and `references/monorepo.md` from the create-repo skill.
 - **Excluded, and why:** Durable multi-user persistence, auth, and push-notification delivery are
-  intentionally outside this first repo scaffold; the server keeps in-memory
-  request state for local and CI-realistic approval journeys.
+  intentionally outside this first repo scaffold; the broker holds pending
+  request state in memory for local and CI-realistic approval journeys. The web
+  server itself is stateless — its only API route is `/api/config`, which hands
+  the runtime broker URL to the browser.
 
 ## Command surface
 
@@ -22,10 +28,11 @@ Use `just`; do not hand-roll equivalent commands.
 - `just bootstrap` installs JavaScript dependencies and fetches Rust workspace dependencies.
 - `just check` wraps `nx affected` for formatting, linting, type checking, tests, production builds, and e2e so only affected projects run.
 - `just test` runs the deterministic Vitest suite.
-- `just test-e2e` runs Playwright against the built PWA and the real
-  allowlister binary/plugin boundary in desktop and mobile Chromium.
+- `just test-e2e` runs Playwright against the built PWA driving the real broker,
+  daemon, and plugin binaries (the full broker WebSocket path) in desktop and
+  mobile Chromium.
 - `just dev` delegates to `nx run web:dev`.
-- `just smoke-e2e [version]` builds the app and runs the approval-flow e2e against the
+- `just smoke-e2e [version]` builds the app and runs the broker-realtime e2e against the
   plugin package installed from the public npm registry (defaults to the latest version).
 - `just bench` / `just bench-allocs` run the Rust plugin's informational performance
   suite — Criterion micro-benchmarks and a deterministic allocation report over the
@@ -49,22 +56,24 @@ Use `just`; do not hand-roll equivalent commands.
 ## Quality and tests
 
 - Keep TypeScript strict and boundary types explicit.
-- Tests cover the approval decision flow, request summarization, API client, and
-  offline/demo behavior. Coverage gates enforce 95% lines/statements, 90% functions, and 80% branches. Line coverage keeps the create-repo default bar while branch coverage stays focused on meaningful UI paths.
+- Tests cover the approval decision flow, request summarization, the broker
+  bridge (the PWA's only request source, driven through a mocked bridge with raw
+  protocol-v3 payloads), and offline behavior. Coverage gates enforce 95% lines/statements, 90% functions, and 80% branches. Line coverage keeps the create-repo default bar while branch coverage stays focused on meaningful UI paths.
 - The production build must include the PWA manifest and service worker.
 - The plugin's performance suite is informational, not a gate: it benches the pure,
   network-free decision surface (`triage`, `build_create_body`, `interpret_decision`,
   `parse_local_input`) so the numbers track what the binary runs between stdin and the
-  network. `harness = false` keeps the bench targets out of the test runner and
+  daemon. `harness = false` keeps the bench targets out of the test runner and
   coverage; `--all-targets` lint/typecheck keep them compiling.
 - E2E must exercise the real browser approval flow in both desktop and mobile
-  viewports through the actual allowlister binary, Rust plugin process, Next.js app
-  server over HTTP, remote allow/deny decisions, and static allow/deny no-wait
-  paths.
+  viewports through the actual allowlister plugin process, the host daemon, and
+  the broker over a WebSocket — remote allow/deny decisions (from both the inbox
+  and the expanded detail view, for shell and tool calls) and static allow/deny
+  no-wait paths.
 - Approvals have no timeout: the plugin waits indefinitely and presents
   the same request at the local terminal (via `/dev/tty`) and in the web app at the
-  same time. Whichever side decides first wins; a local-terminal decision is posted
-  back to the server so the pending web approval is dismissed.
+  same time. Whichever side decides first wins; a local-terminal decision is
+  relayed up through the daemon to the broker so the pending web approval is dismissed.
 - The visual-docs gallery (screencomp) captures both approval surfaces. The web lane
   is Playwright (`apps/web/screenshots/*.capture.ts`); the **terminal lane**
   (`terminal.capture.ts`) renders the plugin's real `/dev/tty` prompt to a vector
@@ -77,21 +86,34 @@ Use `just`; do not hand-roll equivalent commands.
   live `local_prompt` still reproduces it, so the gallery can never depict a prompt
   the plugin no longer emits. Terminal shots carry only the `theme` toggle (a
   terminal frame is not responsive), so viewport is a screencomp wildcard.
-- After a release publishes, the `e2e-smoke` workflow re-runs the approval-flow e2e
+- After a release publishes, the `e2e-smoke` workflow re-runs the broker-realtime e2e
   against the plugin package downloaded from the public npm registry (rather than a
   locally built binary), so the published artifact is verified end-to-end. It first
   asserts the installed `allowlister-remote-plugin` command resolves directly to the
-  native Rust binary (no Node launcher in the hot path), then points
-  `ALLOWLISTER_REMOTE_PLUGIN_BIN` at that resolved binary so the e2e drives Rust directly.
+  native Rust binary (no Node launcher in the hot path) and that the daemon ships
+  next to it, then points `ALLOWLISTER_REMOTE_PLUGIN_BIN`/`ALLOWLISTER_REMOTE_DAEMON_BIN`
+  at those resolved binaries so the e2e drives the real Rust plugin and daemon against a
+  source-built broker.
 
 ## Monorepo projects
 
 - `apps/web` is the Next.js PWA/server project and owns browser, route, and UI tests.
-- `crates/allowlister-remote-plugin` is the Rust allowlister dynamic plugin client.
+- `crates/allowlister-remote-plugin` is the Rust allowlister dynamic plugin client. It is
+  network-free: it hands each request to the daemon over local IPC and never opens a socket
+  to the broker itself.
+- `crates/allowlister-remote-daemon` is the per-host daemon: one long-lived process that
+  multiplexes the host's ephemeral plugin processes onto a single supervised WebSocket to the
+  broker, re-announcing still-pending requests on reconnect. Plugin↔daemon is a Unix socket on
+  Unix and a named pipe on Windows (a transport-generic `handle_plugin` serves both).
+- `crates/allowlister-remote-broker` is the standalone WebSocket broker (`/ws/daemon`, `/ws/pwa`,
+  `/healthz`); it holds pending requests in memory and mediates between daemons and PWAs.
+- `crates/allowlister-remote-e2e` drives the real broker + daemon + plugin binaries through the
+  full chain.
 - `packages/allowlister-remote-plugin` is the parent npm package users install; it carries
-  only a small JS launcher plus an `install.mjs` that links the native binary onto the command path.
+  only a small JS launcher plus an `install.mjs` that links the native binaries onto the command path.
 - `packages/allowlister-remote-plugin-{darwin-arm64,linux-x64,win32-x64}` are the per-platform npm
-  packages that each ship one release-built native binary, gated by `os`/`cpu`. The parent declares
+  packages that each ship the release-built plugin **and** daemon binaries (the plugin auto-starts
+  the daemon as a sibling on every OS), gated by `os`/`cpu`. The parent declares
   them as optional dependencies so npm installs only the one matching the host. These are published
   from their directories (not workspace members) so their `os`/`cpu` gates do not break dev installs.
 - The `linux-x64` binary is a fully static **musl** build (`x86_64-unknown-linux-musl`, see
