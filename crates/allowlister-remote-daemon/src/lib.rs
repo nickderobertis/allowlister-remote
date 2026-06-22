@@ -5,8 +5,9 @@
 //! A plugin is spawned once per gated command and is short-lived, so it must not
 //! hold the long upstream connection itself (a fresh TLS/auth handshake on every
 //! gated command would tax the hot path). Instead each plugin connects to this
-//! daemon over a Unix-domain socket; the daemon holds the one WebSocket to the
-//! broker and routes decisions back to the right plugin.
+//! daemon over a local IPC channel — a Unix-domain socket on Unix, a named pipe
+//! on Windows; the daemon holds the one WebSocket to the broker (which may live
+//! on another machine) and routes decisions back to the right plugin.
 //!
 //! The broker connection is supervised: it reconnects with backoff and
 //! **re-announces** every still-pending request on reconnect, so an approval that
@@ -33,8 +34,7 @@ use std::time::Duration;
 
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{json, Value};
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::net::{UnixListener, UnixStream};
+use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::{connect_async, connect_async_tls_with_config, Connector};
@@ -58,8 +58,10 @@ struct PluginRoute {
 
 type Routes = Arc<Mutex<HashMap<String, PluginRoute>>>;
 
-/// Default socket path: per-user under `$XDG_RUNTIME_DIR` when available (so it
-/// is private and cleaned up on logout), otherwise a uid-suffixed `/tmp` path.
+/// Default local IPC address: per-user under `$XDG_RUNTIME_DIR` when available
+/// (so it is private and cleaned up on logout), otherwise a uid-suffixed `/tmp`
+/// path. Mirrors the plugin's `default_socket_path` so they meet at the same place.
+#[cfg(unix)]
 pub fn default_socket_path() -> String {
     if let Ok(dir) = std::env::var("XDG_RUNTIME_DIR") {
         if !dir.is_empty() {
@@ -68,6 +70,14 @@ pub fn default_socket_path() -> String {
     }
     let uid = std::env::var("UID").unwrap_or_else(|_| "0".into());
     format!("/tmp/allowlister-remote-daemon-{uid}.sock")
+}
+
+/// Default local IPC address on Windows: a per-user named pipe. Mirrors the
+/// plugin's `default_socket_path` so they meet at the same place.
+#[cfg(windows)]
+pub fn default_socket_path() -> String {
+    let user = std::env::var("USERNAME").unwrap_or_else(|_| "default".into());
+    format!(r"\\.\pipe\allowlister-remote-daemon-{user}")
 }
 
 pub fn default_broker_url() -> String {
@@ -84,10 +94,6 @@ pub async fn serve(config: Config) -> std::io::Result<()> {
     // a custom-CA connector supplies its own provider explicitly.
     let _ = rustls::crypto::ring::default_provider().install_default();
 
-    // A stale socket from a previous run would block the bind.
-    let _ = std::fs::remove_file(&config.socket_path);
-    let listener = UnixListener::bind(&config.socket_path)?;
-
     let routes: Routes = Arc::new(Mutex::new(HashMap::new()));
     // One writer owns the broker connection; every plugin task sends through this
     // channel. While the link is down, messages queue here and flush on reconnect.
@@ -100,11 +106,51 @@ pub async fn serve(config: Config) -> std::io::Result<()> {
         broker_rx,
     ));
 
+    accept_plugins(&config.socket_path, routes, broker_tx).await
+}
+
+/// Accept plugin connections over a Unix-domain socket and hand each to its own
+/// task. A stale socket from a previous run would block the bind, so it is
+/// removed first.
+#[cfg(unix)]
+async fn accept_plugins(
+    socket_path: &str,
+    routes: Routes,
+    broker_tx: UnboundedSender<String>,
+) -> std::io::Result<()> {
+    let _ = std::fs::remove_file(socket_path);
+    let listener = tokio::net::UnixListener::bind(socket_path)?;
     loop {
         let (stream, _) = listener.accept().await?;
         let routes = routes.clone();
         let broker_tx = broker_tx.clone();
         tokio::spawn(async move { handle_plugin(stream, routes, broker_tx).await });
+    }
+}
+
+/// Accept plugin connections over a Windows named pipe. Each instance serves one
+/// client; once it connects, the next instance is created so the following
+/// plugin can connect, and the connected one is handed to its own task.
+#[cfg(windows)]
+async fn accept_plugins(
+    socket_path: &str,
+    routes: Routes,
+    broker_tx: UnboundedSender<String>,
+) -> std::io::Result<()> {
+    use tokio::net::windows::named_pipe::ServerOptions;
+
+    let mut server = ServerOptions::new()
+        .first_pipe_instance(true)
+        .create(socket_path)?;
+    loop {
+        server.connect().await?;
+        let connected = server;
+        // Pre-create the next instance before serving this one, so a plugin that
+        // connects in the gap is not refused.
+        server = ServerOptions::new().create(socket_path)?;
+        let routes = routes.clone();
+        let broker_tx = broker_tx.clone();
+        tokio::spawn(async move { handle_plugin(connected, routes, broker_tx).await });
     }
 }
 
@@ -243,9 +289,13 @@ fn route_decision(routes: &Routes, text: &str) {
 
 /// Handle one plugin connection: register its request with the broker, then race
 /// a web decision (from the broker) against a local-terminal decision or the
-/// plugin's disconnect (from the socket). First outcome wins.
-async fn handle_plugin(stream: UnixStream, routes: Routes, broker_tx: UnboundedSender<String>) {
-    let (read_half, mut write_half) = stream.into_split();
+/// plugin's disconnect (from the IPC channel). First outcome wins. Generic over
+/// the transport so the same logic serves a Unix socket and a Windows named pipe.
+async fn handle_plugin<S>(stream: S, routes: Routes, broker_tx: UnboundedSender<String>)
+where
+    S: AsyncRead + AsyncWrite + Send + 'static,
+{
+    let (read_half, mut write_half) = tokio::io::split(stream);
     let mut lines = BufReader::new(read_half).lines();
 
     let Ok(Some(first)) = lines.next_line().await else {

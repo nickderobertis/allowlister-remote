@@ -2,6 +2,11 @@
 //! socket) + a fake PWA (over a WebSocket to the broker). Exercises both
 //! directions — a web decision routed down to the plugin, and a local-terminal
 //! decision relayed up to dismiss the web prompt.
+//!
+//! Unix-only: it drives the daemon over a Unix-domain socket. The Windows
+//! named-pipe backend shares the daemon's transport-generic logic and is covered
+//! by the cross-platform e2e suite.
+#![cfg(unix)]
 
 use std::sync::Arc;
 use std::time::Duration;

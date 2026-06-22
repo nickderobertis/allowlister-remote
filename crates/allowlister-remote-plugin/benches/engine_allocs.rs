@@ -2,7 +2,7 @@
 //!
 //! Not a statistical benchmark: a counting global allocator tallies allocator
 //! calls and requested bytes for one `triage` and `build_create_body` per
-//! corpus case, plus one `interpret_decision` per response body, then prints a
+//! corpus case, plus one `interpret_decision` per decision message, then prints a
 //! markdown table. The counts are exact and stable for a given commit, so two
 //! runs are directly comparable — in CI or by eye — without warmups or
 //! statistics. They surface allocator pressure the wall-clock numbers in
