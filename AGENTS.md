@@ -118,7 +118,8 @@ Use `just`; do not hand-roll equivalent commands.
   version is the git tag, injected at compile time via `ALLOWLISTER_REMOTE_PLUGIN_VERSION`
   (`option_env!` in `main.rs`, set by `publish.yml`) — the same stamp-from-tag pattern the
   npm packages use, so `--version` matches the npm package version.
-- After the main `check` workflow passes, Release Please opens or updates a release PR with `RELEASE_TOKEN` and turns on squash **auto-merge**, so the PR merges itself once required checks pass — no manual click. Merging tags `vX.Y.Z`, then the tag builds GitHub Release binaries, stamps every npm package from the tag, and publishes the per-platform packages followed by the parent `@nickderobertis/allowlister-remote-plugin` (which depends on them) with `NPM_TOKEN`.
+- After the required checks (`check`, `install-smoke`, `pr-title`, and `Visual docs / visual-docs`) pass, Release Please opens or updates a release PR with `RELEASE_TOKEN` and turns on squash **auto-merge**, so the PR merges itself once required checks pass — no manual click. Merging tags `vX.Y.Z`, then the tag builds GitHub Release binaries, stamps every npm package from the tag, and publishes the per-platform packages followed by the parent `@nickderobertis/allowlister-remote-plugin` (which depends on them) with `NPM_TOKEN`.
 - GitHub should stay squash-only with auto-merge, branch deletion, required `check`,
-  `install-smoke`, and `pr-title` checks, linear history, conversation resolution, and admin override.
+  `install-smoke`, `pr-title`, and `Visual docs / visual-docs` checks, linear
+  history, conversation resolution, and admin override.
 - `gh-secrets.json` is the secret manifest; values stay in the local gh-secrets store or another configured source, never in git.
