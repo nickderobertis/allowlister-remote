@@ -94,18 +94,19 @@ SCENARIOS = [
     },
     {
         # The terminal twin of the web gallery's `shell-script` card: a deploy
-        # script whose `for` loop long-polls the health endpoint, where only
-        # `npm publish` and `git push` tripped the gate. The prompt surfaces just
-        # those two fragments under "needs your attention" (each with the rule
-        # that flagged it), then prints the whole multi-line command verbatim
-        # under "full command" — so the operator approves the action, not the
-        # wall of shell (including the indented loop body), exactly as the web
+        # script whose `for` loop rolls out each region, where the `kubectl apply`
+        # inside the loop and the trailing `git push` tripped the gate. The prompt
+        # surfaces just those two fragments under "needs your attention" (each with
+        # the rule that flagged it) — one of them nested in the loop body — then
+        # prints the whole multi-line command verbatim under "full command", so the
+        # operator approves the action, not the wall of shell, exactly as the web
         # app does.
         "name": "terminal-script",
         "command": (
-            "set -euo pipefail\nnpm run build\nfor attempt in $(seq 1 30); do\n"
-            "  curl -fsS https://api.acme.dev/healthz\n  sleep 10\ndone\n"
-            "npm publish --access public\ngit push origin main --tags"
+            "set -euo pipefail\nnpm run build\nfor region in $(cat deploy/regions.txt); do\n"
+            "  curl -fsS https://api.acme.dev/$region/healthz\n"
+            "  kubectl --context $region apply -f deploy/manifest.yaml\ndone\n"
+            "git push origin main --tags"
         ),
         "cwd": "/workspace/acme-api",
         "payload": {
@@ -113,22 +114,22 @@ SCENARIOS = [
             "subject": "shell",
             "current_verdict": "ask",
             "command": (
-                "set -euo pipefail\nnpm run build\nfor attempt in $(seq 1 30); do\n"
-                "  curl -fsS https://api.acme.dev/healthz\n  sleep 10\ndone\n"
-                "npm publish --access public\ngit push origin main --tags"
+                "set -euo pipefail\nnpm run build\nfor region in $(cat deploy/regions.txt); do\n"
+                "  curl -fsS https://api.acme.dev/$region/healthz\n"
+                "  kubectl --context $region apply -f deploy/manifest.yaml\ndone\n"
+                "git push origin main --tags"
             ),
             "cwd": "/workspace/acme-api",
-            # Mirrors the web gallery's deploy-script decomposition: the loop body
-            # and the `$(seq …)` substitution are allowed by static rules, and
-            # only `npm publish` and `git push` trip an `ask`, so only those two
-            # are flagged.
+            # Mirrors the web gallery's deploy-script decomposition: the health
+            # probe and the `$(cat …)` substitution are allowed by static rules,
+            # and the loop body's `kubectl apply` and the standalone `git push`
+            # trip an `ask`, so only those two are flagged.
             "fragments": [
                 {"display": "set -euo pipefail", "argv": ["set", "-euo", "pipefail"], "role": "standalone", "verdict": "allow", "rule": "allow set builtins", "reason": "allowed by 'allow set builtins'"},
                 {"display": "npm run build", "argv": ["npm", "run", "build"], "role": "standalone", "verdict": "allow", "rule": "allow npm scripts", "reason": "allowed by 'allow npm scripts'"},
-                {"display": "seq 1 30", "argv": ["seq", "1", "30"], "role": "substitution", "verdict": "allow", "rule": "allow coreutils", "reason": "allowed by 'allow coreutils'"},
-                {"display": "  curl -fsS https://api.acme.dev/healthz", "argv": ["curl", "-fsS", "https://api.acme.dev/healthz"], "role": "loop_body", "verdict": "allow", "rule": "allow health-check probes", "reason": "allowed by 'allow health-check probes'"},
-                {"display": "  sleep 10", "argv": ["sleep", "10"], "role": "loop_body", "verdict": "allow", "rule": "allow sleep", "reason": "allowed by 'allow sleep'"},
-                {"display": "npm publish --access public", "argv": ["npm", "publish", "--access", "public"], "role": "standalone", "verdict": "ask", "rule": "ask before publishing a package", "reason": "needs approval per rule 'ask before publishing a package'"},
+                {"display": "cat deploy/regions.txt", "argv": ["cat", "deploy/regions.txt"], "role": "substitution", "verdict": "allow", "rule": "allow coreutils", "reason": "allowed by 'allow coreutils'"},
+                {"display": "curl -fsS https://api.acme.dev/$region/healthz", "argv": ["curl", "-fsS", "https://api.acme.dev/$region/healthz"], "role": "loop_body", "verdict": "allow", "rule": "allow health-check probes", "reason": "allowed by 'allow health-check probes'"},
+                {"display": "kubectl --context $region apply -f deploy/manifest.yaml", "argv": ["kubectl", "--context", "$region", "apply", "-f", "deploy/manifest.yaml"], "role": "loop_body", "verdict": "ask", "rule": "ask before applying kubernetes manifests", "reason": "needs approval per rule 'ask before applying kubernetes manifests'"},
                 {"display": "git push origin main --tags", "argv": ["git", "push", "origin", "main", "--tags"], "role": "standalone", "verdict": "ask", "rule": "ask before pushing to a remote", "reason": "needs approval per rule 'ask before pushing to a remote'"},
             ],
         },

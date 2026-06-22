@@ -188,8 +188,12 @@ describe("App inbox", () => {
     const items = within(list).getAllByRole("listitem");
     expect(items).toHaveLength(4);
     expect(within(list).getByText("gh pr merge 42 --squash --delete-branch")).toBeInTheDocument();
-    // The longer script headlines on its first flagged fragment, not the script.
-    expect(within(list).getByText("npm publish --access public")).toBeInTheDocument();
+    // The longer script headlines on its first flagged fragment; the card shows
+    // that command both as a flagged fragment and in the script, so it appears
+    // more than once.
+    expect(
+      within(list).getAllByText("kubectl --context $region apply -f deploy/manifest.yaml").length,
+    ).toBeGreaterThanOrEqual(1);
     expect(within(list).getByText("mcp__github__create_issue")).toBeInTheDocument();
     expect(screen.getByText(/4 pending approvals/)).toBeInTheDocument();
   });
@@ -207,16 +211,26 @@ describe("App inbox", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("previews the surrounding script context beneath a shell card's flagged commands", async () => {
+  it("previews the flagged commands and the full script as separate sections", async () => {
     await renderApp();
 
     const list = await screen.findByRole("list", { name: "Pending approvals" });
-    // The flagged commands lead the card...
-    expect(within(list).getByText("npm publish --access public")).toBeInTheDocument();
-    expect(within(list).getByText("git push origin main --tags")).toBeInTheDocument();
-    // ...then the surrounding (non-flagged) script lines follow for context.
+    // Every shell card has a "Flagged" section; the multi-line script card also
+    // adds a "Script" section beneath it.
+    expect(within(list).getAllByText("Flagged").length).toBeGreaterThanOrEqual(1);
+    expect(within(list).getByText("Script")).toBeInTheDocument();
+    // The loop-body command that tripped the gate appears in both sections (as the
+    // flagged action and in its place in the script), so it never looks dropped.
+    expect(
+      within(list).getAllByText("kubectl --context $region apply -f deploy/manifest.yaml"),
+    ).toHaveLength(2);
+    // The full script renders every line in place — including the `for … do`
+    // header and its `done`, which a flagged-only preview would omit.
     expect(within(list).getByText("set -euo pipefail")).toBeInTheDocument();
-    expect(within(list).getByText("npm run build")).toBeInTheDocument();
+    expect(
+      within(list).getByText("for region in $(cat deploy/regions.txt); do"),
+    ).toBeInTheDocument();
+    expect(within(list).getByText("done")).toBeInTheDocument();
   });
 
   it("allows a request directly from the inbox list without opening it", async () => {
@@ -240,30 +254,46 @@ describe("App inbox", () => {
     await renderApp();
 
     await user.click(
-      await screen.findByRole("button", { name: "Open approval for npm publish --access public" }),
+      await screen.findByRole("button", {
+        name: "Open approval for kubectl --context $region apply -f deploy/manifest.yaml",
+      }),
     );
 
     expect(screen.getByText("Approve shell command")).toBeInTheDocument();
 
-    // Only the two tripping fragments appear under "needs your attention".
+    // Only the two tripping fragments appear under "needs your attention" — one of
+    // them the `kubectl apply` nested inside the loop body.
     const flagged = screen.getByLabelText("Flagged commands");
-    expect(within(flagged).getByText("npm publish --access public")).toBeInTheDocument();
+    expect(
+      within(flagged).getByText("kubectl --context $region apply -f deploy/manifest.yaml"),
+    ).toBeInTheDocument();
     expect(within(flagged).getByText("git push origin main --tags")).toBeInTheDocument();
     expect(within(flagged).queryByText("npm run build")).not.toBeInTheDocument();
-    expect(within(flagged).getByText("ask before publishing a package")).toBeInTheDocument();
+    expect(
+      within(flagged).getByText("ask before applying kubernetes manifests"),
+    ).toBeInTheDocument();
     expect(screen.getByText("/workspace/acme-api")).toBeInTheDocument();
     // The Context card surfaces the harness session id (protocol v3).
     expect(screen.getByText("9f3c1a2b7e4d")).toBeInTheDocument();
 
-    // The interactive script lists every fragment in order, colored by permission.
+    // The interactive script renders the real script line by line, colored by
+    // permission — including the `for … do` header and its `done`, which the flat
+    // fragment list used to drop.
     const script = screen.getByLabelText("Script");
     expect(within(script).getByText("set -euo pipefail")).toBeInTheDocument();
-    // The indented loop-body fragment renders too (whitespace is normalized away
-    // by the text matcher, but it confirms the loop body is in the script list).
-    expect(within(script).getByText("curl -fsS https://api.acme.dev/healthz")).toBeInTheDocument();
+    expect(
+      within(script).getByText("for region in $(cat deploy/regions.txt); do"),
+    ).toBeInTheDocument();
+    expect(within(script).getByText("done")).toBeInTheDocument();
+    // The indented loop-body line renders too (whitespace is normalized away by the
+    // text matcher, but it confirms the loop body is in the script).
+    expect(
+      within(script).getByText("curl -fsS https://api.acme.dev/$region/healthz"),
+    ).toBeInTheDocument();
 
-    // Clicking a fragment reveals that fragment's details (role, rule, reason).
-    await user.click(within(script).getByRole("button", { name: /npm publish --access public/ }));
+    // Clicking a fragment reveals that fragment's details (role, rule, reason) —
+    // here the `kubectl apply` nested in the loop body.
+    await user.click(within(script).getByRole("button", { name: /kubectl/ }));
     expect(within(script).getByText(/needs approval per rule/)).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Allow once" }));
@@ -332,7 +362,7 @@ describe("App inbox", () => {
 
     for (const name of [
       "Deny gh pr merge 42 --squash --delete-branch",
-      "Deny npm publish --access public",
+      "Deny kubectl --context $region apply -f deploy/manifest.yaml",
       "Deny mcp__github__create_issue",
       "Deny write",
     ]) {
@@ -355,13 +385,13 @@ describe("App keyboard navigation (desktop)", () => {
     expect(focusedHeadline()).toContain("gh pr merge 42 --squash --delete-branch");
 
     await user.keyboard("{ArrowDown}");
-    expect(focusedHeadline()).toContain("npm publish --access public");
+    expect(focusedHeadline()).toContain("kubectl --context $region apply -f deploy/manifest.yaml");
 
     await user.keyboard("{ArrowDown}");
     expect(focusedHeadline()).toContain("mcp__github__create_issue");
 
     await user.keyboard("{ArrowUp}");
-    expect(focusedHeadline()).toContain("npm publish --access public");
+    expect(focusedHeadline()).toContain("kubectl --context $region apply -f deploy/manifest.yaml");
 
     await user.keyboard("{ArrowUp}");
     expect(focusedHeadline()).toContain("gh pr merge 42 --squash --delete-branch");
@@ -403,7 +433,9 @@ describe("App keyboard navigation (desktop)", () => {
     await waitFor(() => {
       expect(screen.getByText(/3 pending approvals/)).toBeInTheDocument();
     });
-    expect(screen.queryByText("npm publish --access public")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("kubectl --context $region apply -f deploy/manifest.yaml"),
+    ).not.toBeInTheDocument();
   });
 
   it("opens the shortcuts panel with ? and the floating hint, closing with Escape", async () => {
@@ -461,7 +493,9 @@ describe("App keyboard navigation (desktop)", () => {
     await renderApp();
 
     await user.click(
-      await screen.findByRole("button", { name: "Open approval for npm publish --access public" }),
+      await screen.findByRole("button", {
+        name: "Open approval for kubectl --context $region apply -f deploy/manifest.yaml",
+      }),
     );
     const script = screen.getByLabelText("Script");
     const fragment = within(script).getByRole("button", {

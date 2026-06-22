@@ -53,14 +53,35 @@ export function toolCallLines(request: ToolApprovalRequest): string[] {
   );
 }
 
-// The surrounding (non-flagged) lines of a shell request's script, in source
-// order, for the inbox preview the operator reads beneath the flagged commands.
-// The raw command split into lines, with blanks and the lines already shown as
-// flagged fragments removed (compared trimmed, so dedup ignores indentation but
-// display keeps it). Leaves the budget/slicing to the caller.
-export function scriptContextLines(request: ShellApprovalRequest): string[] {
-  const flagged = new Set(flaggedFragments(request).map((fragment) => fragment.display.trim()));
-  return request.command
-    .split("\n")
-    .filter((line) => line.trim().length > 0 && !flagged.has(line.trim()));
+// One source line of a shell request's script, paired with the fragment
+// allowlister parsed from it (or `null` for pure structure like a `for … do`
+// header's `done`, or a blank line).
+export interface ScriptLine {
+  text: string;
+  fragment: AllowlisterFragment | null;
+}
+
+// The shell request's script reconstructed line by line, each source line paired
+// with the fragment that line carries. This lets the Script view render the real
+// script — loop structure and indentation intact — instead of a flat fragment
+// list that drops the `for … do`/`done` scaffolding. A fragment matches the line
+// whose trimmed text equals its `display`; a command-substitution fragment
+// (e.g. `$(cat …)` in a `for` header) instead matches the line that contains it.
+// Each fragment is consumed once, so repeated lines map to fragments in order.
+export function scriptLines(request: ShellApprovalRequest): ScriptLine[] {
+  const remaining = [...request.fragments];
+  return request.command.split("\n").map((text) => {
+    const trimmed = text.trim();
+    if (trimmed.length === 0) {
+      return { text, fragment: null };
+    }
+    let index = remaining.findIndex((fragment) => fragment.display.trim() === trimmed);
+    if (index === -1) {
+      index = remaining.findIndex(
+        (fragment) => fragment.display.trim().length > 0 && text.includes(fragment.display.trim()),
+      );
+    }
+    const fragment = index === -1 ? null : (remaining.splice(index, 1)[0] ?? null);
+    return { text, fragment };
+  });
 }

@@ -1,10 +1,11 @@
-// Raw broker payloads for unit tests: the verbatim allowlister protocol-v3 wire
-// shape the daemon announces over the broker (snake_case fields plus the
-// daemon-assigned `id`), which `normalizeBrokerRequest` turns into the rendered
-// ApprovalRequest. These mirror the normalized `demoRequests` in `../fixtures`
-// so the inbox tests assert against the same data the app shows in production,
-// but exercise the real broker → normalize → render path rather than a
-// pre-normalized shortcut.
+// Raw broker payloads for unit tests and the visual-docs capture: the verbatim
+// allowlister protocol-v3 wire shape the daemon announces over the broker
+// (snake_case fields plus the daemon-assigned `id`), which
+// `normalizeBrokerRequest` turns into the rendered ApprovalRequest. These mirror
+// the normalized `demoRequests` in `../fixtures` field-for-field so the inbox
+// tests and the screenshots assert against the same data the app shows in
+// production, but exercise the real broker → normalize → render path rather than
+// a pre-normalized shortcut.
 export const brokerRequestPayloads: unknown[] = [
   {
     id: "demo-oneoff",
@@ -34,10 +35,10 @@ export const brokerRequestPayloads: unknown[] = [
     session_id: "9f3c1a2b7e4d",
     cwd: "/workspace/acme-api",
     command:
-      "set -euo pipefail\nnpm run build\nfor attempt in $(seq 1 30); do\n  curl -fsS https://api.acme.dev/healthz\n  sleep 10\ndone\nnpm publish --access public\ngit push origin main --tags",
+      "set -euo pipefail\nnpm run build\nfor region in $(cat deploy/regions.txt); do\n  curl -fsS https://api.acme.dev/$region/healthz\n  kubectl --context $region apply -f deploy/manifest.yaml\ndone\ngit push origin main --tags",
     current_verdict: "ask",
     current_reason:
-      "2 commands need approval: `npm publish --access public` (standalone): needs approval per rule 'ask before publishing a package'; `git push origin main --tags` (standalone): needs approval per rule 'ask before pushing to a remote'",
+      "2 commands need approval: `kubectl --context $region apply -f deploy/manifest.yaml` (loop body): needs approval per rule 'ask before applying kubernetes manifests'; `git push origin main --tags` (standalone): needs approval per rule 'ask before pushing to a remote'",
     fragments: [
       {
         display: "set -euo pipefail",
@@ -56,36 +57,28 @@ export const brokerRequestPayloads: unknown[] = [
         reason: "allowed by 'allow npm scripts'",
       },
       {
-        display: "seq 1 30",
-        argv: ["seq", "1", "30"],
+        display: "cat deploy/regions.txt",
+        argv: ["cat", "deploy/regions.txt"],
         role: "substitution",
         verdict: "allow",
         rule: "allow coreutils",
         reason: "allowed by 'allow coreutils'",
       },
       {
-        display: "  curl -fsS https://api.acme.dev/healthz",
-        argv: ["curl", "-fsS", "https://api.acme.dev/healthz"],
+        display: "curl -fsS https://api.acme.dev/$region/healthz",
+        argv: ["curl", "-fsS", "https://api.acme.dev/$region/healthz"],
         role: "loop_body",
         verdict: "allow",
         rule: "allow health-check probes",
         reason: "allowed by 'allow health-check probes'",
       },
       {
-        display: "  sleep 10",
-        argv: ["sleep", "10"],
+        display: "kubectl --context $region apply -f deploy/manifest.yaml",
+        argv: ["kubectl", "--context", "$region", "apply", "-f", "deploy/manifest.yaml"],
         role: "loop_body",
-        verdict: "allow",
-        rule: "allow sleep",
-        reason: "allowed by 'allow sleep'",
-      },
-      {
-        display: "npm publish --access public",
-        argv: ["npm", "publish", "--access", "public"],
-        role: "standalone",
         verdict: "ask",
-        rule: "ask before publishing a package",
-        reason: "needs approval per rule 'ask before publishing a package'",
+        rule: "ask before applying kubernetes manifests",
+        reason: "needs approval per rule 'ask before applying kubernetes manifests'",
       },
       {
         display: "git push origin main --tags",
