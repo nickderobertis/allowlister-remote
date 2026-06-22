@@ -33,15 +33,15 @@ Use `just`; do not hand-roll equivalent commands.
   (cachegrind), and `just profile` (samply / callgrind) cover end-to-end CLI latency,
   deterministic instruction counts, and sampling profiles. See the plugin's `benches/`
   and `scripts/{bench,bench-instructions,profile}.sh`. The `Performance` workflow
-  (`bench.yml`) runs these on every PR and posts the numbers as a sticky comment plus a
-  job summary; it is informational, never a required check.
+  (`bench.yml`) runs these on PRs that affect the plugin and posts the numbers as a sticky
+  comment plus a job summary; it is informational, never a required check.
 - `just bench-web` / `just bundle-size` / `just lighthouse` run the PWA's parallel
   performance suite: Vitest micro-benchmarks of the pure decision/summarization surface
   (`apps/web/src/perf/*.bench.ts`), a deterministic gzip bundle-size report
   (`scripts/web-bundle-size.mjs`), and a Lighthouse runtime audit
   (`scripts/web-lighthouse.mjs`). The same `Performance` workflow `web` job runs all three
-  on every PR and posts its own sticky comment plus job summary; like the plugin suite it
-  is informational, never a required check. Bundle size is the deterministic, trustworthy
+  on PRs that affect web and posts its own sticky comment plus job summary; like the plugin
+  suite it is informational, never a required check. Bundle size is the deterministic, trustworthy
   delta (the web counterpart of the plugin's cachegrind instruction counts); the Vitest and
   Lighthouse numbers are absolute and noise-prone, so treat small deltas with caution.
 - Release helpers live behind `npm run release:*`; tags, GitHub Releases, and npm publishing run in Actions.
@@ -104,6 +104,14 @@ Use `just`; do not hand-roll equivalent commands.
 - Native binaries are vendored into the per-platform packages only at release time and are never
   committed; `npm run release:stage-npm` stages them from the downloaded release artifacts.
 - Root commands must delegate to Nx affected/run targets; do not add bespoke root loops over projects.
+- Affected-only is the default for everything CI does — fmt, lint, typecheck, test, build, e2e,
+  and perf (`bench.yml` gates each lane on its package via the `changes` job). The sole exception is
+  release/deploy validation: `install-smoke`, `e2e-smoke`, and `publish` build and verify **every**
+  package every time on purpose, because lockstep `vX.Y.Z` versioning ships them as a set.
+- Each project's targets touch only its own files: per-crate Rust commands are `-p <crate>` scoped,
+  and a project's `biome`/`tsc` paths never reach into another project's tree. Shared root files
+  (`scripts/`, root configs) have exactly one owner (`web`); `packages/**` is owned solely by
+  `allowlister-remote-plugin-npm`. This keeps an affected run from re-checking another package.
 
 ## Commits, releases, and merging
 
