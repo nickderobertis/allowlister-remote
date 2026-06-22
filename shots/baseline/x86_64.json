@@ -39,7 +39,7 @@
         "theme": "dark",
         "viewport": "desktop"
       },
-      "hash": "18cba40e6e7f607e82ec7c8e47b2770c5ed06ec1312983c48f3a3b71542c644f"
+      "hash": "5c22f52e42453b987ff48f6da11cfa573c682325b70765234bfbfc77e219c642"
     },
     {
       "name": "inbox",
@@ -47,7 +47,7 @@
         "theme": "dark",
         "viewport": "mobile"
       },
-      "hash": "ce5c19ecac41a7b799e3d0eee6dcb13ea7b69af60f4a6ed1f1280e7429ebcdcb"
+      "hash": "01f423c36a986f00d594f468b84a4f2e3ec54c8b08d3872863c20ccee1b2b720"
     },
     {
       "name": "inbox",
@@ -55,7 +55,7 @@
         "theme": "light",
         "viewport": "desktop"
       },
-      "hash": "8af194ed8bcb1d5a0cdb5f0cfea850d9b1b258d09f26d7ced7e775b66caf31e8"
+      "hash": "c753d59505b76e080c4f86f5acb7357189be4b11b5a54f677cb3663c2f510860"
     },
     {
       "name": "inbox",
@@ -63,7 +63,7 @@
         "theme": "light",
         "viewport": "mobile"
       },
-      "hash": "2af0fc0affbee45a31ab27ab25ba479b32f84968f3f5cd126c026b5cd69b1544"
+      "hash": "4012106c55476714aebf7c7a8350184f530fb18cbebf6e1dc40e2d5229b85cb3"
     },
     {
       "name": "shell-oneoff",
