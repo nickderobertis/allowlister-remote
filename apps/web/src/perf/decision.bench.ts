@@ -19,7 +19,7 @@ import { bench, describe } from "vitest";
 import {
   flaggedFragments,
   requestHeadline,
-  scriptContextLines,
+  scriptLines,
   toolCallLines,
   toolParamSummary,
   triggeredRules,
@@ -72,10 +72,10 @@ describe("triggeredRules", () => {
   }
 });
 
-describe("scriptContextLines", () => {
+describe("scriptLines", () => {
   for (const request of shellRequests) {
     bench(request.id, () => {
-      scriptContextLines(request);
+      scriptLines(request);
     });
   }
 });

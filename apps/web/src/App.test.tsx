@@ -28,10 +28,12 @@ describe("App inbox", () => {
     const items = within(list).getAllByRole("listitem");
     expect(items).toHaveLength(4);
     expect(within(list).getByText("gh pr merge 42 --squash --delete-branch")).toBeInTheDocument();
-    // The longer script headlines on its first flagged fragment, not the script.
+    // The longer script headlines on its first flagged fragment; the card shows
+    // that command both as a flagged fragment and in the script, so it appears
+    // more than once.
     expect(
-      within(list).getByText("kubectl --context $region apply -f deploy/manifest.yaml"),
-    ).toBeInTheDocument();
+      within(list).getAllByText("kubectl --context $region apply -f deploy/manifest.yaml").length,
+    ).toBeGreaterThanOrEqual(1);
     expect(within(list).getByText("mcp__github__create_issue")).toBeInTheDocument();
     expect(screen.getByText(/4 pending approvals/)).toBeInTheDocument();
   });
@@ -49,18 +51,26 @@ describe("App inbox", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("previews the surrounding script context beneath a shell card's flagged commands", async () => {
+  it("previews the flagged commands and the full script as separate sections", async () => {
     render(<App />);
 
     const list = await screen.findByRole("list", { name: "Pending approvals" });
-    // The flagged commands lead the card — including one nested in the loop body...
+    // Every shell card has a "Flagged" section; the multi-line script card also
+    // adds a "Script" section beneath it.
+    expect(within(list).getAllByText("Flagged").length).toBeGreaterThanOrEqual(1);
+    expect(within(list).getByText("Script")).toBeInTheDocument();
+    // The loop-body command that tripped the gate appears in both sections (as the
+    // flagged action and in its place in the script), so it never looks dropped.
     expect(
-      within(list).getByText("kubectl --context $region apply -f deploy/manifest.yaml"),
-    ).toBeInTheDocument();
-    expect(within(list).getByText("git push origin main --tags")).toBeInTheDocument();
-    // ...then the surrounding (non-flagged) script lines follow for context.
+      within(list).getAllByText("kubectl --context $region apply -f deploy/manifest.yaml"),
+    ).toHaveLength(2);
+    // The full script renders every line in place — including the `for … do`
+    // header and its `done`, which a flagged-only preview would omit.
     expect(within(list).getByText("set -euo pipefail")).toBeInTheDocument();
-    expect(within(list).getByText("npm run build")).toBeInTheDocument();
+    expect(
+      within(list).getByText("for region in $(cat deploy/regions.txt); do"),
+    ).toBeInTheDocument();
+    expect(within(list).getByText("done")).toBeInTheDocument();
   });
 
   it("allows a request directly from the inbox list without opening it", async () => {

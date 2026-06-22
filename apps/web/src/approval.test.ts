@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   flaggedFragments,
   requestHeadline,
-  scriptContextLines,
   scriptLines,
   toolCallLines,
   toolParamSummary,
@@ -66,18 +65,6 @@ describe("shell approval helpers", () => {
     expect(requestHeadline(oneOff)).toBe("gh pr merge 42 --squash --delete-branch");
   });
 
-  it("returns the script lines around the flagged commands, in source order", () => {
-    // The flagged `kubectl apply` / `git push` lines are dropped (they show as
-    // flagged fragments); the surrounding context keeps its source indentation.
-    expect(scriptContextLines(script)).toEqual([
-      "set -euo pipefail",
-      "npm run build",
-      "for region in $(cat deploy/regions.txt); do",
-      "  curl -fsS https://api.acme.dev/$region/healthz",
-      "done",
-    ]);
-  });
-
   it("reconstructs the script line by line, pairing each line with its fragment", () => {
     // Every source line is present in order — including the `for … do` header and
     // its `done`, which the flat fragment list drops — with its verbatim
@@ -104,8 +91,10 @@ describe("shell approval helpers", () => {
     ]);
   });
 
-  it("has no surrounding context when the whole command is a single flagged line", () => {
-    expect(scriptContextLines(oneOff)).toEqual([]);
+  it("reconstructs a single-line command as one fragment-bearing line", () => {
+    const lines = scriptLines(oneOff);
+    expect(lines.map((line) => line.text)).toEqual(["gh pr merge 42 --squash --delete-branch"]);
+    expect(lines[0]?.fragment?.display).toBe("gh pr merge 42 --squash --delete-branch");
   });
 });
 

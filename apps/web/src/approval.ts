@@ -85,15 +85,3 @@ export function scriptLines(request: ShellApprovalRequest): ScriptLine[] {
     return { text, fragment };
   });
 }
-
-// The surrounding (non-flagged) lines of a shell request's script, in source
-// order, for the inbox preview the operator reads beneath the flagged commands.
-// The raw command split into lines, with blanks and the lines already shown as
-// flagged fragments removed (compared trimmed, so dedup ignores indentation but
-// display keeps it). Leaves the budget/slicing to the caller.
-export function scriptContextLines(request: ShellApprovalRequest): string[] {
-  const flagged = new Set(flaggedFragments(request).map((fragment) => fragment.display.trim()));
-  return request.command
-    .split("\n")
-    .filter((line) => line.trim().length > 0 && !flagged.has(line.trim()));
-}
