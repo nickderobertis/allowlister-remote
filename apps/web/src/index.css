@@ -63,11 +63,12 @@
   --border: oklch(0.32 0.02 265);
   --ring: oklch(0.82 0.09 225);
 
-  /* JSON syntax palette — brightened to carry on the deep navy canvas. */
-  --json-key: oklch(0.8 0.12 290);
-  --json-string: oklch(0.82 0.13 155);
-  --json-number: oklch(0.83 0.12 65);
-  --json-boolean: oklch(0.78 0.13 25);
+  /* JSON syntax palette — saturated enough to read clearly on the deep navy
+     canvas (a pale key washes out against the background, so keep its chroma up). */
+  --json-key: oklch(0.74 0.17 290);
+  --json-string: oklch(0.82 0.14 155);
+  --json-number: oklch(0.81 0.14 65);
+  --json-boolean: oklch(0.75 0.16 25);
   --json-null: oklch(0.62 0.02 265);
   --json-punctuation: oklch(0.62 0.02 265);
 }

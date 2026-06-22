@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.9.1](https://github.com/nickderobertis/allowlister-remote/compare/v0.9.0...v0.9.1) (2026-06-22)
+
+
+### Bug Fixes
+
+* **web:** make dark-theme JSON coloring read clearly ([#68](https://github.com/nickderobertis/allowlister-remote/issues/68)) ([f892744](https://github.com/nickderobertis/allowlister-remote/commit/f892744126a731dd567faa825e279958d5870f6b))
+
+## [0.9.0](https://github.com/nickderobertis/allowlister-remote/compare/v0.8.0...v0.9.0) (2026-06-22)
+
+
+### Features
+
+* **web:** add app logo and README banner ([#64](https://github.com/nickderobertis/allowlister-remote/issues/64)) ([5526db4](https://github.com/nickderobertis/allowlister-remote/commit/5526db416ef3a2c17b878a9e8afa3304feee87b1))
+
 ## [0.8.0](https://github.com/nickderobertis/allowlister-remote/compare/v0.7.0...v0.8.0) (2026-06-21)
 
 
