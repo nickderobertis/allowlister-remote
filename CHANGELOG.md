@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.0](https://github.com/nickderobertis/allowlister-remote/compare/v0.9.1...v0.10.0) (2026-06-22)
+
+
+### Features
+
+* **plugin:** render tool-call JSON input in terminal approval prompt ([#67](https://github.com/nickderobertis/allowlister-remote/issues/67)) ([d066c18](https://github.com/nickderobertis/allowlister-remote/commit/d066c1867b1ae516f52e429b765a5b466b94b48c))
+
 ## [0.9.1](https://github.com/nickderobertis/allowlister-remote/compare/v0.9.0...v0.9.1) (2026-06-22)
 
 
