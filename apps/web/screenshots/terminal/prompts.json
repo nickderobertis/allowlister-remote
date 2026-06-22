@@ -23,7 +23,7 @@
     },
     {
       "name": "terminal-script",
-      "command": "set -euo pipefail\nnpm run build\nfor attempt in $(seq 1 30); do\n  curl -fsS https://api.acme.dev/healthz\n  sleep 10\ndone\nnpm publish --access public\ngit push origin main --tags",
+      "command": "set -euo pipefail\nnpm run build\nfor region in $(cat deploy/regions.txt); do\n  curl -fsS https://api.acme.dev/$region/healthz\n  kubectl --context $region apply -f deploy/manifest.yaml\ndone\ngit push origin main --tags",
       "cwd": "/workspace/acme-api",
       "fragments": [
         {
@@ -37,24 +37,19 @@
           "rule": "allow npm scripts"
         },
         {
-          "display": "seq 1 30",
+          "display": "cat deploy/regions.txt",
           "verdict": "allow",
           "rule": "allow coreutils"
         },
         {
-          "display": "  curl -fsS https://api.acme.dev/healthz",
+          "display": "curl -fsS https://api.acme.dev/$region/healthz",
           "verdict": "allow",
           "rule": "allow health-check probes"
         },
         {
-          "display": "  sleep 10",
-          "verdict": "allow",
-          "rule": "allow sleep"
-        },
-        {
-          "display": "npm publish --access public",
+          "display": "kubectl --context $region apply -f deploy/manifest.yaml",
           "verdict": "ask",
-          "rule": "ask before publishing a package"
+          "rule": "ask before applying kubernetes manifests"
         },
         {
           "display": "git push origin main --tags",
@@ -62,7 +57,7 @@
           "rule": "ask before pushing to a remote"
         }
       ],
-      "prompt": "allowlister-remote approval required\n\nNeeds your attention:\n  npm publish --access public\n    ask before publishing a package\n  git push origin main --tags\n    ask before pushing to a remote\n\nFull command:\n  set -euo pipefail\n  npm run build\n  for attempt in $(seq 1 30); do\n    curl -fsS https://api.acme.dev/healthz\n    sleep 10\n  done\n  npm publish --access public\n  git push origin main --tags\n\n  cwd: /workspace/acme-api\nApprove here or in the web app. [a]llow / [d]eny: "
+      "prompt": "allowlister-remote approval required\n\nNeeds your attention:\n  kubectl --context $region apply -f deploy/manifest.yaml\n    ask before applying kubernetes manifests\n  git push origin main --tags\n    ask before pushing to a remote\n\nFull command:\n  set -euo pipefail\n  npm run build\n  for region in $(cat deploy/regions.txt); do\n    curl -fsS https://api.acme.dev/$region/healthz\n    kubectl --context $region apply -f deploy/manifest.yaml\n  done\n  git push origin main --tags\n\n  cwd: /workspace/acme-api\nApprove here or in the web app. [a]llow / [d]eny: "
     }
   ]
 }

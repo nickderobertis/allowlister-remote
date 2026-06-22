@@ -4,6 +4,7 @@ import {
   flaggedFragments,
   requestHeadline,
   scriptContextLines,
+  scriptLines,
   toolCallLines,
   triggeredRules,
 } from "./approval";
@@ -19,7 +20,6 @@ import { ThemeProvider } from "./lib/theme";
 import { cn } from "./lib/utils";
 import { connectBroker } from "./pwa/broker-bridge";
 import {
-  type AllowlisterFragment,
   type ApprovalRequest,
   type ApprovalVerdict,
   isToolRequest,
@@ -46,15 +46,16 @@ function verdictVariant(verdict: ApprovalVerdict): "destructive" | "outline" {
   return verdict === "ask" || verdict === "deny" ? "destructive" : "outline";
 }
 
-// Permission colour for a fragment in the interactive script: allow is calm
-// green, ask is amber, deny is the destructive red, and an unmatched defer stays
+// Permission colour for a fragment in the interactive script: allow is a muted
+// green and ask a muted amber — a quiet tint over the script text, not a
+// highlighter — while deny keeps the destructive red and an unmatched defer stays
 // muted. The same scale the verdict badges use, applied to the script text.
 function fragmentTone(verdict: ApprovalVerdict): string {
   switch (verdict) {
     case "allow":
-      return "text-emerald-600 dark:text-emerald-400";
+      return "text-emerald-700/70 dark:text-emerald-400/70";
     case "ask":
-      return "text-amber-600 dark:text-amber-400";
+      return "text-amber-700/80 dark:text-amber-400/80";
     case "deny":
       return "text-destructive";
     default:
@@ -332,11 +333,15 @@ function DecisionBar({
   );
 }
 
-// The interactive script: every fragment allowlister parsed, in order, coloured by
-// its permission. Each line is a button — clicking one reveals that fragment's
-// role, rule, and reason so the operator can drill in without leaving the script.
-function ShellScript({ fragments }: { fragments: AllowlisterFragment[] }) {
+// The interactive script: the real script rendered line by line — loop structure
+// and indentation intact — each line coloured by the permission of the fragment
+// allowlister parsed from it. A line that carries a fragment is a button: clicking
+// it reveals that fragment's role, rule, and reason so the operator can drill in
+// without leaving the script. Pure-structure lines (a `for … do` header's `done`)
+// render muted and inert so the loop still reads as one block.
+function ShellScript({ request }: { request: ShellApprovalRequest }) {
   const [openIndex, setOpenIndex] = useState<number | null>(null);
+  const lines = scriptLines(request);
 
   return (
     <Card aria-label="Script">
@@ -345,56 +350,77 @@ function ShellScript({ fragments }: { fragments: AllowlisterFragment[] }) {
       </CardHeader>
       <CardContent>
         <ul className="flex flex-col">
-          {fragments.map((fragment, index) => {
+          {lines.map((line, index) => {
+            if (line.text.trim().length === 0) {
+              return null;
+            }
+            const { fragment } = line;
             const open = openIndex === index;
             return (
-              <li key={`${fragment.role}-${fragment.display}`}>
-                <button
-                  type="button"
-                  aria-expanded={open}
-                  aria-label={`${fragment.display} — ${fragment.verdict}`}
-                  className="flex w-full items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  onClick={() => setOpenIndex(open ? null : index)}
-                >
-                  <code className={cn("font-mono text-sm", fragmentTone(fragment.verdict))}>
-                    {fragment.display}
+              // biome-ignore lint/suspicious/noArrayIndexKey: lines are a stable, ordered render of one immutable command
+              <li key={`line-${index}`}>
+                {!fragment ? (
+                  // Pure structure (a `for … do` header's `done`): muted and inert.
+                  <code className="block whitespace-pre px-2 py-1.5 font-mono text-sm text-muted-foreground">
+                    {line.text}
                   </code>
-                  {fragment.verdict === "allow" ? null : (
-                    <VerdictBadge verdict={fragment.verdict} />
-                  )}
-                </button>
-                {open ? (
-                  <dl className="flex flex-col gap-2 rounded-md border border-border bg-background px-3 py-2 text-sm">
-                    <div className="flex items-center justify-between gap-2">
-                      <dt className="text-xs uppercase tracking-wide text-muted-foreground">
-                        Verdict
-                      </dt>
-                      <dd>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      aria-expanded={open}
+                      aria-label={`${line.text.trim()} — ${fragment.verdict}`}
+                      className="flex w-full items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      onClick={() => setOpenIndex(open ? null : index)}
+                    >
+                      <code
+                        className={cn(
+                          "whitespace-pre font-mono text-sm",
+                          fragmentTone(fragment.verdict),
+                        )}
+                      >
+                        {line.text}
+                      </code>
+                      {fragment.verdict === "allow" ? null : (
                         <VerdictBadge verdict={fragment.verdict} />
-                      </dd>
-                    </div>
-                    <div className="flex flex-col gap-0.5">
-                      <dt className="text-xs uppercase tracking-wide text-muted-foreground">
-                        Role
-                      </dt>
-                      <dd className="font-mono text-sm">{fragment.role}</dd>
-                    </div>
-                    <div className="flex flex-col gap-0.5">
-                      <dt className="text-xs uppercase tracking-wide text-muted-foreground">
-                        Rule
-                      </dt>
-                      <dd className="font-mono text-sm">{fragment.rule ?? "no matching rule"}</dd>
-                    </div>
-                    {fragment.reason ? (
-                      <div className="flex flex-col gap-0.5">
-                        <dt className="text-xs uppercase tracking-wide text-muted-foreground">
-                          Reason
-                        </dt>
-                        <dd className="text-sm text-muted-foreground">{fragment.reason}</dd>
-                      </div>
+                      )}
+                    </button>
+                    {open ? (
+                      <dl className="flex flex-col gap-2 rounded-md border border-border bg-background px-3 py-2 text-sm">
+                        <div className="flex items-center justify-between gap-2">
+                          <dt className="text-xs uppercase tracking-wide text-muted-foreground">
+                            Verdict
+                          </dt>
+                          <dd>
+                            <VerdictBadge verdict={fragment.verdict} />
+                          </dd>
+                        </div>
+                        <div className="flex flex-col gap-0.5">
+                          <dt className="text-xs uppercase tracking-wide text-muted-foreground">
+                            Role
+                          </dt>
+                          <dd className="font-mono text-sm">{fragment.role}</dd>
+                        </div>
+                        <div className="flex flex-col gap-0.5">
+                          <dt className="text-xs uppercase tracking-wide text-muted-foreground">
+                            Rule
+                          </dt>
+                          <dd className="font-mono text-sm">
+                            {fragment.rule ?? "no matching rule"}
+                          </dd>
+                        </div>
+                        {fragment.reason ? (
+                          <div className="flex flex-col gap-0.5">
+                            <dt className="text-xs uppercase tracking-wide text-muted-foreground">
+                              Reason
+                            </dt>
+                            <dd className="text-sm text-muted-foreground">{fragment.reason}</dd>
+                          </div>
+                        ) : null}
+                      </dl>
                     ) : null}
-                  </dl>
-                ) : null}
+                  </>
+                )}
               </li>
             );
           })}
@@ -437,7 +463,7 @@ function ShellDetail({
         </CardContent>
       </Card>
 
-      <ShellScript fragments={request.fragments} />
+      <ShellScript request={request} />
 
       <ContextCard request={request} />
 
