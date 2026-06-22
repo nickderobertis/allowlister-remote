@@ -269,3 +269,82 @@ test("two PWA clients both see a request and either can resolve it", async ({ br
     await contextB.close();
   }
 });
+
+test("a request opened while the PWA is watching arrives live", async ({ page }) => {
+  // The existing tests subscribe after the request exists (the broker `snapshot`
+  // on subscribe). This exercises the `added` fan-out: subscribe to an empty
+  // inbox first, then open a request and watch it appear without a reload.
+  await subscribe(page);
+  await expect(page.getByRole("heading", { name: "No pending approvals" })).toBeVisible();
+
+  const command = `kubectl delete ns ${randomUUID().slice(0, 8)}`;
+  const running = runShell(command);
+  try {
+    const list = page.getByRole("list", { name: "Pending approvals" });
+    await expect(list.getByText(command, { exact: true })).toBeVisible({ timeout: 20_000 });
+
+    await page.getByRole("button", { name: `Allow ${command}` }).click();
+    const result = await running.promise;
+    expect(result.code).toBe(0);
+    expect(JSON.parse(result.stdout).verdict).toBe("allow");
+  } finally {
+    running.kill();
+  }
+});
+
+test("concurrent requests from one daemon resolve independently", async ({ page }) => {
+  // Several plugins open requests through the same daemon at once. Each is its own
+  // card; deciding one must release only that plugin and clear only its card,
+  // proving the daemon's multiplexing and the broker's per-request routing.
+  const commands = [0, 1, 2].map((i) => `terraform destroy ${i} ${randomUUID().slice(0, 8)}`);
+  const running = commands.map((command) => runShell(command));
+  try {
+    for (const r of running) await expectStillRunning(r);
+    await subscribe(page);
+
+    const list = page.getByRole("list", { name: "Pending approvals" });
+    for (const command of commands) {
+      await expect(list.getByText(command, { exact: true })).toBeVisible({ timeout: 20_000 });
+    }
+
+    // Deny the middle one: only its plugin resolves, only its card clears.
+    await page.getByRole("button", { name: `Deny ${commands[1]}` }).click();
+
+    const result = await running[1].promise;
+    expect(result.code).toBe(0);
+    expect(JSON.parse(result.stdout).verdict).toBe("deny");
+
+    await expect(list.getByText(commands[1], { exact: true })).toHaveCount(0);
+    // The other two are untouched: still on screen and still blocking their plugins.
+    await expect(list.getByText(commands[0], { exact: true })).toBeVisible();
+    await expect(list.getByText(commands[2], { exact: true })).toBeVisible();
+    await expectStillRunning(running[0]);
+    await expectStillRunning(running[2]);
+  } finally {
+    for (const r of running) r.kill();
+  }
+});
+
+test("a plugin that exits withdraws its card from the PWA", async ({ page }) => {
+  // If the gated command is cancelled (the plugin process dies) before anyone
+  // decides, the daemon withdraws the request and the broker tells every PWA to
+  // drop the card — no dead prompt is left behind.
+  const command = `rm -rf / ${randomUUID().slice(0, 8)}`;
+  const running = runShell(command);
+  try {
+    await expectStillRunning(running);
+    await subscribe(page);
+
+    const list = page.getByRole("list", { name: "Pending approvals" });
+    await expect(list.getByText(command, { exact: true })).toBeVisible({ timeout: 20_000 });
+
+    // The plugin process dies before any decision.
+    running.kill();
+    await running.promise;
+
+    // The daemon's withdraw → broker `resolved` clears the card live.
+    await expect(list.getByText(command, { exact: true })).toHaveCount(0, { timeout: 20_000 });
+  } finally {
+    running.kill();
+  }
+});
