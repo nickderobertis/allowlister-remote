@@ -4,8 +4,10 @@ const html = (page: import("@playwright/test").Page) => page.locator("html");
 
 test("follows the OS colour scheme automatically", async ({ page }) => {
   await page.emulateMedia({ colorScheme: "dark" });
-  await page.goto("/?demo=1");
-  await expect(page.getByRole("heading", { name: "Approvals inbox" })).toBeVisible();
+  await page.goto("/");
+  // No broker is reachable in this spec, so the inbox shows its resting state;
+  // that is enough to exercise theming.
+  await expect(page.getByRole("heading", { name: "No pending approvals" })).toBeVisible();
 
   // Default preference is "system", so the app tracks the OS setting live.
   await expect(html(page)).toHaveClass(/dark/);
@@ -16,7 +18,7 @@ test("follows the OS colour scheme automatically", async ({ page }) => {
 
 test("pins a theme from the toggle and keeps it across the OS switching", async ({ page }) => {
   await page.emulateMedia({ colorScheme: "dark" });
-  await page.goto("/?demo=1");
+  await page.goto("/");
 
   const toggle = page.getByRole("button", { name: /^Theme:/ });
 

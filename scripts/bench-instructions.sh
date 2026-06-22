@@ -85,23 +85,17 @@ fi
 [ -x "$bin" ] || fail "profiling binary not found at $bin"
 
 # Payload fixtures, mirroring scripts/bench.sh: a static allow verdict that
-# defers without any network call, a defer verdict that opens a request, and a
-# malformed body. Byte-identical on every run so the counts are reproducible.
+# defers without touching the daemon, and a malformed body. Byte-identical on
+# every run so the counts are reproducible. The needs-approval path is not
+# counted here — it hands off to the daemon and waits for a human.
 sandbox="$(mktemp -d)"
 cleanup() { rm -rf "$sandbox"; }
 trap cleanup EXIT
 
 allow="$sandbox/allow.json"
-defer="$sandbox/defer.json"
 malformed="$sandbox/malformed.json"
 printf '{"current_verdict":"allow","command":"git status","cwd":"/tmp"}\n' >"$allow"
-printf '{"current_verdict":"defer","command":"gh pr merge 42","cwd":"/tmp","harness":"codex"}\n' >"$defer"
 printf 'not json\n' >"$malformed"
-
-# An unreachable server URL (127.0.0.1:9, the discard port) refuses instantly,
-# so the request-opening paths count stdin read + parse + triage + the failed
-# create POST without blocking on a real decision.
-dead="http://127.0.0.1:9"
 
 mkdir -p "$out"
 tsv="$out/instructions.tsv"
@@ -129,9 +123,8 @@ measure() {
 
 note "» counting instructions ($bin)"
 measure "version" "$bin" --version
-measure "defer:static" "$bin" --server-url "$dead" <"$allow"
-measure "ask:malformed" "$bin" --server-url "$dead" <"$malformed"
-measure "ask:unavailable" "$bin" --server-url "$dead" <"$defer"
+measure "defer:static" "$bin" <"$allow"
+measure "ask:malformed" "$bin" <"$malformed"
 
 {
     echo "| command | instructions |"

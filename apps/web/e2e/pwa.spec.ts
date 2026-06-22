@@ -22,7 +22,7 @@ test("serves a registerable service worker", async ({ request }) => {
 });
 
 test("registers a service worker that controls the page", async ({ page }) => {
-  await page.goto("/?demo=1");
+  await page.goto("/");
 
   await page.evaluate(async () => {
     await navigator.serviceWorker.ready;
@@ -35,7 +35,7 @@ test("registers a service worker that controls the page", async ({ page }) => {
 });
 
 test("renders the app shell while offline", async ({ page, context }) => {
-  await page.goto("/?demo=1");
+  await page.goto("/");
   await page.evaluate(async () => {
     await navigator.serviceWorker.ready;
   });
