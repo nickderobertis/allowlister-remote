@@ -63,6 +63,10 @@ SCENARIOS = [
         },
     },
     {
+        # The terminal twin of the web gallery's tool card. The prompt names the
+        # tool under "full command", then renders the agent's verbatim arguments
+        # (`tool.raw`) as formatted JSON under "tool input" — so a terminal
+        # approval sees what the call will do, not just its name.
         "name": "terminal-tool",
         "command": "mcp__github__create_issue",
         "cwd": "~/src/allowlister-remote",
@@ -70,7 +74,21 @@ SCENARIOS = [
             "protocol_version": 3,
             "subject": "tool",
             "current_verdict": "defer",
-            "tool": {"name": "mcp__github__create_issue", "capability": "mcp"},
+            "tool": {
+                "name": "mcp__github__create_issue",
+                "capability": "mcp",
+                "params": {"repo": "allowlister-remote"},
+                # Scalar-only (no arrays/objects), so the recorder's json.dumps of
+                # the persisted `tool.raw` matches Biome's formatter and the
+                # committed fixture stays lint-clean — the same constraint the
+                # fragments persist under. The pretty-printed multi-key JSON still
+                # shows the operator exactly what the call will do.
+                "raw": {
+                    "owner": "nickderobertis",
+                    "repo": "allowlister-remote",
+                    "title": "Add remote approval audit log",
+                },
+            },
             "cwd": "~/src/allowlister-remote",
         },
     },
@@ -227,6 +245,16 @@ def main() -> None:
                     }
                     for fragment in scenario["payload"].get("fragments", [])
                 ],
+                # The tool the binary saw, persisted so the Rust guard can
+                # re-derive the formatted JSON input and rebuild this exact prompt
+                # from `local_prompt`. Only `raw` (the arguments the prompt
+                # renders) is kept; a shell scenario has no tool, so the key is
+                # omitted and the guard re-derives `None`.
+                **(
+                    {"tool": {"raw": scenario["payload"]["tool"].get("raw", {})}}
+                    if "tool" in scenario["payload"]
+                    else {}
+                ),
                 "prompt": prompt,
             }
         )

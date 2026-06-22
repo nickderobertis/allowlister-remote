@@ -59,17 +59,40 @@ pub fn flagged_fragments(input: &Value) -> Vec<FlaggedFragment> {
     }
 }
 
+/// A tool call's verbatim arguments (`tool.raw`), pretty-printed as indented
+/// JSON for the local terminal prompt. This is the terminal twin of the web
+/// app's tool-call detail, which shows the operator the exact input the agent
+/// passed — so a terminal approval is not blind to what the tool will do, only
+/// its name. Returns `None` for a shell payload (no `tool`) or a tool call that
+/// carried no arguments, so the prompt simply omits the block. Mirrors the web
+/// app's `toolCallLines` in reading `raw` (the agent's actual input) rather than
+/// the adapter's canonical `params`.
+pub fn tool_input_json(input: &Value) -> Option<String> {
+    let raw = input.get("tool").and_then(|tool| tool.get("raw"))?;
+    if raw.as_object().is_none_or(serde_json::Map::is_empty) {
+        return None;
+    }
+    serde_json::to_string_pretty(raw).ok()
+}
+
 /// The exact text the plugin writes to `/dev/tty` to open a local approval
 /// prompt. It mirrors the web app's shell-detail flow: first the fragments
 /// allowlister flagged ("needs your attention" — the command that tripped plus
 /// its rule), then the full command, the cwd, and the allow/deny instruction.
-/// For a tool call there are no fragments, so the prompt shows the action alone.
+/// For a tool call there are no fragments; instead `tool_input` carries its
+/// arguments as formatted JSON (see [`tool_input_json`]), rendered under the
+/// action so the operator sees what the tool will do.
 /// Extracted here as a pure function so the binary's real terminal surface is
 /// unit-testable and so the visual-docs capture can render the genuine prompt
 /// from a fixture pinned to this output (see
 /// `apps/web/screenshots/terminal.capture.ts`). The caller appends the trailing
 /// newline (`writeln!`), so this returns the line block without it.
-pub fn local_prompt(command: &str, cwd: &str, flagged: &[FlaggedFragment]) -> String {
+pub fn local_prompt(
+    command: &str,
+    cwd: &str,
+    flagged: &[FlaggedFragment],
+    tool_input: Option<&str>,
+) -> String {
     let mut prompt = String::from("\nallowlister-remote approval required\n");
 
     if !flagged.is_empty() {
@@ -87,12 +110,24 @@ pub fn local_prompt(command: &str, cwd: &str, flagged: &[FlaggedFragment]) -> St
     }
 
     // The full command always follows the flagged fragments, each line indented
-    // so a multi-line script reads as one block (a tool call is a single line).
+    // so a multi-line script reads as one block (a tool call is a single line:
+    // its name, with the arguments rendered as JSON in the block below).
     prompt.push_str("\nFull command:\n");
     for line in command.split('\n') {
         prompt.push_str("  ");
         prompt.push_str(line);
         prompt.push('\n');
+    }
+
+    // A tool call's formatted arguments, each line indented to match the command
+    // block so the JSON reads as one unit beneath the action it belongs to.
+    if let Some(tool_input) = tool_input {
+        prompt.push_str("\nTool input:\n");
+        for line in tool_input.split('\n') {
+            prompt.push_str("  ");
+            prompt.push_str(line);
+            prompt.push('\n');
+        }
     }
 
     prompt.push_str(&format!(
@@ -266,7 +301,12 @@ mod tests {
             },
         ];
         assert_eq!(
-            local_prompt("npm ci\nnpm publish --access public", "~/src/app", &flagged),
+            local_prompt(
+                "npm ci\nnpm publish --access public",
+                "~/src/app",
+                &flagged,
+                None
+            ),
             "\nallowlister-remote approval required\n\nNeeds your attention:\n  npm publish --access public\n    ask before publishing a package\n  git push origin main --tags\n\nFull command:\n  npm ci\n  npm publish --access public\n\n  cwd: ~/src/app\nApprove here or in the web app. [a]llow / [d]eny: "
         );
     }
@@ -274,11 +314,55 @@ mod tests {
     #[test]
     fn local_prompt_without_fragments_shows_the_action_alone() {
         // A tool call has no fragments: no "needs your attention" block, just the
-        // action under "Full command:".
+        // action under "Full command:". With no arguments there is no tool-input
+        // block either.
         assert_eq!(
-            local_prompt("mcp__github__create_issue", "~/src/app", &[]),
+            local_prompt("mcp__github__create_issue", "~/src/app", &[], None),
             "\nallowlister-remote approval required\n\nFull command:\n  mcp__github__create_issue\n\n  cwd: ~/src/app\nApprove here or in the web app. [a]llow / [d]eny: "
         );
+    }
+
+    #[test]
+    fn local_prompt_renders_tool_input_as_indented_json() {
+        // A tool call with arguments: the formatted JSON follows the action under
+        // a "Tool input:" block, each line indented to match the command block.
+        let tool = serde_json::json!({
+            "tool": {
+                "name": "mcp__github__create_issue",
+                "capability": "mcp",
+                "raw": {"repo": "allowlister-remote", "title": "Ship it"},
+            }
+        });
+        let tool_input = tool_input_json(&tool).expect("tool with raw args yields JSON");
+        assert_eq!(
+            local_prompt("mcp__github__create_issue", "~/src/app", &[], Some(&tool_input)),
+            "\nallowlister-remote approval required\n\nFull command:\n  mcp__github__create_issue\n\nTool input:\n  {\n    \"repo\": \"allowlister-remote\",\n    \"title\": \"Ship it\"\n  }\n\n  cwd: ~/src/app\nApprove here or in the web app. [a]llow / [d]eny: "
+        );
+    }
+
+    #[test]
+    fn tool_input_json_pretty_prints_raw_and_skips_empty_or_shell() {
+        // The agent's verbatim `raw` input is pretty-printed as indented JSON.
+        let tool = serde_json::json!({
+            "tool": {"name": "write", "raw": {"path": "/etc/hosts", "lines": 12}}
+        });
+        // serde_json renders object keys in sorted order (no `preserve_order`),
+        // which keeps the prompt deterministic regardless of input key order.
+        assert_eq!(
+            tool_input_json(&tool).as_deref(),
+            Some("{\n  \"lines\": 12,\n  \"path\": \"/etc/hosts\"\n}")
+        );
+        // A tool call with no arguments, or one whose `raw` is empty, has no block.
+        assert_eq!(
+            tool_input_json(&serde_json::json!({"tool": {"name": "ls"}})),
+            None
+        );
+        assert_eq!(
+            tool_input_json(&serde_json::json!({"tool": {"name": "ls", "raw": {}}})),
+            None
+        );
+        // A shell payload (no `tool`) never renders a tool-input block.
+        assert_eq!(tool_input_json(&serde_json::json!({"command": "ls"})), None);
     }
 
     #[test]
