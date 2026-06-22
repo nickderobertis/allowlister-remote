@@ -417,7 +417,7 @@ function ShellScript({ request }: { request: ShellApprovalRequest }) {
                       type="button"
                       aria-expanded={open}
                       aria-label={`${line.text.trim()} — ${fragment.verdict}`}
-                      className="flex w-full items-center justify-between gap-3 rounded-md px-2 py-0.5 text-left hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      className="flex w-full rounded-md px-2 py-0.5 text-left hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       onClick={() => setOpenIndex(open ? null : index)}
                     >
                       <code
@@ -428,9 +428,6 @@ function ShellScript({ request }: { request: ShellApprovalRequest }) {
                       >
                         {line.text}
                       </code>
-                      {fragment.verdict === "allow" ? null : (
-                        <VerdictBadge verdict={fragment.verdict} />
-                      )}
                     </button>
                     {open ? (
                       <dl className="flex flex-col gap-2 rounded-md border border-border bg-background px-3 py-2 text-sm">
