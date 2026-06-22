@@ -374,7 +374,7 @@ function ShellScript({ request }: { request: ShellApprovalRequest }) {
               <li key={`line-${index}`}>
                 {!fragment ? (
                   // Pure structure (a `for … do` header's `done`): muted and inert.
-                  <code className="block whitespace-pre px-2 py-1.5 font-mono text-sm text-muted-foreground">
+                  <code className="block whitespace-pre-wrap break-all px-2 py-1.5 font-mono text-sm text-muted-foreground">
                     {line.text}
                   </code>
                 ) : (
@@ -388,7 +388,7 @@ function ShellScript({ request }: { request: ShellApprovalRequest }) {
                     >
                       <code
                         className={cn(
-                          "whitespace-pre font-mono text-sm",
+                          "min-w-0 whitespace-pre-wrap break-all font-mono text-sm",
                           fragmentTone(fragment.verdict),
                         )}
                       >
