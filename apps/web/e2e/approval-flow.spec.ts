@@ -5,17 +5,21 @@ test("lists concurrent requests in the inbox and approves one from the list", as
 
   await expect(page.getByRole("heading", { name: "Approvals inbox" })).toBeVisible();
   const list = page.getByRole("list", { name: "Pending approvals" });
-  // Each card previews its flagged script lines directly, so match exactly to pin
-  // the command line itself.
+  // Each card previews its flagged commands and the full script, so a flagged
+  // line (kubectl, git push) appears in both sections — match the first.
   await expect(
     list.getByText("gh pr merge 42 --squash --delete-branch", { exact: true }),
   ).toBeVisible();
-  // The longer deploy script lists each of its flagged fragments inline on the
-  // one card, not just the first — including the `kubectl apply` nested in the loop.
+  // The longer deploy script lists each of its flagged fragments on the one card,
+  // not just the first — including the `kubectl apply` nested in the loop.
   await expect(
-    list.getByText("kubectl --context $region apply -f deploy/manifest.yaml", { exact: true }),
+    list
+      .getByText("kubectl --context $region apply -f deploy/manifest.yaml", { exact: true })
+      .first(),
   ).toBeVisible();
-  await expect(list.getByText("git push origin main --tags", { exact: true })).toBeVisible();
+  await expect(
+    list.getByText("git push origin main --tags", { exact: true }).first(),
+  ).toBeVisible();
 
   await page.getByRole("button", { name: "Allow gh pr merge 42 --squash --delete-branch" }).click();
 
@@ -23,7 +27,9 @@ test("lists concurrent requests in the inbox and approves one from the list", as
     list.getByText("gh pr merge 42 --squash --delete-branch", { exact: true }),
   ).toHaveCount(0);
   await expect(
-    list.getByText("kubectl --context $region apply -f deploy/manifest.yaml", { exact: true }),
+    list
+      .getByText("kubectl --context $region apply -f deploy/manifest.yaml", { exact: true })
+      .first(),
   ).toBeVisible();
 });
 
