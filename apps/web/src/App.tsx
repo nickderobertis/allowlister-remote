@@ -4,7 +4,7 @@ import { createApprovalApi } from "./api";
 import {
   flaggedFragments,
   requestHeadline,
-  scriptContextLines,
+  scriptLines,
   toolCallLines,
   triggeredRules,
 } from "./approval";
@@ -20,7 +20,6 @@ import { ThemeProvider } from "./lib/theme";
 import { cn } from "./lib/utils";
 import { connectBroker } from "./pwa/broker-bridge";
 import {
-  type AllowlisterFragment,
   type ApprovalRequest,
   type ApprovalVerdict,
   isToolRequest,
@@ -47,15 +46,15 @@ function verdictVariant(verdict: ApprovalVerdict): "destructive" | "outline" {
   return verdict === "ask" || verdict === "deny" ? "destructive" : "outline";
 }
 
-// Permission colour for a fragment in the interactive script: allow is calm
-// green, ask is amber, deny is the destructive red, and an unmatched defer stays
-// muted. The same scale the verdict badges use, applied to the script text.
+// Highlight colour for a fragment *in the script*: ask is a soft amber so the
+// operator can pick out the commands that tripped the gate among the rest, and
+// deny is the destructive red. Everything else — allow, an unmatched defer —
+// is plain muted text with no tint. Only the script is highlighted; the flagged
+// command display itself renders in standard text.
 function fragmentTone(verdict: ApprovalVerdict): string {
   switch (verdict) {
-    case "allow":
-      return "text-emerald-600 dark:text-emerald-400";
     case "ask":
-      return "text-amber-600 dark:text-amber-400";
+      return "text-amber-700/70 dark:text-amber-400/70";
     case "deny":
       return "text-destructive";
     default:
@@ -87,48 +86,82 @@ function Eyebrow({ request }: { request: ApprovalRequest }) {
   );
 }
 
-// A shell card leads with its flagged commands, then fills the rest of its line
-// budget with surrounding script context: at most INBOX_SHELL_SCRIPT_LINES of
-// context, and at most INBOX_SHELL_LINES of flagged + context together. A tool
-// card shows the tool name plus its arguments, INBOX_TOOL_LINES (name included)
-// in all. The remainder of each section folds into a "+N more" count.
-const INBOX_SHELL_LINES = 10;
-const INBOX_SHELL_SCRIPT_LINES = 5;
+// A shell card has two stacked sections: the flagged commands that need approval
+// (larger, coloured by verdict — at most INBOX_FLAGGED_LINES), then the full
+// script for context (smaller and muted, every line in source order with the
+// flagged ones in place — at most INBOX_SCRIPT_LINES). A tool card shows the tool
+// name plus its arguments, INBOX_TOOL_LINES (name included) in all. The remainder
+// of each section folds into a "+N more" count.
+const INBOX_FLAGGED_LINES = 6;
+const INBOX_SCRIPT_LINES = 12;
 const INBOX_TOOL_LINES = 8;
 
-// A shell request's inbox preview: its flagged commands (coloured by verdict)
-// first, then as much surrounding script context as the line budget allows.
+// A small caption that titles a preview section.
+function SectionLabel({ children }: { children: ReactNode }) {
+  return (
+    <span className="text-[0.625rem] font-medium uppercase tracking-wide text-muted-foreground">
+      {children}
+    </span>
+  );
+}
+
+// A shell request's inbox preview: the flagged commands first (the operator's
+// decision), then the whole script beneath as context. The two are separate,
+// labelled sections so the flagged commands read as the action and the script
+// reads as where they sit — and nothing the engine flagged ever disappears from
+// the script, because the script section renders every line in place.
 function ShellPreview({ request }: { request: ShellApprovalRequest }) {
   const flagged = flaggedFragments(request);
-  const shownFlagged = flagged.slice(0, INBOX_SHELL_LINES);
-  const scriptBudget = Math.min(INBOX_SHELL_SCRIPT_LINES, INBOX_SHELL_LINES - shownFlagged.length);
-  const context = scriptContextLines(request);
-  const shownContext = context.slice(0, scriptBudget);
+  const shownFlagged = flagged.slice(0, INBOX_FLAGGED_LINES);
   const hiddenFlagged = flagged.length - shownFlagged.length;
-  const hiddenContext = context.length - shownContext.length;
+  // The whole command, line by line (blank lines dropped); flagged lines keep
+  // their place so the loop body never looks like it lost a command.
+  const lines = scriptLines(request).filter((line) => line.text.trim().length > 0);
+  const shownLines = lines.slice(0, INBOX_SCRIPT_LINES);
+  const hiddenLines = lines.length - shownLines.length;
+  // A single-line command is wholly the flagged command, so the script section
+  // would just echo it — show it only when there is more than one line.
+  const showScript = lines.length > 1;
 
   return (
-    <span className="flex flex-col gap-1">
-      {shownFlagged.map((fragment) => (
-        <code
-          className={cn("font-mono text-base", fragmentTone(fragment.verdict))}
-          key={`${fragment.role}-${fragment.display}`}
-        >
-          {fragment.display}
-        </code>
-      ))}
-      {hiddenFlagged > 0 ? (
-        <span className="text-xs text-muted-foreground">
-          +{hiddenFlagged} more flagged command(s)
+    <span className="flex w-full min-w-0 flex-col gap-3">
+      <span className="flex min-w-0 flex-col gap-1">
+        <SectionLabel>Flagged</SectionLabel>
+        {shownFlagged.map((fragment) => (
+          <code
+            className="min-w-0 whitespace-pre-wrap break-words font-mono text-sm text-foreground sm:text-base"
+            key={`${fragment.role}-${fragment.display}`}
+          >
+            {fragment.display}
+          </code>
+        ))}
+        {hiddenFlagged > 0 ? (
+          <span className="text-xs text-muted-foreground">
+            +{hiddenFlagged} more flagged command(s)
+          </span>
+        ) : null}
+      </span>
+      {showScript ? (
+        <span className="flex min-w-0 flex-col gap-0.5 border-t border-border/60 pt-2">
+          <SectionLabel>Script</SectionLabel>
+          {shownLines.map((line, index) => (
+            <code
+              className={cn(
+                "min-w-0 whitespace-pre-wrap break-words font-mono text-xs",
+                line.fragment ? fragmentTone(line.fragment.verdict) : "text-muted-foreground",
+              )}
+              // biome-ignore lint/suspicious/noArrayIndexKey: lines are a stable, ordered render of one immutable command
+              key={`line-${index}`}
+            >
+              {line.text}
+            </code>
+          ))}
+          {hiddenLines > 0 ? (
+            <span className="text-xs text-muted-foreground">
+              +{hiddenLines} more script line(s)
+            </span>
+          ) : null}
         </span>
-      ) : null}
-      {shownContext.map((line) => (
-        <code className="whitespace-pre font-mono text-sm text-muted-foreground" key={line}>
-          {line}
-        </code>
-      ))}
-      {hiddenContext > 0 ? (
-        <span className="text-xs text-muted-foreground">+{hiddenContext} more script line(s)</span>
       ) : null}
     </span>
   );
@@ -141,10 +174,12 @@ function ToolPreview({ request }: { request: ToolApprovalRequest }) {
   const shown = lines.slice(0, INBOX_TOOL_LINES - 1);
   const hidden = lines.length - shown.length;
   return (
-    <span className="flex flex-col gap-1">
-      <code className="font-mono text-base text-foreground">{request.tool.name}</code>
+    <span className="flex w-full min-w-0 flex-col gap-1">
+      <code className="min-w-0 break-words font-mono text-sm text-foreground sm:text-base">
+        {request.tool.name}
+      </code>
       {shown.map((line) => (
-        <code className="font-mono text-sm text-muted-foreground" key={line}>
+        <code className="min-w-0 break-words font-mono text-sm text-muted-foreground" key={line}>
           {line}
         </code>
       ))}
@@ -221,7 +256,7 @@ function InboxItem({
       >
         <button
           type="button"
-          className="flex flex-1 flex-col items-start gap-2 rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="flex min-w-0 flex-1 flex-col items-start gap-2 rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           aria-label={`Open approval for ${headline}`}
           aria-current={highlighted ? "true" : undefined}
           onClick={() => onOpen(request.id)}
@@ -345,11 +380,15 @@ function DecisionBar({
   );
 }
 
-// The interactive script: every fragment allowlister parsed, in order, coloured by
-// its permission. Each line is a button — clicking one reveals that fragment's
-// role, rule, and reason so the operator can drill in without leaving the script.
-function ShellScript({ fragments }: { fragments: AllowlisterFragment[] }) {
+// The interactive script: the real script rendered line by line — loop structure
+// and indentation intact — each line coloured by the permission of the fragment
+// allowlister parsed from it. A line that carries a fragment is a button: clicking
+// it reveals that fragment's role, rule, and reason so the operator can drill in
+// without leaving the script. Pure-structure lines (a `for … do` header's `done`)
+// render muted and inert so the loop still reads as one block.
+function ShellScript({ request }: { request: ShellApprovalRequest }) {
   const [openIndex, setOpenIndex] = useState<number | null>(null);
+  const lines = scriptLines(request);
 
   return (
     <Card aria-label="Script">
@@ -358,56 +397,74 @@ function ShellScript({ fragments }: { fragments: AllowlisterFragment[] }) {
       </CardHeader>
       <CardContent>
         <ul className="flex flex-col">
-          {fragments.map((fragment, index) => {
+          {lines.map((line, index) => {
+            if (line.text.trim().length === 0) {
+              return null;
+            }
+            const { fragment } = line;
             const open = openIndex === index;
             return (
-              <li key={`${fragment.role}-${fragment.display}`}>
-                <button
-                  type="button"
-                  aria-expanded={open}
-                  aria-label={`${fragment.display} — ${fragment.verdict}`}
-                  className="flex w-full items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  onClick={() => setOpenIndex(open ? null : index)}
-                >
-                  <code className={cn("font-mono text-sm", fragmentTone(fragment.verdict))}>
-                    {fragment.display}
+              // biome-ignore lint/suspicious/noArrayIndexKey: lines are a stable, ordered render of one immutable command
+              <li key={`line-${index}`}>
+                {!fragment ? (
+                  // Pure structure (a `for … do` header's `done`): muted and inert.
+                  <code className="block whitespace-pre-wrap break-words px-2 py-0.5 font-mono text-sm text-muted-foreground">
+                    {line.text}
                   </code>
-                  {fragment.verdict === "allow" ? null : (
-                    <VerdictBadge verdict={fragment.verdict} />
-                  )}
-                </button>
-                {open ? (
-                  <dl className="flex flex-col gap-2 rounded-md border border-border bg-background px-3 py-2 text-sm">
-                    <div className="flex items-center justify-between gap-2">
-                      <dt className="text-xs uppercase tracking-wide text-muted-foreground">
-                        Verdict
-                      </dt>
-                      <dd>
-                        <VerdictBadge verdict={fragment.verdict} />
-                      </dd>
-                    </div>
-                    <div className="flex flex-col gap-0.5">
-                      <dt className="text-xs uppercase tracking-wide text-muted-foreground">
-                        Role
-                      </dt>
-                      <dd className="font-mono text-sm">{fragment.role}</dd>
-                    </div>
-                    <div className="flex flex-col gap-0.5">
-                      <dt className="text-xs uppercase tracking-wide text-muted-foreground">
-                        Rule
-                      </dt>
-                      <dd className="font-mono text-sm">{fragment.rule ?? "no matching rule"}</dd>
-                    </div>
-                    {fragment.reason ? (
-                      <div className="flex flex-col gap-0.5">
-                        <dt className="text-xs uppercase tracking-wide text-muted-foreground">
-                          Reason
-                        </dt>
-                        <dd className="text-sm text-muted-foreground">{fragment.reason}</dd>
-                      </div>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      aria-expanded={open}
+                      aria-label={`${line.text.trim()} — ${fragment.verdict}`}
+                      className="flex w-full rounded-md px-2 py-0.5 text-left hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      onClick={() => setOpenIndex(open ? null : index)}
+                    >
+                      <code
+                        className={cn(
+                          "min-w-0 whitespace-pre-wrap break-words font-mono text-sm",
+                          fragmentTone(fragment.verdict),
+                        )}
+                      >
+                        {line.text}
+                      </code>
+                    </button>
+                    {open ? (
+                      <dl className="flex flex-col gap-2 rounded-md border border-border bg-background px-3 py-2 text-sm">
+                        <div className="flex items-center justify-between gap-2">
+                          <dt className="text-xs uppercase tracking-wide text-muted-foreground">
+                            Verdict
+                          </dt>
+                          <dd>
+                            <VerdictBadge verdict={fragment.verdict} />
+                          </dd>
+                        </div>
+                        <div className="flex flex-col gap-0.5">
+                          <dt className="text-xs uppercase tracking-wide text-muted-foreground">
+                            Role
+                          </dt>
+                          <dd className="font-mono text-sm">{fragment.role}</dd>
+                        </div>
+                        <div className="flex flex-col gap-0.5">
+                          <dt className="text-xs uppercase tracking-wide text-muted-foreground">
+                            Rule
+                          </dt>
+                          <dd className="font-mono text-sm">
+                            {fragment.rule ?? "no matching rule"}
+                          </dd>
+                        </div>
+                        {fragment.reason ? (
+                          <div className="flex flex-col gap-0.5">
+                            <dt className="text-xs uppercase tracking-wide text-muted-foreground">
+                              Reason
+                            </dt>
+                            <dd className="text-sm text-muted-foreground">{fragment.reason}</dd>
+                          </div>
+                        ) : null}
+                      </dl>
                     ) : null}
-                  </dl>
-                ) : null}
+                  </>
+                )}
               </li>
             );
           })}
@@ -438,8 +495,8 @@ function ShellDetail({
             Needs your attention
           </span>
           {flagged.map((fragment) => (
-            <div className="flex flex-col gap-1" key={`flagged-${fragment.display}`}>
-              <code className={cn("font-mono text-base", fragmentTone(fragment.verdict))}>
+            <div className="flex min-w-0 flex-col gap-1" key={`flagged-${fragment.display}`}>
+              <code className="min-w-0 break-words font-mono text-base text-foreground">
                 {fragment.display}
               </code>
               {fragment.rule ? (
@@ -450,7 +507,7 @@ function ShellDetail({
         </CardContent>
       </Card>
 
-      <ShellScript fragments={request.fragments} />
+      <ShellScript request={request} />
 
       <ContextCard request={request} />
 
@@ -485,7 +542,7 @@ function ToolDetail({
       <Card aria-label="Tool call">
         <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <CardTitle className="min-w-0">
-            <code className="font-mono text-base break-all">{request.tool.name}</code>
+            <code className="font-mono text-base break-words">{request.tool.name}</code>
           </CardTitle>
           <div className="flex shrink-0 gap-1">
             <Button

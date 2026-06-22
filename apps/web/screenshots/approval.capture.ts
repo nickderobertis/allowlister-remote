@@ -77,13 +77,20 @@ test("shell-oneoff", async ({ page }, testInfo) => {
 });
 
 test("shell-script", async ({ page }, testInfo) => {
-  // A longer release script where only two of eight fragments (`npm publish`
-  // and `git push`) tripped the gate; the interactive script lists every
-  // fragment in order, colored by permission. Captured in its default (no
-  // fragment expanded) state so no interaction-driven scroll varies bytes.
-  await page.getByRole("button", { name: "Open approval for npm publish --access public" }).click();
+  // A longer build-and-deploy script where two fragments tripped the gate — the
+  // `kubectl apply` nested in the `for` loop body and the standalone `git push`;
+  // the interactive script renders the real script line by line (loop structure
+  // intact), colored by permission. Captured in its default (no fragment expanded)
+  // state so no interaction-driven scroll varies bytes.
+  await page
+    .getByRole("button", {
+      name: "Open approval for kubectl --context $region apply -f deploy/manifest.yaml",
+    })
+    .click();
   await expect(page.getByRole("heading", { name: "Approve shell command" })).toBeVisible();
-  await expect(page.getByLabel("Script")).toContainText("set -euo pipefail");
+  await expect(page.getByLabel("Script")).toContainText(
+    "for region in $(cat deploy/regions.txt); do",
+  );
   await expect(page.getByLabel("Flagged commands")).toContainText("git push origin main --tags");
   await shoot(page, testInfo.project.name, "shell-script");
 });
@@ -118,7 +125,7 @@ test("empty-state", async ({ page }, testInfo) => {
   // The inbox after every pending request has been decided.
   for (const name of [
     "Deny gh pr merge 42 --squash --delete-branch",
-    "Deny npm publish --access public",
+    "Deny kubectl --context $region apply -f deploy/manifest.yaml",
     "Deny mcp__github__create_issue",
     "Deny write",
   ]) {

@@ -31,13 +31,15 @@ export const demoRequests: ApprovalRequest[] = [
       },
     ],
   },
-  // A multi-line deploy-and-release script with a `for` loop that long-polls the
-  // health endpoint between build and publish. Most fragments are allowed by
-  // static rules — including the indented loop body and the `$(seq …)` command
-  // substitution in the loop header — and only two, `npm publish` and `git push`,
-  // trip an `ask`, so the operator approves the action, not the wall of shell.
-  // The loop body fragments keep their source indentation in `display` so both the
-  // web "Script" view and the terminal prompt show how a nested script renders.
+  // A multi-line build-and-deploy script with a `for` loop that rolls each region
+  // out in turn. Most fragments are allowed by static rules — including the
+  // `$(cat …)` command substitution in the loop header and the health probe in the
+  // loop body — but the `kubectl apply` inside the loop and the trailing
+  // `git push` trip an `ask`, so the operator approves those two actions, not the
+  // wall of shell. One of the flagged commands lives in the loop body, so the web
+  // "Script" view and the terminal prompt both have to surface a command nested
+  // inside the `for … do` block. Fragment `display`s are the trimmed command; the
+  // Script view reconstructs the loop's indentation from the raw command instead.
   {
     id: "demo-release-script",
     protocolVersion: 3,
@@ -46,10 +48,10 @@ export const demoRequests: ApprovalRequest[] = [
     sessionId: "9f3c1a2b7e4d",
     cwd: "/workspace/acme-api",
     command:
-      "set -euo pipefail\nnpm run build\nfor attempt in $(seq 1 30); do\n  curl -fsS https://api.acme.dev/healthz\n  sleep 10\ndone\nnpm publish --access public\ngit push origin main --tags",
+      "set -euo pipefail\nnpm run build\nfor region in $(cat deploy/regions.txt); do\n  curl -fsS https://api.acme.dev/$region/healthz\n  kubectl --context $region apply -f deploy/manifest.yaml\ndone\ngit push origin main --tags",
     currentVerdict: "ask",
     currentReason:
-      "2 commands need approval: `npm publish --access public` (standalone): needs approval per rule 'ask before publishing a package'; `git push origin main --tags` (standalone): needs approval per rule 'ask before pushing to a remote'",
+      "2 commands need approval: `kubectl --context $region apply -f deploy/manifest.yaml` (loop body): needs approval per rule 'ask before applying kubernetes manifests'; `git push origin main --tags` (standalone): needs approval per rule 'ask before pushing to a remote'",
     fragments: [
       {
         display: "set -euo pipefail",
@@ -68,36 +70,28 @@ export const demoRequests: ApprovalRequest[] = [
         reason: "allowed by 'allow npm scripts'",
       },
       {
-        display: "seq 1 30",
-        argv: ["seq", "1", "30"],
+        display: "cat deploy/regions.txt",
+        argv: ["cat", "deploy/regions.txt"],
         role: "substitution",
         verdict: "allow",
         rule: "allow coreutils",
         reason: "allowed by 'allow coreutils'",
       },
       {
-        display: "  curl -fsS https://api.acme.dev/healthz",
-        argv: ["curl", "-fsS", "https://api.acme.dev/healthz"],
+        display: "curl -fsS https://api.acme.dev/$region/healthz",
+        argv: ["curl", "-fsS", "https://api.acme.dev/$region/healthz"],
         role: "loop_body",
         verdict: "allow",
         rule: "allow health-check probes",
         reason: "allowed by 'allow health-check probes'",
       },
       {
-        display: "  sleep 10",
-        argv: ["sleep", "10"],
+        display: "kubectl --context $region apply -f deploy/manifest.yaml",
+        argv: ["kubectl", "--context", "$region", "apply", "-f", "deploy/manifest.yaml"],
         role: "loop_body",
-        verdict: "allow",
-        rule: "allow sleep",
-        reason: "allowed by 'allow sleep'",
-      },
-      {
-        display: "npm publish --access public",
-        argv: ["npm", "publish", "--access", "public"],
-        role: "standalone",
         verdict: "ask",
-        rule: "ask before publishing a package",
-        reason: "needs approval per rule 'ask before publishing a package'",
+        rule: "ask before applying kubernetes manifests",
+        reason: "needs approval per rule 'ask before applying kubernetes manifests'",
       },
       {
         display: "git push origin main --tags",

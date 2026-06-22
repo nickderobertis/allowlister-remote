@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   flaggedFragments,
   requestHeadline,
-  scriptContextLines,
+  scriptLines,
   toolCallLines,
   toolParamSummary,
   triggeredRules,
@@ -38,7 +38,7 @@ const mcpTool = toolFixture("demo-tool-mcp");
 describe("shell approval helpers", () => {
   it("flags only the fragments that did not statically allow", () => {
     expect(flaggedFragments(script).map((fragment) => fragment.display)).toEqual([
-      "npm publish --access public",
+      "kubectl --context $region apply -f deploy/manifest.yaml",
       "git push origin main --tags",
     ]);
   });
@@ -53,7 +53,7 @@ describe("shell approval helpers", () => {
 
   it("surfaces the real rule names that fired, deduplicated", () => {
     expect(triggeredRules(script)).toEqual([
-      "ask before publishing a package",
+      "ask before applying kubernetes manifests",
       "ask before pushing to a remote",
     ]);
     // A deferred one-off matched no rule, so there are none.
@@ -61,25 +61,40 @@ describe("shell approval helpers", () => {
   });
 
   it("headlines a shell request with its first flagged fragment", () => {
-    expect(requestHeadline(script)).toBe("npm publish --access public");
+    expect(requestHeadline(script)).toBe("kubectl --context $region apply -f deploy/manifest.yaml");
     expect(requestHeadline(oneOff)).toBe("gh pr merge 42 --squash --delete-branch");
   });
 
-  it("returns the script lines around the flagged commands, in source order", () => {
-    // The flagged `npm publish` / `git push` lines are dropped (they show as
-    // flagged fragments); the surrounding context keeps its source indentation.
-    expect(scriptContextLines(script)).toEqual([
+  it("reconstructs the script line by line, pairing each line with its fragment", () => {
+    // Every source line is present in order — including the `for … do` header and
+    // its `done`, which the flat fragment list drops — with its verbatim
+    // indentation. A fragment-bearing line carries that fragment; the bare `done`
+    // carries none. The `$(cat …)` substitution maps onto the `for` header line.
+    const lines = scriptLines(script);
+    expect(lines.map((line) => line.text)).toEqual([
       "set -euo pipefail",
       "npm run build",
-      "for attempt in $(seq 1 30); do",
-      "  curl -fsS https://api.acme.dev/healthz",
-      "  sleep 10",
+      "for region in $(cat deploy/regions.txt); do",
+      "  curl -fsS https://api.acme.dev/$region/healthz",
+      "  kubectl --context $region apply -f deploy/manifest.yaml",
       "done",
+      "git push origin main --tags",
+    ]);
+    expect(lines.map((line) => line.fragment?.display ?? null)).toEqual([
+      "set -euo pipefail",
+      "npm run build",
+      "cat deploy/regions.txt",
+      "curl -fsS https://api.acme.dev/$region/healthz",
+      "kubectl --context $region apply -f deploy/manifest.yaml",
+      null,
+      "git push origin main --tags",
     ]);
   });
 
-  it("has no surrounding context when the whole command is a single flagged line", () => {
-    expect(scriptContextLines(oneOff)).toEqual([]);
+  it("reconstructs a single-line command as one fragment-bearing line", () => {
+    const lines = scriptLines(oneOff);
+    expect(lines.map((line) => line.text)).toEqual(["gh pr merge 42 --squash --delete-branch"]);
+    expect(lines[0]?.fragment?.display).toBe("gh pr merge 42 --squash --delete-branch");
   });
 });
 
