@@ -46,16 +46,15 @@ function verdictVariant(verdict: ApprovalVerdict): "destructive" | "outline" {
   return verdict === "ask" || verdict === "deny" ? "destructive" : "outline";
 }
 
-// Permission colour for a fragment in the interactive script: allow is a barely
-// there green and ask a soft amber — the faintest tint to tell them apart, never
-// a highlighter — while deny keeps the destructive red and an unmatched defer
-// stays muted. The same scale the verdict badges use, applied to the script text.
+// Highlight colour for a fragment *in the script*: ask is a soft amber so the
+// operator can pick out the commands that tripped the gate among the rest, and
+// deny is the destructive red. Everything else — allow, an unmatched defer —
+// is plain muted text with no tint. Only the script is highlighted; the flagged
+// command display itself renders in standard text.
 function fragmentTone(verdict: ApprovalVerdict): string {
   switch (verdict) {
-    case "allow":
-      return "text-emerald-700/45 dark:text-emerald-400/45";
     case "ask":
-      return "text-amber-700/60 dark:text-amber-400/60";
+      return "text-amber-700/70 dark:text-amber-400/70";
     case "deny":
       return "text-destructive";
     default:
@@ -130,10 +129,7 @@ function ShellPreview({ request }: { request: ShellApprovalRequest }) {
         <SectionLabel>Flagged</SectionLabel>
         {shownFlagged.map((fragment) => (
           <code
-            className={cn(
-              "min-w-0 whitespace-pre-wrap break-words font-mono text-sm sm:text-base",
-              fragmentTone(fragment.verdict),
-            )}
+            className="min-w-0 whitespace-pre-wrap break-words font-mono text-sm text-foreground sm:text-base"
             key={`${fragment.role}-${fragment.display}`}
           >
             {fragment.display}
@@ -152,9 +148,7 @@ function ShellPreview({ request }: { request: ShellApprovalRequest }) {
             <code
               className={cn(
                 "min-w-0 whitespace-pre-wrap break-words font-mono text-xs",
-                line.fragment && line.fragment.verdict !== "allow"
-                  ? fragmentTone(line.fragment.verdict)
-                  : "text-muted-foreground",
+                line.fragment ? fragmentTone(line.fragment.verdict) : "text-muted-foreground",
               )}
               // biome-ignore lint/suspicious/noArrayIndexKey: lines are a stable, ordered render of one immutable command
               key={`line-${index}`}
@@ -414,7 +408,7 @@ function ShellScript({ request }: { request: ShellApprovalRequest }) {
               <li key={`line-${index}`}>
                 {!fragment ? (
                   // Pure structure (a `for … do` header's `done`): muted and inert.
-                  <code className="block whitespace-pre-wrap break-words px-2 py-1.5 font-mono text-sm text-muted-foreground">
+                  <code className="block whitespace-pre-wrap break-words px-2 py-0.5 font-mono text-sm text-muted-foreground">
                     {line.text}
                   </code>
                 ) : (
@@ -423,7 +417,7 @@ function ShellScript({ request }: { request: ShellApprovalRequest }) {
                       type="button"
                       aria-expanded={open}
                       aria-label={`${line.text.trim()} — ${fragment.verdict}`}
-                      className="flex w-full items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      className="flex w-full items-center justify-between gap-3 rounded-md px-2 py-0.5 text-left hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       onClick={() => setOpenIndex(open ? null : index)}
                     >
                       <code
@@ -505,12 +499,7 @@ function ShellDetail({
           </span>
           {flagged.map((fragment) => (
             <div className="flex min-w-0 flex-col gap-1" key={`flagged-${fragment.display}`}>
-              <code
-                className={cn(
-                  "min-w-0 break-words font-mono text-base",
-                  fragmentTone(fragment.verdict),
-                )}
-              >
+              <code className="min-w-0 break-words font-mono text-base text-foreground">
                 {fragment.display}
               </code>
               {fragment.rule ? (
