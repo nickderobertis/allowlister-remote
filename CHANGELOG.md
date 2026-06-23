@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.12.0](https://github.com/nickderobertis/allowlister-remote/compare/v0.11.0...v0.12.0) (2026-06-23)
+
+
+### Features
+
+* **web:** enable React Compiler and add deterministic render-cost harness ([#80](https://github.com/nickderobertis/allowlister-remote/issues/80)) ([ddcce06](https://github.com/nickderobertis/allowlister-remote/commit/ddcce06a5de5ea8dfdb7be56e04c690052674168))
+* **web:** harden PWA conventions — connection status, error boundaries, broker reconfigure ([#77](https://github.com/nickderobertis/allowlister-remote/issues/77)) ([3ba3f7c](https://github.com/nickderobertis/allowlister-remote/commit/3ba3f7cecfde7f81ca8867fb387141d6302fa43e))
+
 ## [0.11.0](https://github.com/nickderobertis/allowlister-remote/compare/v0.10.0...v0.11.0) (2026-06-23)
 
 
