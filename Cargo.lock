@@ -16,6 +16,7 @@ name = "allowlister-remote-broker"
 version = "0.0.0"
 dependencies = [
  "axum",
+ "criterion",
  "futures-util",
  "serde_json",
  "tokio",
@@ -28,6 +29,7 @@ version = "0.0.0"
 dependencies = [
  "allowlister-remote-broker",
  "axum",
+ "criterion",
  "futures-util",
  "native-tls",
  "rcgen",

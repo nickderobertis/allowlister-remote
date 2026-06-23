@@ -39,6 +39,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       plugin: ${{ steps.affected.outputs.plugin }}
+      daemon: ${{ steps.affected.outputs.daemon }}
+      broker: ${{ steps.affected.outputs.broker }}
       web: ${{ steps.affected.outputs.web }}
     steps:
       - uses: actions/checkout@v4
@@ -57,6 +59,8 @@ jobs:
           set -euo pipefail
           if [[ -z "${NX_BASE:-}" || "$NX_BASE" =~ ^0+$ ]]; then
             echo "plugin=true" >> "$GITHUB_OUTPUT"
+            echo "daemon=true" >> "$GITHUB_OUTPUT"
+            echo "broker=true" >> "$GITHUB_OUTPUT"
             echo "web=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -64,13 +68,23 @@ jobs:
           echo "affected: $affected"
           grep -qx 'allowlister-remote-plugin' <<<"$affected" \
             && echo "plugin=true" >> "$GITHUB_OUTPUT" || echo "plugin=false" >> "$GITHUB_OUTPUT"
+          grep -qx 'allowlister-remote-daemon' <<<"$affected" \
+            && echo "daemon=true" >> "$GITHUB_OUTPUT" || echo "daemon=false" >> "$GITHUB_OUTPUT"
+          grep -qx 'allowlister-remote-broker' <<<"$affected" \
+            && echo "broker=true" >> "$GITHUB_OUTPUT" || echo "broker=false" >> "$GITHUB_OUTPUT"
           grep -qx 'web' <<<"$affected" \
             && echo "web=true" >> "$GITHUB_OUTPUT" || echo "web=false" >> "$GITHUB_OUTPUT"
 
   bench:
     name: benchmarks
     needs: changes
-    if: needs.changes.outputs.plugin == 'true'
+    # Runs for any affected Rust binary. Each crate's steps are individually gated
+    # below, so a daemon-only change skips the plugin and broker suites and vice
+    # versa.
+    if: >-
+      needs.changes.outputs.plugin == 'true' ||
+      needs.changes.outputs.daemon == 'true' ||
+      needs.changes.outputs.broker == 'true'
     # A single, consistent runner: timings are only comparable on the same
     # hardware, so this never matrixes across OSes.
     runs-on: ubuntu-latest
@@ -91,12 +105,15 @@ jobs:
       # not a cargo tool. musl-tools + the musl target let the CLI benches build
       # the static musl binary that actually ships (scripts/bench.sh,
       # bench-instructions.sh default to it), so the startup numbers track the
-      # published artifact rather than a glibc dev build.
+      # published artifact rather than a glibc dev build. Plugin-only: the CLI
+      # latency/instruction layers do not apply to the long-lived daemon/broker.
       - name: Install valgrind and musl toolchain
+        if: needs.changes.outputs.plugin == 'true'
         run: |
           sudo apt-get update -q
           sudo apt-get install -y -q valgrind musl-tools
       - name: Add musl target
+        if: needs.changes.outputs.plugin == 'true'
         run: rustup target add x86_64-unknown-linux-musl
 
       # Fresh baselines every run: rust-cache may carry a stale target/criterion
@@ -104,20 +121,59 @@ jobs:
       - name: Clear stale Criterion baselines
         run: rm -rf target/criterion
 
-      - name: Benchmark this revision (Criterion)
+      # Per-revision Criterion baselines, one per affected crate, all saved under
+      # the single `pr` baseline name so the later `critcmp base pr` diffs every
+      # crate's groups at once (group names are crate-distinct).
+      - name: Benchmark plugin (Criterion)
+        if: needs.changes.outputs.plugin == 'true'
         run: cargo bench --locked -p allowlister-remote-plugin --bench engine -- --measurement-time 3 --save-baseline pr
+      - name: Benchmark daemon (Criterion)
+        if: needs.changes.outputs.daemon == 'true'
+        run: cargo bench --locked -p allowlister-remote-daemon --bench protocol -- --measurement-time 3 --save-baseline pr
+      - name: Benchmark broker (Criterion)
+        if: needs.changes.outputs.broker == 'true'
+        run: cargo bench --locked -p allowlister-remote-broker --bench protocol -- --measurement-time 3 --save-baseline pr
 
+      # Plugin-only: end-to-end CLI latency (one-shot process startup).
       - name: Benchmark this revision (hyperfine CLI)
+        if: needs.changes.outputs.plugin == 'true'
         run: just bench-cli
 
-      # Exact counts, no statistics: these two are the only layers where a small
-      # delta is meaningful on a shared runner.
-      - name: Allocation counts (deterministic)
+      # Exact counts, no statistics: the deterministic layers where a small delta
+      # is meaningful on a shared runner. One alloc table per affected crate,
+      # concatenated under a per-crate heading.
+      - name: Initialize report directory
         run: |
           mkdir -p target/bench
-          just bench-allocs | tee target/bench/allocs.md
+          : > target/bench/allocs.md
+      - name: Allocation counts — plugin (deterministic)
+        if: needs.changes.outputs.plugin == 'true'
+        run: |
+          {
+            echo "#### plugin (engine)"; echo
+            just bench-allocs
+            echo
+          } >> target/bench/allocs.md
+      - name: Allocation counts — daemon (deterministic)
+        if: needs.changes.outputs.daemon == 'true'
+        run: |
+          {
+            echo "#### daemon (protocol)"; echo
+            just bench-allocs-daemon
+            echo
+          } >> target/bench/allocs.md
+      - name: Allocation counts — broker (deterministic)
+        if: needs.changes.outputs.broker == 'true'
+        run: |
+          {
+            echo "#### broker (protocol)"; echo
+            just bench-allocs-broker
+            echo
+          } >> target/bench/allocs.md
 
+      # Plugin-only: deterministic CLI instruction counts (cachegrind).
       - name: Instruction counts (cachegrind)
+        if: needs.changes.outputs.plugin == 'true'
         run: just bench-instructions
 
       # Best effort: the PR base may predate a bench (e.g. the PR that
@@ -127,6 +183,10 @@ jobs:
         id: basecmp
         if: github.event_name == 'pull_request'
         continue-on-error: true
+        env:
+          BENCH_PLUGIN: ${{ needs.changes.outputs.plugin }}
+          BENCH_DAEMON: ${{ needs.changes.outputs.daemon }}
+          BENCH_BROKER: ${{ needs.changes.outputs.broker }}
         run: |
           set -euo pipefail
           base='${{ github.event.pull_request.base.sha }}'
@@ -135,10 +195,21 @@ jobs:
           # root so its own root resolution still finds this repo.
           cp scripts/bench-instructions.sh target/bench-instructions-pr.sh
           git checkout -q "$base"
-          cargo bench --locked -p allowlister-remote-plugin --bench engine -- --measurement-time 3 --save-baseline base
-          BENCH_OUT="$PWD/target/bench-base" bash target/bench-instructions-pr.sh || true
+          # Each base bench is best-effort: the bench target (or the whole crate
+          # surface) may not exist on base yet — e.g. the PR that introduces it —
+          # so a failure must not abort before `critcmp` runs on whatever exists.
+          if [[ "$BENCH_PLUGIN" == "true" ]]; then
+            cargo bench --locked -p allowlister-remote-plugin --bench engine -- --measurement-time 3 --save-baseline base || true
+            BENCH_OUT="$PWD/target/bench-base" bash target/bench-instructions-pr.sh || true
+          fi
+          if [[ "$BENCH_DAEMON" == "true" ]]; then
+            cargo bench --locked -p allowlister-remote-daemon --bench protocol -- --measurement-time 3 --save-baseline base || true
+          fi
+          if [[ "$BENCH_BROKER" == "true" ]]; then
+            cargo bench --locked -p allowlister-remote-broker --bench protocol -- --measurement-time 3 --save-baseline base || true
+          fi
           git checkout -q -
-          critcmp base pr | tee target/bench/critcmp.txt
+          critcmp base pr | tee target/bench/critcmp.txt || true
           if [ -s target/bench-base/instructions.tsv ]; then
             bash scripts/bench-instructions.sh report \
               target/bench-base/instructions.tsv target/bench/instructions.tsv \
@@ -154,32 +225,38 @@ jobs:
             echo
             echo "Commit \`${GITHUB_SHA::8}\` on \`ubuntu-latest\`. Timings are"
             echo "informational — shared-runner noise means treat small deltas with caution."
+            echo "Covers the affected Rust binaries (plugin / daemon / broker)."
             echo
-            echo "### End-to-end CLI latency (hyperfine)"
-            echo
-            cat target/bench/results.md
-            echo
-            echo "### Engine micro-benchmarks vs base (Criterion + critcmp)"
+            # Plugin-only CLI layers: present only when the plugin ran.
+            if [ -s target/bench/results.md ]; then
+              echo "### End-to-end CLI latency (plugin; hyperfine)"
+              echo
+              cat target/bench/results.md
+              echo
+            fi
+            echo "### Micro-benchmarks vs base (Criterion + critcmp)"
             echo
             if [ -s target/bench/critcmp.txt ]; then
               echo '```'
               cat target/bench/critcmp.txt
               echo '```'
             else
-              echo "_No base comparison: the engine bench is not present on the base"
-              echo "ref yet (expected on the PR that introduces it). Future PRs will"
+              echo "_No base comparison: the benches are not present on the base"
+              echo "ref yet (expected on the PR that introduces them). Future PRs will"
               echo "show the regression delta here._"
             fi
             echo
-            echo "### CLI instruction counts (cachegrind; deterministic)"
-            echo
-            if [ -s target/bench/instructions-delta.md ]; then
-              cat target/bench/instructions-delta.md
-            else
-              cat target/bench/instructions.md
+            if [ -s target/bench/instructions-delta.md ] || [ -s target/bench/instructions.md ]; then
+              echo "### CLI instruction counts (plugin; cachegrind; deterministic)"
+              echo
+              if [ -s target/bench/instructions-delta.md ]; then
+                cat target/bench/instructions-delta.md
+              else
+                cat target/bench/instructions.md
+              fi
+              echo
             fi
-            echo
-            echo "### Engine allocation counts (deterministic)"
+            echo "### Allocation counts (deterministic)"
             echo
             cat target/bench/allocs.md
           } > "$report"
