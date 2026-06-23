@@ -63,9 +63,7 @@ function stubConfig(response: unknown | (() => Promise<never>)) {
   vi.stubGlobal(
     "fetch",
     vi.fn(async () =>
-      typeof response === "function"
-        ? response()
-        : ({ json: async () => response }) as Response,
+      typeof response === "function" ? response() : ({ json: async () => response } as Response),
     ),
   );
 }
