@@ -1,4 +1,4 @@
-import { type HTMLAttributes, useMemo } from "react";
+import type { HTMLAttributes } from "react";
 import { type JsonTokenKind, tokenizeJson } from "@/lib/json-highlight";
 import { cn } from "@/lib/utils";
 
@@ -19,7 +19,9 @@ type JsonViewProps = Omit<HTMLAttributes<HTMLPreElement>, "children"> & {
 
 /** Render a value as syntax-highlighted, pretty-printed JSON. */
 export function JsonView({ value, className, ...props }: JsonViewProps) {
-  const tokens = useMemo(() => tokenizeJson(value), [value]);
+  // React Compiler memoizes this across renders where `value` is unchanged; no
+  // manual useMemo needed (see AGENTS.md).
+  const tokens = tokenizeJson(value);
 
   return (
     <pre
