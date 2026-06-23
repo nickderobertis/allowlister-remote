@@ -81,8 +81,30 @@ pub fn default_socket_path() -> String {
 }
 
 pub fn default_broker_url() -> String {
-    std::env::var("ALLOWLISTER_REMOTE_BROKER_URL")
-        .unwrap_or_else(|_| "ws://127.0.0.1:4180/ws/daemon".into())
+    std::env::var("ALLOWLISTER_REMOTE_BROKER_URL").unwrap_or_else(|_| "ws://127.0.0.1:4180".into())
+}
+
+/// Resolve the daemon's broker WebSocket endpoint from a configured broker URL.
+///
+/// The broker URL is the broker *base* — `ws://127.0.0.1:4180` or
+/// `wss://broker.example.com` — the same value the broker advertises as its
+/// listen address and the PWA stores as its setting. The daemon's endpoint is
+/// `<base>/ws/daemon`, exactly mirroring the `<base>/ws/pwa` the PWA derives in
+/// `apps/web/src/lib/broker-config.ts`. The broker only routes `/ws/daemon` and
+/// `/ws/pwa`, so a daemon that dialed the bare base would hit `/` — which has no
+/// route — and the WebSocket upgrade would fail, so every approval silently
+/// failed to reach the PWA (see issue #93).
+///
+/// Idempotent: a URL that already targets `/ws/daemon` (the historical default,
+/// and what the e2e suite passes) is returned unchanged, so both the bare base
+/// and a full endpoint URL work. A trailing slash on the base is tolerated.
+pub fn daemon_ws_url(base: &str) -> String {
+    let trimmed = base.trim().trim_end_matches('/');
+    if trimmed.ends_with("/ws/daemon") {
+        trimmed.to_string()
+    } else {
+        format!("{trimmed}/ws/daemon")
+    }
 }
 
 /// Run the daemon until the listener fails. The broker connection is supervised
@@ -100,7 +122,7 @@ pub async fn serve(config: Config) -> std::io::Result<()> {
     let (broker_tx, broker_rx) = unbounded_channel::<String>();
 
     tokio::spawn(broker_loop(
-        config.broker_url,
+        daemon_ws_url(&config.broker_url),
         config.ca_path,
         routes.clone(),
         broker_rx,
@@ -412,4 +434,54 @@ fn new_request_id() -> String {
         .map(|d| d.as_nanos())
         .unwrap_or(0);
     format!("{}-{}-{}", std::process::id(), nanos, seq)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::daemon_ws_url;
+
+    #[test]
+    fn bare_base_gains_the_ws_daemon_path() {
+        // The natural user config — the broker's advertised listen address with no
+        // path — must resolve to the `/ws/daemon` endpoint the broker routes.
+        assert_eq!(
+            daemon_ws_url("ws://127.0.0.1:4180"),
+            "ws://127.0.0.1:4180/ws/daemon"
+        );
+        assert_eq!(
+            daemon_ws_url("wss://broker.example.com"),
+            "wss://broker.example.com/ws/daemon"
+        );
+    }
+
+    #[test]
+    fn trailing_slash_on_the_base_is_tolerated() {
+        assert_eq!(
+            daemon_ws_url("ws://127.0.0.1:4180/"),
+            "ws://127.0.0.1:4180/ws/daemon"
+        );
+    }
+
+    #[test]
+    fn a_full_endpoint_url_is_left_unchanged() {
+        // Backward compatible: the historical form (and what the e2e suite passes)
+        // already targets `/ws/daemon`, so it must not be doubled.
+        assert_eq!(
+            daemon_ws_url("ws://127.0.0.1:4180/ws/daemon"),
+            "ws://127.0.0.1:4180/ws/daemon"
+        );
+        assert_eq!(
+            daemon_ws_url("ws://127.0.0.1:4180/ws/daemon/"),
+            "ws://127.0.0.1:4180/ws/daemon"
+        );
+    }
+
+    #[test]
+    fn a_reverse_proxy_prefix_is_preserved() {
+        // A broker mounted under a path prefix keeps it; the endpoint is appended.
+        assert_eq!(
+            daemon_ws_url("wss://example.com/broker"),
+            "wss://example.com/broker/ws/daemon"
+        );
+    }
 }

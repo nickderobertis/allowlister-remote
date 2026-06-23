@@ -241,15 +241,21 @@ fn unique_socket() -> PathBuf {
     path
 }
 
-/// Spawn a daemon bound to `socket`, wired to the broker on `port`.
+/// Spawn a daemon bound to `socket`, wired to the broker on `port` with the full
+/// `/ws/daemon` endpoint URL.
 #[cfg(unix)]
 fn spawn_daemon(daemon: &Path, socket: &Path, port: u16) -> ChildGuard {
+    spawn_daemon_with_url(daemon, socket, &format!("ws://127.0.0.1:{port}/ws/daemon"))
+}
+
+/// Spawn a daemon wired to an explicit broker URL. Lets a test choose between the
+/// full endpoint and the bare base (`ws://127.0.0.1:{port}`), so the suite covers
+/// the natural user config that broke in issue #93.
+#[cfg(unix)]
+fn spawn_daemon_with_url(daemon: &Path, socket: &Path, broker_url: &str) -> ChildGuard {
     let child = Command::new(daemon)
         .env("ALLOWLISTER_REMOTE_DAEMON_SOCK", socket)
-        .env(
-            "ALLOWLISTER_REMOTE_BROKER_URL",
-            format!("ws://127.0.0.1:{port}/ws/daemon"),
-        )
+        .env("ALLOWLISTER_REMOTE_BROKER_URL", broker_url)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -403,6 +409,57 @@ async fn full_chain_with_real_binaries() {
     let verdict: Value = serde_json::from_slice(&output.stdout).expect("plugin stdout is JSON");
     assert_eq!(verdict["verdict"], "allow");
     assert_eq!(verdict["reason"], "approved in app");
+
+    let _ = std::fs::remove_file(&socket_path);
+}
+
+/// TEST A.2 — regression for issue #93: the full chain works when the daemon is
+/// pointed at the broker's *base* URL (`ws://127.0.0.1:{port}`) with no
+/// `/ws/daemon` path.
+///
+/// This is the config a user naturally writes — the broker advertises
+/// `mediating on ws://127.0.0.1:4180`, so that is what they put in
+/// `ALLOWLISTER_REMOTE_BROKER_URL` / `--broker-url`. Every other test in this
+/// suite wires the full `/ws/daemon` endpoint, which is exactly why the macOS e2e
+/// never caught the regression: the daemon used to dial the base verbatim, hit the
+/// broker's unrouted `/`, and the request never reached the PWA. The daemon now
+/// derives `<base>/ws/daemon` (mirroring the PWA's `<base>/ws/pwa`).
+#[cfg(unix)]
+#[tokio::test]
+async fn full_chain_with_base_broker_url() {
+    let (broker_bin, daemon_bin, plugin_bin) = binaries();
+    let (_broker, port) = spawn_broker(&broker_bin);
+
+    let socket_path = unique_socket();
+    // The bare base — no `/ws/daemon` — exactly as a user would configure it.
+    let _daemon =
+        spawn_daemon_with_url(&daemon_bin, &socket_path, &format!("ws://127.0.0.1:{port}"));
+    wait_for_socket(&socket_path, Duration::from_secs(5));
+
+    let mut pwa = subscribe_pwa(port).await;
+
+    let plugin_child = spawn_plugin(&plugin_bin, &socket_path, "deploy --to prod");
+
+    // The request reaches the PWA — proving the daemon resolved the base to
+    // `/ws/daemon` and established the broker link.
+    let added = ws_recv(&mut pwa).await;
+    assert_eq!(added["type"], "added");
+    assert_eq!(added["request"]["command"], "deploy --to prod");
+    let id = added["request"]["id"]
+        .as_str()
+        .expect("request id")
+        .to_string();
+
+    ws_send(
+        &mut pwa,
+        json!({"type":"decision","requestId":id,"verdict":"allow","reason":"approved via base url"}),
+    )
+    .await;
+    assert_eq!(ws_recv(&mut pwa).await["type"], "resolved");
+
+    let verdict = plugin_verdict(plugin_child).await;
+    assert_eq!(verdict["verdict"], "allow");
+    assert_eq!(verdict["reason"], "approved via base url");
 
     let _ = std::fs::remove_file(&socket_path);
 }

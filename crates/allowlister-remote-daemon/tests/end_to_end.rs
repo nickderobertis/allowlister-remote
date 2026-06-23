@@ -23,8 +23,14 @@ use tokio_tungstenite::{connect_async, MaybeTlsStream, WebSocketStream};
 type Ws = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
 /// Boot a broker and a daemon wired to it; return the broker ws base URL and the
-/// daemon's unix socket path.
+/// daemon's unix socket path. `broker_url_for` derives the daemon's configured
+/// broker URL from the base, so a test can wire the daemon with either the bare
+/// base (`ws://addr`) or the full endpoint (`ws://addr/ws/daemon`).
 async fn start_stack() -> (String, String) {
+    start_stack_with(|base| format!("{base}/ws/daemon")).await
+}
+
+async fn start_stack_with(broker_url_for: impl Fn(&str) -> String) -> (String, String) {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move {
@@ -44,7 +50,7 @@ async fn start_stack() -> (String, String) {
     );
     let config = Config {
         socket_path: socket_path.clone(),
-        broker_url: format!("{base}/ws/daemon"),
+        broker_url: broker_url_for(&base),
         ca_path: None,
     };
     tokio::spawn(async move {
@@ -124,6 +130,38 @@ async fn web_decision_reaches_the_plugin_through_the_daemon() {
     assert_eq!(decision["type"], "decision");
     assert_eq!(decision["verdict"], "allow");
     assert_eq!(decision["reason"], "approved in app");
+}
+
+/// Regression for issue #93: a daemon configured with the broker's *base* URL
+/// (`ws://addr`, with no `/ws/daemon` path) — the natural user config, since that
+/// is the address the broker advertises and the PWA stores — must still reach the
+/// broker and deliver the request to the PWA.
+///
+/// Before the fix the daemon dialed the base verbatim, hitting the broker's `/`
+/// (which has no route), so the WebSocket upgrade failed and the request never
+/// surfaced: this test would hang at the `added` recv and time out. Every other
+/// test (and the e2e suite) wires the full `/ws/daemon` endpoint, which is exactly
+/// why the macOS e2e never caught this.
+#[tokio::test]
+async fn daemon_reaches_broker_with_a_base_url_without_the_ws_path() {
+    let (base, socket_path) = start_stack_with(|base| base.to_string()).await;
+
+    let mut pwa = connect_async(format!("{base}/ws/pwa")).await.unwrap().0;
+    ws_send(&mut pwa, json!({"type":"subscribe"})).await;
+    assert_eq!(ws_recv(&mut pwa).await["type"], "snapshot");
+
+    let plugin = connect_plugin(&socket_path).await;
+    let (_plugin_read, mut plugin_write) = plugin.into_split();
+    plugin_write
+        .write_all(b"{\"type\":\"create\",\"payload\":{\"subject\":\"shell\",\"command\":\"deploy prod\"}}\n")
+        .await
+        .unwrap();
+
+    // The request reaches the PWA through the daemon's broker link — the link that
+    // was silently dead when the base URL lost its `/ws/daemon` path.
+    let added = ws_recv(&mut pwa).await;
+    assert_eq!(added["type"], "added");
+    assert_eq!(added["request"]["command"], "deploy prod");
 }
 
 #[tokio::test]
