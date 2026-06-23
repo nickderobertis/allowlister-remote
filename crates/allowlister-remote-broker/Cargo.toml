@@ -20,6 +20,9 @@ path = "src/main.rs"
 axum = { version = "0.8", default-features = false, features = ["ws", "tokio", "http1"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "signal", "time"] }
 futures-util = { version = "0.3", default-features = false, features = ["sink"] }
+# `derive` powers the typed outbound-envelope serialization on the per-message
+# protocol path (see `src/lib.rs`); serde is already in the tree under serde_json.
+serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
 [dev-dependencies]

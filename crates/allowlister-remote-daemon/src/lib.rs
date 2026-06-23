@@ -27,12 +27,15 @@
 //! * `{"type":"ack"}` — a relayed local decision was forwarded upstream; the
 //!   plugin may exit knowing the web prompt will be dismissed.
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use futures_util::{SinkExt, StreamExt};
+use serde::ser::{SerializeMap, Serializer};
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
@@ -281,19 +284,74 @@ fn route_decision(routes: &Routes, text: &str) {
     }
 }
 
+/// Borrowed view of an inbound broker frame, reading only the two fields routing
+/// needs. `Cow` borrows straight out of the input buffer when the value has no
+/// JSON escapes — request ids never do — and allocates only on the rare escaped
+/// string, so the common case parses without building the whole `Value` tree
+/// (the verdict/reason fields a decision also carries are skipped, not allocated).
+#[derive(Deserialize)]
+struct DecisionFrame<'a> {
+    #[serde(default, borrow, rename = "type")]
+    kind: Option<Cow<'a, str>>,
+    #[serde(default, borrow, rename = "requestId")]
+    request_id: Option<Cow<'a, str>>,
+}
+
 /// Extract the target request id from an inbound broker frame, if it is a
 /// `decision` addressed to a pending request. This is the pure parse half of
 /// `route_decision` — the routing-table lookup that follows is shared state, not
 /// measured by the protocol benches that exercise this.
 pub fn decision_target(text: &str) -> Option<String> {
-    let value: Value = serde_json::from_str(text).ok()?;
-    if value.get("type").and_then(Value::as_str) != Some("decision") {
+    let frame: DecisionFrame = serde_json::from_str(text).ok()?;
+    if frame.kind.as_deref() != Some("decision") {
         return None;
     }
-    value
-        .get("requestId")
-        .and_then(Value::as_str)
-        .map(str::to_string)
+    frame.request_id.map(Cow::into_owned)
+}
+
+/// The forwarded allowlister request with the daemon-assigned `id` injected,
+/// serialized directly from the plugin's borrowed `payload`. Streaming the
+/// payload's entries through the serializer (plus the id) avoids cloning the
+/// whole payload subtree into an intermediate `Value` just to insert one field —
+/// the dominant cost on this, the per-gated-command hot path.
+struct RequestWithId<'a> {
+    payload: Option<&'a Value>,
+    id: &'a str,
+}
+
+impl Serialize for RequestWithId<'_> {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self.payload {
+            // The common case: the plugin's create body is an object. Stream its
+            // entries straight through (dropping any pre-existing `id`, which the
+            // daemon owns) and append the assigned id — no clone of the subtree.
+            Some(Value::Object(fields)) => {
+                let mut map = serializer.serialize_map(Some(fields.len() + 1))?;
+                for (key, value) in fields {
+                    if key != "id" {
+                        map.serialize_entry(key, value)?;
+                    }
+                }
+                map.serialize_entry("id", self.id)?;
+                map.end()
+            }
+            // A missing or non-object payload degrades to a `{payload, id}`
+            // wrapper, mirroring the original `json!({ "payload": other })`.
+            other => {
+                let mut map = serializer.serialize_map(Some(2))?;
+                map.serialize_entry("payload", &other)?;
+                map.serialize_entry("id", self.id)?;
+                map.end()
+            }
+        }
+    }
+}
+
+#[derive(Serialize)]
+struct CreateEnvelope<'a> {
+    #[serde(rename = "type")]
+    kind: &'a str,
+    request: RequestWithId<'a>,
 }
 
 /// Build the broker `create` envelope from a plugin's parsed `create` message,
@@ -302,14 +360,14 @@ pub fn decision_target(text: &str) -> Option<String> {
 /// deterministic function of its inputs — exactly the per-gated-command work the
 /// daemon does between reading the plugin's line and sending it upstream.
 pub fn build_create_msg(create: &Value, id: &str) -> String {
-    let mut request = match create.get("payload").cloned() {
-        Some(Value::Object(map)) => Value::Object(map),
-        other => json!({ "payload": other }),
-    };
-    if let Value::Object(map) = &mut request {
-        map.insert("id".to_string(), json!(id));
-    }
-    json!({ "type": "create", "request": request }).to_string()
+    serde_json::to_string(&CreateEnvelope {
+        kind: "create",
+        request: RequestWithId {
+            payload: create.get("payload"),
+            id,
+        },
+    })
+    .expect("create envelope serializes to JSON")
 }
 
 /// Handle one plugin connection: register its request with the broker, then race
@@ -383,21 +441,30 @@ where
     routes.lock().unwrap().remove(&id);
 }
 
+/// Borrowed view of a local-terminal decision line: its `type`, `verdict`, and
+/// `reason`. Like [`DecisionFrame`], `Cow` keeps the common (escape-free) line
+/// zero-copy and only allocates the owned strings the caller keeps.
+#[derive(Deserialize)]
+struct LocalDecisionFrame<'a> {
+    #[serde(default, borrow, rename = "type")]
+    kind: Option<Cow<'a, str>>,
+    #[serde(default, borrow)]
+    verdict: Option<Cow<'a, str>>,
+    #[serde(default, borrow)]
+    reason: Option<Cow<'a, str>>,
+}
+
 /// Parse a line the plugin relays from the local terminal into a `(verdict,
 /// reason)` pair, or `None` if it is not a well-formed `decision`. Pure: the
 /// per-line work the daemon does on a local-terminal decision before forwarding
 /// it upstream.
 pub fn local_decision(raw: &str) -> Option<(String, String)> {
-    let value: Value = serde_json::from_str(raw).ok()?;
-    if value.get("type").and_then(Value::as_str) != Some("decision") {
+    let frame: LocalDecisionFrame = serde_json::from_str(raw).ok()?;
+    if frame.kind.as_deref() != Some("decision") {
         return None;
     }
-    let verdict = value.get("verdict").and_then(Value::as_str)?.to_string();
-    let reason = value
-        .get("reason")
-        .and_then(Value::as_str)
-        .unwrap_or("")
-        .to_string();
+    let verdict = frame.verdict?.into_owned();
+    let reason = frame.reason.map(Cow::into_owned).unwrap_or_default();
     Some((verdict, reason))
 }
 
@@ -412,4 +479,91 @@ fn new_request_id() -> String {
         .map(|d| d.as_nanos())
         .unwrap_or(0);
     format!("{}-{}-{}", std::process::id(), nanos, seq)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The broker `create` envelope must carry the plugin's payload verbatim with
+    /// the daemon-assigned `id` injected. Key order is free to differ from the old
+    /// `Value`-built output (the broker parses it as an object), so the guarantee
+    /// is semantic: the parsed frame matches the expected JSON.
+    #[test]
+    fn build_create_msg_injects_id_and_forwards_payload() {
+        let create = json!({
+            "type": "create",
+            "payload": { "command": "gh pr merge 42", "subject": "shell" },
+        });
+        let parsed: Value = serde_json::from_str(&build_create_msg(&create, "id-7")).unwrap();
+        assert_eq!(
+            parsed,
+            json!({
+                "type": "create",
+                "request": { "command": "gh pr merge 42", "subject": "shell", "id": "id-7" },
+            })
+        );
+    }
+
+    /// The daemon owns the id space: a payload that already carries an `id` has it
+    /// overwritten by the assigned one, never duplicated.
+    #[test]
+    fn build_create_msg_overrides_a_preexisting_id() {
+        let create = json!({ "type": "create", "payload": { "id": "stale", "command": "ls" } });
+        let parsed: Value = serde_json::from_str(&build_create_msg(&create, "id-9")).unwrap();
+        assert_eq!(parsed["request"]["id"], "id-9");
+        assert_eq!(parsed["request"]["command"], "ls");
+    }
+
+    /// A missing or non-object payload degrades to a `{payload, id}` wrapper rather
+    /// than panicking, matching the original fallback.
+    #[test]
+    fn build_create_msg_wraps_missing_or_nonobject_payload() {
+        let parsed: Value =
+            serde_json::from_str(&build_create_msg(&json!({ "type": "create" }), "id-1")).unwrap();
+        assert_eq!(parsed["request"], json!({ "payload": null, "id": "id-1" }));
+
+        let create = json!({ "type": "create", "payload": ["a", "b"] });
+        let parsed: Value = serde_json::from_str(&build_create_msg(&create, "id-2")).unwrap();
+        assert_eq!(
+            parsed["request"],
+            json!({ "payload": ["a", "b"], "id": "id-2" })
+        );
+    }
+
+    #[test]
+    fn decision_target_extracts_only_decision_request_ids() {
+        assert_eq!(
+            decision_target(r#"{"type":"decision","requestId":"req_1","verdict":"allow"}"#),
+            Some("req_1".to_string())
+        );
+        // Wrong type, missing id, and unparseable input all yield None.
+        assert_eq!(
+            decision_target(r#"{"type":"withdraw","requestId":"r"}"#),
+            None
+        );
+        assert_eq!(decision_target(r#"{"type":"decision"}"#), None);
+        assert_eq!(decision_target("not json"), None);
+    }
+
+    #[test]
+    fn local_decision_parses_verdict_and_reason() {
+        assert_eq!(
+            local_decision(r#"{"type":"decision","verdict":"deny","reason":"nope"}"#),
+            Some(("deny".to_string(), "nope".to_string()))
+        );
+        // A missing reason defaults to empty; a JSON-escaped reason round-trips.
+        assert_eq!(
+            local_decision(r#"{"type":"decision","verdict":"allow"}"#),
+            Some(("allow".to_string(), String::new()))
+        );
+        assert_eq!(
+            local_decision(r#"{"type":"decision","verdict":"deny","reason":"a\"b\n"}"#),
+            Some(("deny".to_string(), "a\"b\n".to_string()))
+        );
+        // Not a decision, or missing the verdict, or garbage: None.
+        assert_eq!(local_decision(r#"{"type":"ack"}"#), None);
+        assert_eq!(local_decision(r#"{"type":"decision"}"#), None);
+        assert_eq!(local_decision("{"), None);
+    }
 }

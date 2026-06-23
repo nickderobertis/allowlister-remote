@@ -45,7 +45,8 @@ use axum::response::Response;
 use axum::routing::get;
 use axum::Router;
 use futures_util::{SinkExt, StreamExt};
-use serde_json::{json, Value};
+use serde::Serialize;
+use serde_json::Value;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 
 /// Which side of the mediation a connection is on. Determines which messages it
@@ -85,26 +86,83 @@ pub fn message_kind(message: &Value) -> &str {
     message.get("type").and_then(Value::as_str).unwrap_or("")
 }
 
+/// The outbound wire envelopes, serialized straight from borrowed fields. Using
+/// typed structs instead of `json!({…}).to_string()` skips the intermediate
+/// `Value` map (its node allocations and boxed key/value strings) each envelope
+/// would otherwise build before serializing — serde writes the fields directly
+/// into the output buffer. Key order differs from the old sorted-`Value` output
+/// but every consumer parses these as JSON objects, so it is semantically
+/// identical (the `*_message` tests lock the round-trip).
+#[derive(Serialize)]
+struct Added<'a> {
+    #[serde(rename = "type")]
+    kind: &'a str,
+    request: &'a Value,
+}
+
+#[derive(Serialize)]
+struct Resolved<'a> {
+    #[serde(rename = "type")]
+    kind: &'a str,
+    #[serde(rename = "requestId")]
+    request_id: &'a str,
+}
+
+#[derive(Serialize)]
+struct Decision<'a> {
+    #[serde(rename = "type")]
+    kind: &'a str,
+    #[serde(rename = "requestId")]
+    request_id: &'a str,
+    verdict: &'a str,
+    reason: &'a str,
+}
+
+#[derive(Serialize)]
+struct Snapshot<'a> {
+    #[serde(rename = "type")]
+    kind: &'a str,
+    requests: &'a [&'a Value],
+}
+
 /// Wire envelope announcing a new pending request to PWAs. Pure: the
 /// per-`create` serialization the broker fans out to every subscriber.
 pub fn added_message(request: &Value) -> String {
-    json!({ "type": "added", "request": request }).to_string()
+    serde_json::to_string(&Added {
+        kind: "added",
+        request,
+    })
+    .expect("added envelope serializes to JSON")
 }
 
 /// Wire envelope telling PWAs to dismiss a resolved request. Pure.
 pub fn resolved_message(id: &str) -> String {
-    json!({ "type": "resolved", "requestId": id }).to_string()
+    serde_json::to_string(&Resolved {
+        kind: "resolved",
+        request_id: id,
+    })
+    .expect("resolved envelope serializes to JSON")
 }
 
 /// Wire envelope routing a web decision back to the owning daemon. Pure.
 pub fn decision_message(id: &str, verdict: &str, reason: &str) -> String {
-    json!({ "type": "decision", "requestId": id, "verdict": verdict, "reason": reason }).to_string()
+    serde_json::to_string(&Decision {
+        kind: "decision",
+        request_id: id,
+        verdict,
+        reason,
+    })
+    .expect("decision envelope serializes to JSON")
 }
 
 /// Wire envelope of the current pending set sent to a newly-subscribed PWA.
 /// Pure: the snapshot serialization, which grows with the pending count.
 pub fn snapshot_message(requests: &[&Value]) -> String {
-    json!({ "type": "snapshot", "requests": requests }).to_string()
+    serde_json::to_string(&Snapshot {
+        kind: "snapshot",
+        requests,
+    })
+    .expect("snapshot envelope serializes to JSON")
 }
 
 /// Build the axum router. Split out from `main` so integration tests can serve
@@ -304,5 +362,48 @@ impl Broker {
 fn broadcast(pwas: &HashMap<u64, UnboundedSender<String>>, text: &str) {
     for tx in pwas.values() {
         let _ = tx.send(text.to_string());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    /// The typed-struct envelopes must parse back to exactly the JSON the old
+    /// `json!({…}).to_string()` builders produced — same keys, same values. Key
+    /// order is free to differ (every consumer parses these as objects), so the
+    /// guarantee is semantic equality, asserted by comparing parsed `Value`s.
+    #[test]
+    fn outbound_envelopes_round_trip_to_the_expected_json() {
+        let request = json!({ "id": "req_1", "command": "gh pr merge 42" });
+
+        let parsed: Value = serde_json::from_str(&added_message(&request)).unwrap();
+        assert_eq!(parsed, json!({ "type": "added", "request": request }));
+
+        let parsed: Value = serde_json::from_str(&resolved_message("req_1")).unwrap();
+        assert_eq!(parsed, json!({ "type": "resolved", "requestId": "req_1" }));
+
+        let parsed: Value =
+            serde_json::from_str(&decision_message("req_1", "allow", "ok in app")).unwrap();
+        assert_eq!(
+            parsed,
+            json!({ "type": "decision", "requestId": "req_1", "verdict": "allow", "reason": "ok in app" })
+        );
+
+        let a = json!({ "id": "a" });
+        let b = json!({ "id": "b" });
+        let refs: Vec<&Value> = vec![&a, &b];
+        let parsed: Value = serde_json::from_str(&snapshot_message(&refs)).unwrap();
+        assert_eq!(parsed, json!({ "type": "snapshot", "requests": [a, b] }));
+    }
+
+    /// A `reason` carrying JSON metacharacters must round-trip intact (the
+    /// serializer escapes it), not corrupt the frame.
+    #[test]
+    fn decision_message_escapes_reason() {
+        let parsed: Value =
+            serde_json::from_str(&decision_message("req_1", "deny", "no \"quotes\"\n")).unwrap();
+        assert_eq!(parsed["reason"], "no \"quotes\"\n");
     }
 }
