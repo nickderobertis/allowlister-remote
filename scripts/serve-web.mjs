@@ -2,6 +2,7 @@
 import { createReadStream, statSync } from "node:fs";
 import { createServer } from "node:http";
 import { extname, join, normalize, resolve, sep } from "node:path";
+import { createGzip } from "node:zlib";
 
 const MIME = {
   ".html": "text/html",
@@ -17,6 +18,20 @@ const MIME = {
   ".map": "application/json",
   ".woff2": "font/woff2",
 };
+
+// Mirror the published server (packages/allowlister-remote-web/bin/serve.mjs):
+// gzip the text assets so this dev/e2e/Lighthouse server measures the same
+// over-the-wire bytes a real static host serves. Image/font types are already
+// compressed, so they are excluded.
+const COMPRESSIBLE = new Set([
+  "text/html",
+  "text/javascript",
+  "text/css",
+  "application/json",
+  "application/manifest+json",
+  "image/svg+xml",
+  "text/plain",
+]);
 
 function parseArgs(argv) {
   const opts = { dir: "apps/web/out", port: 4183, host: "127.0.0.1" };
@@ -73,18 +88,32 @@ function resolveTarget(dir, urlPath) {
 }
 
 function sendFile(req, res, filePath) {
-  const headers = { "Content-Type": mimeFor(filePath) };
+  const type = mimeFor(filePath);
+  const headers = { "Content-Type": type };
   const urlPath = decodeURIComponent((req.url ?? "/").split("?")[0]);
   if (urlPath === "/sw.js") {
     headers["Service-Worker-Allowed"] = "/";
     headers["Cache-Control"] = "no-cache";
+  }
+  // Compress text assets when the client accepts gzip; `Vary` keeps any shared
+  // cache from serving a gzipped body to a client that did not ask for one.
+  const acceptsGzip = /\bgzip\b/.test(req.headers["accept-encoding"] ?? "");
+  const compress = acceptsGzip && COMPRESSIBLE.has(type);
+  if (compress) {
+    headers["Content-Encoding"] = "gzip";
+    headers.Vary = "Accept-Encoding";
   }
   res.writeHead(200, headers);
   if (req.method === "HEAD") {
     res.end();
     return;
   }
-  createReadStream(filePath).pipe(res);
+  const file = createReadStream(filePath);
+  if (compress) {
+    file.pipe(createGzip()).pipe(res);
+  } else {
+    file.pipe(res);
+  }
 }
 
 function main() {
