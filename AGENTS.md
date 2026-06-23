@@ -217,6 +217,9 @@ What is **not** yet done, and what closing each gap entails:
 - **Post-release broker smoke.** `e2e-smoke` drives the *published* plugin and
   daemon but still builds the broker from source; it could instead install the
   published broker via `scripts/install-broker.sh` to verify that artifact too.
-- **Visual-docs baselines.** The static-export switch changes how the app is
-  served during capture; if the byte-identical gallery gate drifts, regenerate
-  the baselines in the pinned Playwright image (`screencomp`), not locally.
+- **Visual-docs baselines.** The static-export switch dropped the Next image
+  optimizer, so the brand logo now renders via the browser — its bytes shifted in
+  the two logo-bearing shots (`inbox`, `empty-state`). The committed baseline was
+  regenerated for this in the pinned Playwright image via the Docker capture in
+  `.githooks/pre-push` (`screencomp classify` → `manifest`); re-run that flow if a
+  future change drifts the gallery, rather than capturing on the host directly.
