@@ -85,14 +85,24 @@ Use `just`; do not hand-roll equivalent commands.
     auto-memoizes every component and hook value at build time, so manual caching is redundant
     here — leave it out, and prefer plain derived values and inline handlers. (Reach for `useMemo`
     only on the rare occasion you need a *referentially stable value for correctness*, e.g. a
-    dependency the compiler cannot see, not as an optimization.) `react-compiler-healthcheck`
-    confirms the compiler optimizes all components; if it ever reports a bailout, fix the
-    Rules-of-React violation rather than papering over it with manual memoization.
+    dependency the compiler cannot see, not as an optimization.)
+  - **A compiler bailout is a lint error.** The `lint-compiler` target (`nx run web:lint-compiler`,
+    cached on the web `.ts`/`.tsx` sources) runs ESLint's React Compiler rules at error level, so a
+    Rules-of-React violation that makes the compiler silently skip a component (a ref/state write
+    during render, impurity, mutation, unsupported syntax, an incompatible library) fails the build.
+    Fix the violation rather than papering over it with manual memoization. It runs in CI (`just
+    check`) and the pre-push hook, never pre-commit — see the ESLint note under **Quality and tests**.
 - Release helpers live behind `npm run release:*`; tags, GitHub Releases, and npm publishing run in Actions.
 
 ## Quality and tests
 
 - Keep TypeScript strict and boundary types explicit.
+- **Biome is the linter and formatter.** ESLint exists only for React Compiler rules Biome has no
+  equivalent for (`apps/web/eslint.config.mjs`, the `lint-compiler` target). Keep it that way: do
+  not move general linting to ESLint, and do not enable ESLint rules that overlap Biome — the config
+  already disables `react-hooks/rules-of-hooks` and `exhaustive-deps` because Biome's
+  `useHookAtTopLevel` and `useExhaustiveDependencies` own them. ESLint runs in CI (`just check`) and
+  the pre-push hook only, never pre-commit, so day-to-day commits stay on Biome alone.
 - Tests cover the approval decision flow, request summarization, the broker
   bridge (the PWA's only request source, driven through a mocked bridge with raw
   protocol-v3 payloads), and offline behavior. Coverage gates enforce 95% lines/statements, 90% functions, and 80% branches. Line coverage keeps the create-repo default bar while branch coverage stays focused on meaningful UI paths.

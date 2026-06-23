@@ -14,7 +14,7 @@ setup-check:
     @bash scripts/setup-check.sh
 
 check: test
-    if [[ -n "${NX_BASE:-}" ]]; then npx nx affected -t fmt-check lint typecheck build test-e2e --base "$NX_BASE" --head "${NX_HEAD:-HEAD}"; else npx nx affected -t fmt-check lint typecheck build test-e2e --uncommitted; fi
+    if [[ -n "${NX_BASE:-}" ]]; then npx nx affected -t fmt-check lint lint-compiler typecheck build test-e2e --base "$NX_BASE" --head "${NX_HEAD:-HEAD}"; else npx nx affected -t fmt-check lint lint-compiler typecheck build test-e2e --uncommitted; fi
     @echo "check: ok"
 
 fmt-check:
