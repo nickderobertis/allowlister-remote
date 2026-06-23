@@ -7,14 +7,19 @@ import type { BrokerStatus } from "@/components/connection-status";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { applyAdded, applyResolved, applySnapshot } from "@/inbox";
-import { brokerWsUrl, resolveBrokerBase, setStoredBrokerBase } from "@/lib/broker-config";
+import {
+  brokerWsUrl,
+  buildTimeBrokerBase,
+  resolveBrokerBase,
+  setStoredBrokerBase,
+} from "@/lib/broker-config";
 import { useIsDesktop, useKeyboardShortcuts } from "@/lib/keyboard";
 import { ThemeProvider } from "@/lib/theme";
 import { connectBroker } from "@/pwa/broker-bridge";
 import type { ApprovalRequest } from "@/types";
 
 type Verdict = "allow" | "deny";
-type BootState = "resolving" | "no-sw" | "needs-broker" | "ready";
+type BootState = "no-sw" | "needs-broker" | "ready";
 
 // The single visible view, chosen from the boot/selection state. Kept as its own
 // component so the orchestrator below stays focused on state and effects.
@@ -99,13 +104,21 @@ function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [focusedIndex, setFocusedIndex] = useState(0);
   const [showShortcuts, setShowShortcuts] = useState(false);
-  // The configured broker base, and where the app is in its one-time boot: until
-  // it resolves (a client-only read of navigator.serviceWorker, localStorage and
-  // the URL) the app shows a neutral empty shell, so the static-export prerender
-  // and the first client render match. Then it is either unsupported (no service
-  // worker), awaiting a broker URL, or ready to connect.
-  const [brokerBase, setBrokerBase] = useState<string | null>(null);
-  const [bootState, setBootState] = useState<BootState>("resolving");
+  // The configured broker base and where the app is in its one-time boot. The
+  // initial value is derived from the build-time default alone (buildTimeBrokerBase
+  // reads an env constant Next inlines, so it is identical during the static-export
+  // prerender and the client's first render — no hydration mismatch). That lets the
+  // very first paint show the real resting view (the inbox when a broker is baked
+  // in, the setup screen otherwise) instead of a neutral placeholder that swaps
+  // after hydration — the prerendered view *is* the LCP element, so it paints at
+  // first contentful paint rather than after the JS hydrates. The effect below then
+  // refines this with the client-only signals (service worker, the saved setting,
+  // and a `?broker=` deep link), which only changes the view in the cases that
+  // differ from the baked-in default.
+  const [brokerBase, setBrokerBase] = useState<string | null>(buildTimeBrokerBase);
+  const [bootState, setBootState] = useState<BootState>(() =>
+    buildTimeBrokerBase() ? "ready" : "needs-broker",
+  );
   // The live broker connection, surfaced so an unreachable broker is visible
   // rather than looking like an idle inbox. Starts "connecting" until the bridge
   // reports the socket opened or dropped.
@@ -121,9 +134,12 @@ function App() {
     close: () => void;
   } | null>(null);
 
-  // Resolve the runtime environment once on mount. This reads browser-only state
-  // (the service worker, the saved broker setting, the URL), so it lives in an
-  // effect rather than during render.
+  // Refine the boot state once on mount with the browser-only signals the initial
+  // render could not see: the service worker, the saved broker setting, and a
+  // `?broker=` deep link. For the common client — the one matching the baked-in
+  // default — this confirms the already-rendered view and nothing swaps; it only
+  // changes the view for an unsupported browser, a per-device saved broker, or a
+  // deep link.
   useEffect(() => {
     if (!navigator.serviceWorker) {
       setBootState("no-sw");
