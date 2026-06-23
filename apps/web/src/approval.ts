@@ -27,12 +27,15 @@ export function triggeredRules(request: ShellApprovalRequest): string[] {
 }
 
 // A short identifier for the request, used for headings and accessible labels.
+// Only the first flagged fragment is needed, so this finds it directly rather
+// than materializing the whole `flaggedFragments` array to read element zero —
+// an allocation the heap-footprint harness flagged on every shell card.
 export function requestHeadline(request: ApprovalRequest): string {
   if (isToolRequest(request)) {
     return request.tool.name;
   }
-  const [first] = flaggedFragments(request);
-  return first?.display ?? request.command;
+  const first = request.fragments.find((fragment) => fragment.verdict !== "allow");
+  return (first ?? request.fragments[0])?.display ?? request.command;
 }
 
 // A one-line, human-readable summary of a tool call's canonical parameters,

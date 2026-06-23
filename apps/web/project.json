@@ -63,6 +63,14 @@
       },
       "cache": false
     },
+    "heap": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node scripts/web-heap.mjs",
+        "cwd": "."
+      },
+      "cache": false
+    },
     "build": {
       "executor": "nx:run-commands",
       "options": {
