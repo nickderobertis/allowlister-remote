@@ -79,6 +79,34 @@ pub struct Broker {
 
 pub type SharedBroker = Arc<Broker>;
 
+/// The dispatch key of an inbound frame: its `type`, or `""` when absent. Pure;
+/// the first thing `on_message` does to route a frame.
+pub fn message_kind(message: &Value) -> &str {
+    message.get("type").and_then(Value::as_str).unwrap_or("")
+}
+
+/// Wire envelope announcing a new pending request to PWAs. Pure: the
+/// per-`create` serialization the broker fans out to every subscriber.
+pub fn added_message(request: &Value) -> String {
+    json!({ "type": "added", "request": request }).to_string()
+}
+
+/// Wire envelope telling PWAs to dismiss a resolved request. Pure.
+pub fn resolved_message(id: &str) -> String {
+    json!({ "type": "resolved", "requestId": id }).to_string()
+}
+
+/// Wire envelope routing a web decision back to the owning daemon. Pure.
+pub fn decision_message(id: &str, verdict: &str, reason: &str) -> String {
+    json!({ "type": "decision", "requestId": id, "verdict": verdict, "reason": reason }).to_string()
+}
+
+/// Wire envelope of the current pending set sent to a newly-subscribed PWA.
+/// Pure: the snapshot serialization, which grows with the pending count.
+pub fn snapshot_message(requests: &[&Value]) -> String {
+    json!({ "type": "snapshot", "requests": requests }).to_string()
+}
+
 /// Build the axum router. Split out from `main` so integration tests can serve
 /// the same app on an ephemeral port.
 pub fn app(broker: SharedBroker) -> Router {
@@ -162,7 +190,7 @@ impl Broker {
     /// Route one inbound client message. Pure dispatch; the mutations live in the
     /// helpers so they can be unit-tested without a socket.
     pub fn on_message(&self, conn: u64, role: Role, message: Value) {
-        let kind = message.get("type").and_then(Value::as_str).unwrap_or("");
+        let kind = message_kind(&message);
         match (role, kind) {
             (Role::Daemon, "create") => {
                 if let Some(request) = message.get("request") {
@@ -213,7 +241,7 @@ impl Broker {
             existing.request = request;
             return;
         }
-        let added = json!({ "type": "added", "request": request.clone() }).to_string();
+        let added = added_message(&request);
         inner.requests.insert(id, Pending { request, owner });
         broadcast(&inner.pwas, &added);
     }
@@ -229,13 +257,10 @@ impl Broker {
         };
         if let (Some((verdict, reason)), false) = (&decision, from_daemon) {
             if let Some(tx) = inner.daemons.get(&pending.owner) {
-                let _ = tx.send(
-                    json!({"type":"decision","requestId":id,"verdict":verdict,"reason":reason})
-                        .to_string(),
-                );
+                let _ = tx.send(decision_message(id, verdict, reason));
             }
         }
-        let resolved = json!({ "type": "resolved", "requestId": id }).to_string();
+        let resolved = resolved_message(id);
         broadcast(&inner.pwas, &resolved);
     }
 
@@ -244,7 +269,7 @@ impl Broker {
     fn send_snapshot(&self, conn: u64) {
         let inner = self.inner.lock().unwrap();
         let requests: Vec<&Value> = inner.requests.values().map(|p| &p.request).collect();
-        let snapshot = json!({ "type": "snapshot", "requests": requests }).to_string();
+        let snapshot = snapshot_message(&requests);
         if let Some(tx) = inner.pwas.get(&conn) {
             let _ = tx.send(snapshot);
         }
@@ -268,7 +293,7 @@ impl Broker {
                     .collect();
                 for id in orphaned {
                     inner.requests.remove(&id);
-                    let resolved = json!({ "type": "resolved", "requestId": id }).to_string();
+                    let resolved = resolved_message(&id);
                     broadcast(&inner.pwas, &resolved);
                 }
             }

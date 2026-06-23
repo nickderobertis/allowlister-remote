@@ -63,12 +63,25 @@ upgrade:
     npm install
     @just check
 
-# Performance suite (informational — measured, not gated). See
-# crates/allowlister-remote-plugin/benches/ and scripts/{bench,profile}.sh.
+# Performance suite (informational — measured, not gated). Each Rust binary has
+# the same two layers over its pure, network-free surface: Criterion timings and
+# deterministic allocation tallies. The plugin (a one-shot CLI) additionally has
+# end-to-end CLI latency/instruction layers below; the daemon and broker are
+# long-lived servers, so per-process startup is amortized and those CLI layers do
+# not apply — their hot path is the per-message protocol work. See each crate's
+# benches/ and scripts/{bench,profile}.sh.
 
-# Criterion micro-benchmarks of the pure decision path; saves a "current" baseline.
+# Criterion micro-benchmarks of the plugin's pure decision path; saves a "current" baseline.
 bench:
     cargo bench --locked -p allowlister-remote-plugin --bench engine -- --save-baseline current
+
+# Criterion micro-benchmarks of the daemon's pure protocol path.
+bench-daemon:
+    cargo bench --locked -p allowlister-remote-daemon --bench protocol
+
+# Criterion micro-benchmarks of the broker's pure protocol path.
+bench-broker:
+    cargo bench --locked -p allowlister-remote-broker --bench protocol
 
 # Save a "base" baseline to diff against later with `just bench-compare`.
 bench-base:
@@ -78,9 +91,17 @@ bench-base:
 bench-compare:
     critcmp base current
 
-# Deterministic allocator tallies for the same hot paths (markdown table).
+# Deterministic allocator tallies for the plugin's hot paths (markdown table).
 bench-allocs:
     cargo bench --locked --quiet -p allowlister-remote-plugin --bench engine_allocs
+
+# Deterministic allocator tallies for the daemon's protocol path (markdown table).
+bench-allocs-daemon:
+    cargo bench --locked --quiet -p allowlister-remote-daemon --bench protocol_allocs
+
+# Deterministic allocator tallies for the broker's protocol path (markdown table).
+bench-allocs-broker:
+    cargo bench --locked --quiet -p allowlister-remote-broker --bench protocol_allocs
 
 # Deterministic end-to-end CLI instruction counts (valgrind cachegrind).
 bench-instructions:
@@ -97,6 +118,14 @@ bench-cli-smoke:
 # Sampling/instruction profiler (samply or callgrind). E.g. `just profile cli`.
 profile *args:
     @bash scripts/profile.sh {{args}}
+
+# Sample the daemon's protocol bench hot path (samply). Optional Criterion filter.
+profile-daemon *args:
+    @PROFILE_PKG=allowlister-remote-daemon PROFILE_BENCH=protocol bash scripts/profile.sh engine {{args}}
+
+# Sample the broker's protocol bench hot path (samply). Optional Criterion filter.
+profile-broker *args:
+    @PROFILE_PKG=allowlister-remote-broker PROFILE_BENCH=protocol bash scripts/profile.sh engine {{args}}
 
 # Web PWA performance suite (informational — measured, not gated). Mirrors the
 # plugin suite above: Vitest micro-benchmarks of the pure decision surface, a

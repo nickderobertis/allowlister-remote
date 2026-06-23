@@ -268,23 +268,48 @@ fn tls_connector_with_ca(ca_path: &str) -> Option<Connector> {
 }
 
 fn route_decision(routes: &Routes, text: &str) {
-    let Ok(value) = serde_json::from_str::<Value>(text) else {
-        return;
-    };
-    if value.get("type").and_then(Value::as_str) != Some("decision") {
-        return;
-    }
-    let Some(id) = value.get("requestId").and_then(Value::as_str) else {
+    let Some(id) = decision_target(text) else {
         return;
     };
     let sender = routes
         .lock()
         .unwrap()
-        .get(id)
+        .get(&id)
         .map(|route| route.decision_tx.clone());
     if let Some(sender) = sender {
         let _ = sender.send(text.to_string());
     }
+}
+
+/// Extract the target request id from an inbound broker frame, if it is a
+/// `decision` addressed to a pending request. This is the pure parse half of
+/// `route_decision` — the routing-table lookup that follows is shared state, not
+/// measured by the protocol benches that exercise this.
+pub fn decision_target(text: &str) -> Option<String> {
+    let value: Value = serde_json::from_str(text).ok()?;
+    if value.get("type").and_then(Value::as_str) != Some("decision") {
+        return None;
+    }
+    value
+        .get("requestId")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+}
+
+/// Build the broker `create` envelope from a plugin's parsed `create` message,
+/// stamping the daemon-assigned `id` into the forwarded allowlister body. Pure:
+/// no IO and no id generation (the caller passes the id), so the output is a
+/// deterministic function of its inputs — exactly the per-gated-command work the
+/// daemon does between reading the plugin's line and sending it upstream.
+pub fn build_create_msg(create: &Value, id: &str) -> String {
+    let mut request = match create.get("payload").cloned() {
+        Some(Value::Object(map)) => Value::Object(map),
+        other => json!({ "payload": other }),
+    };
+    if let Value::Object(map) = &mut request {
+        map.insert("id".to_string(), json!(id));
+    }
+    json!({ "type": "create", "request": request }).to_string()
 }
 
 /// Handle one plugin connection: register its request with the broker, then race
@@ -310,14 +335,7 @@ where
 
     // The daemon owns the id space; the plugin just forwards its allowlister body.
     let id = new_request_id();
-    let mut request = match create.get("payload").cloned() {
-        Some(Value::Object(map)) => Value::Object(map),
-        other => json!({ "payload": other }),
-    };
-    if let Value::Object(map) = &mut request {
-        map.insert("id".to_string(), json!(id));
-    }
-    let create_msg = json!({ "type": "create", "request": request }).to_string();
+    let create_msg = build_create_msg(&create, &id);
 
     let (decision_tx, mut decision_rx) = unbounded_channel::<String>();
     routes.lock().unwrap().insert(
@@ -365,7 +383,11 @@ where
     routes.lock().unwrap().remove(&id);
 }
 
-fn local_decision(raw: &str) -> Option<(String, String)> {
+/// Parse a line the plugin relays from the local terminal into a `(verdict,
+/// reason)` pair, or `None` if it is not a well-formed `decision`. Pure: the
+/// per-line work the daemon does on a local-terminal decision before forwarding
+/// it upstream.
+pub fn local_decision(raw: &str) -> Option<(String, String)> {
     let value: Value = serde_json::from_str(raw).ok()?;
     if value.get("type").and_then(Value::as_str) != Some("decision") {
         return None;

@@ -50,14 +50,30 @@ Use `just`; do not hand-roll equivalent commands.
 - `just dev` delegates to `nx run web:dev`.
 - `just smoke-e2e [version]` builds the app and runs the broker-realtime e2e against the
   plugin package installed from the public npm registry (defaults to the latest version).
-- `just bench` / `just bench-allocs` run the Rust plugin's informational performance
-  suite — Criterion micro-benchmarks and a deterministic allocation report over the
-  pure decision path — while `just bench-cli` (hyperfine), `just bench-instructions`
-  (cachegrind), and `just profile` (samply / callgrind) cover end-to-end CLI latency,
-  deterministic instruction counts, and sampling profiles. See the plugin's `benches/`
-  and `scripts/{bench,bench-instructions,profile}.sh`. The `Performance` workflow
-  (`bench.yml`) runs these on PRs that affect the plugin and posts the numbers as a sticky
-  comment plus a job summary; it is informational, never a required check.
+- Every Rust binary has informational performance coverage over its pure,
+  network-free surface, in two layers: Criterion micro-benchmarks and a
+  deterministic allocation report. For the **plugin** (the decision path):
+  `just bench` / `just bench-allocs`. For the **daemon** and **broker** (the
+  per-message protocol path — parse, route, and serialize the wire envelopes):
+  `just bench-daemon` / `just bench-allocs-daemon` and `just bench-broker` /
+  `just bench-allocs-broker`. Each crate's benches live in its own `benches/`
+  (`engine`/`engine_allocs` for the plugin, `protocol`/`protocol_allocs` for the
+  daemon and broker) and mirror the same shape: fixtures under `support/`, pure
+  functions only, `harness = false`. `just profile` (samply / callgrind) samples
+  the plugin's hot path; `just profile-daemon` / `just profile-broker` sample the
+  daemon/broker protocol benches (via `PROFILE_PKG`/`PROFILE_BENCH` in
+  `scripts/profile.sh`).
+  - The plugin additionally has end-to-end **CLI** layers, because it is a
+    one-shot process spawned once per gated command, so per-process startup is on
+    the hot path: `just bench-cli` (hyperfine latency) and `just bench-instructions`
+    (cachegrind instruction counts), see `scripts/{bench,bench-instructions}.sh`.
+    These do **not** apply to the daemon and broker — they are long-lived servers,
+    so per-process startup is amortized to nothing and their hot path is the
+    per-message protocol work covered by the Criterion + allocation layers above.
+  - The `Performance` workflow (`bench.yml`) runs these on PRs, gated per crate by
+    Nx affected (a daemon-only change skips the plugin and broker suites, etc.),
+    and posts the numbers as a sticky comment plus a job summary; it is
+    informational, never a required check.
 - `just bench-web` / `just bundle-size` / `just render-cost` / `just lighthouse` run the PWA's
   parallel performance suite: Vitest micro-benchmarks of the pure decision/summarization surface
   (`apps/web/src/perf/*.bench.ts`), a deterministic gzip bundle-size report
@@ -107,10 +123,17 @@ Use `just`; do not hand-roll equivalent commands.
   bridge (the PWA's only request source, driven through a mocked bridge with raw
   protocol-v3 payloads), and offline behavior. Coverage gates enforce 95% lines/statements, 90% functions, and 80% branches. Line coverage keeps the create-repo default bar while branch coverage stays focused on meaningful UI paths.
 - The production build must include the PWA manifest and service worker.
-- The plugin's performance suite is informational, not a gate: it benches the pure,
-  network-free decision surface (`triage`, `build_create_body`, `interpret_decision`,
-  `parse_local_input`) so the numbers track what the binary runs between stdin and the
-  daemon. `harness = false` keeps the bench targets out of the test runner and
+- The Rust performance suites are informational, not a gate, and each benches its
+  binary's pure, network-free surface so the numbers track what that binary
+  actually runs between its inputs and outputs. The **plugin** benches its decision
+  surface (`triage`, `build_create_body`, `interpret_decision`, `parse_local_input`)
+  — the work between stdin and the daemon. The **daemon** benches its protocol
+  surface (`build_create_msg`, `decision_target`, `local_decision`) — the
+  per-message work between the IPC socket and the broker connection. The **broker**
+  benches its protocol surface (`message_kind`, `added_message`, `resolved_message`,
+  `decision_message`, `snapshot_message`) — the per-message work between its two
+  WebSocket edges. No sockets, TLS, mutexes, or reconnect supervision inside a timed
+  loop. `harness = false` keeps the bench targets out of the test runner and
   coverage; `--all-targets` lint/typecheck keep them compiling.
 - E2E must exercise the real browser approval flow in both desktop and mobile
   viewports through the actual allowlister plugin process, the host daemon, and

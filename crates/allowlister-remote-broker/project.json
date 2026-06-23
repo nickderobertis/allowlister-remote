@@ -48,6 +48,22 @@
       },
       "outputs": ["{workspaceRoot}/target/debug/allowlister-remote-broker"],
       "cache": false
+    },
+    "bench": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo bench --locked -p allowlister-remote-broker --bench protocol",
+        "cwd": "."
+      },
+      "cache": false
+    },
+    "bench-allocs": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo bench --locked --quiet -p allowlister-remote-broker --bench protocol_allocs",
+        "cwd": "."
+      },
+      "cache": false
     }
   }
 }

@@ -19,6 +19,12 @@
 #   scripts/profile.sh callgrind          Deterministic per-function attribution
 #                                         of one CLI invocation (valgrind; Linux).
 #
+# The `engine` mode profiles the plugin's `engine` bench by default; set
+# PROFILE_PKG/PROFILE_BENCH to sample another crate's Criterion bench instead
+# (e.g. the daemon or broker `protocol` bench — see `just profile-daemon` /
+# `just profile-broker`). The `cli` and `callgrind` modes are plugin-only: they
+# profile the one-shot CLI process, which the long-lived daemon/broker do not have.
+#
 # A single CLI run is far too short to sample, which is why the engine mode
 # (Criterion's `--profile-time`, a long-running in-process loop) is the right
 # tool for the pure functions, and the CLI mode loops the binary.
@@ -87,14 +93,18 @@ command -v samply >/dev/null 2>&1 ||
 if [[ "$mode" == "engine" ]]; then
     shift || true
     filter="${1:-}"
-    echo "» building bench (profiling profile)"
+    # Default to the plugin's `engine` bench; PROFILE_PKG/PROFILE_BENCH point the
+    # same machinery at the daemon or broker `protocol` bench.
+    pkg="${PROFILE_PKG:-allowlister-remote-plugin}"
+    bench_name="${PROFILE_BENCH:-engine}"
+    echo "» building bench '$bench_name' ($pkg, profiling profile)"
     # Build the bench with symbols, then read its executable path from cargo's
     # JSON output (no jq dependency).
-    artifact="$(cargo build --profile profiling --bench engine --locked --message-format=json -q |
-        grep -F '"name":"engine"' | grep -F '"executable":' | tail -1)"
+    artifact="$(cargo build --profile profiling -p "$pkg" --bench "$bench_name" --locked --message-format=json -q |
+        grep -F "\"name\":\"$bench_name\"" | grep -F '"executable":' | tail -1)"
     bench_exe="$(printf '%s' "$artifact" | grep -o '"executable":"[^"]*"' | cut -d'"' -f4)"
     [ -n "$bench_exe" ] && [ -x "$bench_exe" ] || fail "could not locate the profiling bench executable"
-    echo "» profiling engine for ${seconds}s (${filter:-all benchmarks})"
+    echo "» profiling $bench_name for ${seconds}s (${filter:-all benchmarks})"
     # `--profile-time` makes Criterion run the bench in a plain loop with no
     # statistical analysis — exactly what an external sampler wants.
     samply record "${samply_args[@]}" -- \
