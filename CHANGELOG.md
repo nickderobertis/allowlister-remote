@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.14.1](https://github.com/nickderobertis/allowlister-remote/compare/v0.14.0...v0.14.1) (2026-06-23)
+
+
+### Bug Fixes
+
+* **daemon:** derive broker /ws/daemon endpoint from a base URL ([#94](https://github.com/nickderobertis/allowlister-remote/issues/94)) ([3f9fa9a](https://github.com/nickderobertis/allowlister-remote/commit/3f9fa9a2f0b223c832563c6307a6035058d0ec4b))
+
+
+### Performance Improvements
+
+* **web:** gzip text assets in the static PWA server ([#89](https://github.com/nickderobertis/allowlister-remote/issues/89)) ([81c82dd](https://github.com/nickderobertis/allowlister-remote/commit/81c82ddbfb3c79d154aaee89e2fc4166bc100dff))
+* **web:** prerender the resting view to paint LCP at first paint ([#90](https://github.com/nickderobertis/allowlister-remote/issues/90)) ([6afc1c8](https://github.com/nickderobertis/allowlister-remote/commit/6afc1c8ac26f4cd7f7c416d752e5473e139f08fc))
+
 ## [0.14.0](https://github.com/nickderobertis/allowlister-remote/compare/v0.13.0...v0.14.0) (2026-06-23)
 
 
