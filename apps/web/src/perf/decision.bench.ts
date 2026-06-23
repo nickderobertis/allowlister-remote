@@ -23,10 +23,10 @@ import {
   toolCallLines,
   toolParamSummary,
   triggeredRules,
-} from "../approval";
-import { demoRequests } from "../fixtures";
-import type { AllowlisterFragment, ShellApprovalRequest, ToolApprovalRequest } from "../types";
-import { isShellRequest, isToolRequest } from "../types";
+} from "@/approval";
+import { demoRequests } from "@/fixtures";
+import type { AllowlisterFragment, ShellApprovalRequest, ToolApprovalRequest } from "@/types";
+import { isShellRequest, isToolRequest } from "@/types";
 
 const shellRequests = demoRequests.filter(isShellRequest);
 const toolRequests = demoRequests.filter(isToolRequest);

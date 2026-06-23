@@ -1,11 +1,16 @@
 {
+  "id": "/",
   "name": "allowlister remote",
   "short_name": "allowremote",
   "description": "Remote PWA approvals for allowlister dynamic approval requests.",
+  "lang": "en",
+  "dir": "ltr",
+  "categories": ["productivity", "developer", "utilities"],
   "theme_color": "#050816",
   "background_color": "#050816",
   "display": "standalone",
   "start_url": "/",
+  "scope": "/",
   "icons": [
     {
       "src": "/favicon.svg",

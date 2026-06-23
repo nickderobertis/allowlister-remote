@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   BROKER_URL_STORAGE_KEY,
   brokerWsUrl,
+  isValidBrokerBase,
   resolveBrokerBase,
   setStoredBrokerBase,
 } from "./broker-config";
@@ -34,5 +35,15 @@ describe("broker-config", () => {
     setStoredBrokerBase("");
     expect(window.localStorage.getItem(BROKER_URL_STORAGE_KEY)).toBeNull();
     expect(resolveBrokerBase("")).toBeNull();
+  });
+
+  it("accepts only well-formed ws:// and wss:// URLs", () => {
+    expect(isValidBrokerBase("wss://broker.example.com")).toBe(true);
+    expect(isValidBrokerBase("  ws://localhost:8787  ")).toBe(true);
+    expect(isValidBrokerBase("")).toBe(false);
+    expect(isValidBrokerBase("   ")).toBe(false);
+    expect(isValidBrokerBase("https://broker.example.com")).toBe(false);
+    expect(isValidBrokerBase("broker.example.com")).toBe(false);
+    expect(isValidBrokerBase("not a url")).toBe(false);
   });
 });

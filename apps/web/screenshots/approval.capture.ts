@@ -71,14 +71,20 @@ test.beforeEach(async ({ page }) => {
   // to the page's broker bridge — exactly the `snapshot` event shape the real
   // worker relays — the moment the bridge subscribes.
   await page.addInitScript((requests) => {
+    const status = { type: "broker-status", status: "open" };
     const snapshot = { type: "broker-event", event: { type: "snapshot", requests } };
     const fake = {
       controller: { postMessage() {} },
       register: () => Promise.resolve(undefined),
       addEventListener(type: string, listener: (event: { data: unknown }) => void) {
         if (type !== "message") return;
-        // Deliver the snapshot once this (the bridge's) listener attaches.
-        queueMicrotask(() => listener({ data: snapshot }));
+        // Once the bridge's listener attaches, report the socket as connected
+        // (so the captured inbox shows the normal "Connected" state) and then
+        // deliver the fixed snapshot of pending requests.
+        queueMicrotask(() => {
+          listener({ data: status });
+          listener({ data: snapshot });
+        });
       },
       removeEventListener() {},
     };

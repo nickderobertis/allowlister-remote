@@ -1,6 +1,6 @@
 import { type HTMLAttributes, useMemo } from "react";
-import { type JsonTokenKind, tokenizeJson } from "../../lib/json-highlight";
-import { cn } from "../../lib/utils";
+import { type JsonTokenKind, tokenizeJson } from "@/lib/json-highlight";
+import { cn } from "@/lib/utils";
 
 // Each token kind resolves to a theme variable (defined in index.css) so the
 // palette repaints with the light/dark toggle like every other surface.

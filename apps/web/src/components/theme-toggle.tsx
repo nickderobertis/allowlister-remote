@@ -1,8 +1,8 @@
 "use client";
 
 import type { ReactElement, SVGProps } from "react";
-import { type ThemePreference, useTheme } from "../lib/theme";
-import { Button } from "./ui/button";
+import { Button } from "@/components/ui/button";
+import { type ThemePreference, useTheme } from "@/lib/theme";
 
 // Cycle order matches the mental model: start on the OS default, then pin light,
 // then pin dark, then back to following the system.

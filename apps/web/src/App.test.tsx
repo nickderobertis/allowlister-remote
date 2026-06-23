@@ -174,6 +174,101 @@ describe("App broker connection", () => {
   });
 });
 
+describe("App broker connection status", () => {
+  it("shows connecting, then connected, then reconnecting as the socket changes", async () => {
+    await renderApp();
+    // Resting state until the bridge reports the socket opened.
+    expect(await screen.findByText("Connecting to broker…")).toBeInTheDocument();
+
+    act(() => broker.handlers?.onStatus?.("open"));
+    expect(await screen.findByText("Connected to broker")).toBeInTheDocument();
+
+    act(() => broker.handlers?.onStatus?.("closed"));
+    expect(await screen.findByText("Reconnecting to broker…")).toBeInTheDocument();
+  });
+
+  it("surfaces the connection on the empty state too", async () => {
+    const user = userEvent.setup();
+    await renderApp();
+    act(() => broker.handlers?.onStatus?.("open"));
+
+    for (const name of [
+      "Deny gh pr merge 42 --squash --delete-branch",
+      "Deny kubectl --context $region apply -f deploy/manifest.yaml",
+      "Deny mcp__github__create_issue",
+      "Deny write",
+    ]) {
+      await user.click(await screen.findByRole("button", { name }));
+    }
+
+    expect(await screen.findByText("No pending approvals")).toBeInTheDocument();
+    expect(screen.getByText("Connected to broker")).toBeInTheDocument();
+  });
+});
+
+describe("App broker reconfiguration", () => {
+  it("changes the broker from the inbox and reconnects to the new URL", async () => {
+    const user = userEvent.setup();
+    await renderApp();
+    await screen.findByRole("list", { name: "Pending approvals" });
+    expect(broker.url).toBe("ws://test/ws/pwa");
+
+    await user.click(screen.getByRole("button", { name: "Change broker" }));
+    // Pre-filled with the current base.
+    const input = await screen.findByLabelText("Broker URL");
+    expect(input).toHaveValue("ws://test");
+
+    await user.clear(input);
+    await user.type(input, "wss://new.example.com");
+    await user.click(screen.getByRole("button", { name: "Connect" }));
+
+    await waitFor(() => expect(broker.url).toBe("wss://new.example.com/ws/pwa"));
+    expect(window.localStorage.getItem("allowlister-remote-broker-url")).toBe(
+      "wss://new.example.com",
+    );
+  });
+
+  it("cancels a reconfiguration and returns to the inbox", async () => {
+    const user = userEvent.setup();
+    await renderApp();
+    await screen.findByRole("list", { name: "Pending approvals" });
+
+    await user.click(screen.getByRole("button", { name: "Change broker" }));
+    expect(await screen.findByRole("heading", { name: "Change your broker" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(await screen.findByRole("list", { name: "Pending approvals" })).toBeInTheDocument();
+  });
+
+  it("rejects a non-WebSocket URL on the setup screen", async () => {
+    const user = userEvent.setup();
+    window.localStorage.clear();
+    render(<App />);
+
+    const input = await screen.findByLabelText("Broker URL");
+    await user.type(input, "https://broker.example.com");
+    expect(screen.getByRole("button", { name: "Connect" })).toBeDisabled();
+    expect(screen.getByText(/Enter a/)).toBeInTheDocument();
+
+    await user.clear(input);
+    await user.type(input, "wss://broker.example.com");
+    expect(screen.getByRole("button", { name: "Connect" })).toBeEnabled();
+  });
+});
+
+describe("App shortcuts overlay focus", () => {
+  it("moves focus into the dialog when it opens", async () => {
+    const user = userEvent.setup();
+    await renderApp();
+    await screen.findByRole("list", { name: "Pending approvals" });
+
+    await user.click(screen.getByRole("button", { name: "Show keyboard shortcuts" }));
+    screen.getByRole("dialog", { name: "Keyboard shortcuts" });
+    // The first focusable inside the dialog (its Close control) takes focus.
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Close shortcuts" }));
+  });
+});
+
 describe("App inbox", () => {
   it("lists every pending allowlister request as an inbox entry", async () => {
     await renderApp();
