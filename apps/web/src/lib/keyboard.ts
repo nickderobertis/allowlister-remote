@@ -45,8 +45,14 @@ export type ShortcutMap = Record<string, ShortcutHandler>;
 // Tab + Enter/Space activation keeps working; Escape is always allowed through so
 // overlays can be dismissed from anywhere.
 export function useKeyboardShortcuts(shortcuts: ShortcutMap, enabled: boolean): void {
+  // Read the latest handler map through a ref so the keydown listener below stays
+  // subscribed across renders (callers pass a freshly built map each render) and
+  // still dispatches to the current handlers. The ref is updated in an effect,
+  // never during render, so React Compiler can optimize this hook.
   const shortcutsRef = useRef(shortcuts);
-  shortcutsRef.current = shortcuts;
+  useEffect(() => {
+    shortcutsRef.current = shortcuts;
+  });
 
   useEffect(() => {
     if (!enabled) {

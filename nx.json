@@ -9,6 +9,14 @@
       "!{projectRoot}/**/*.test.tsx",
       "!{projectRoot}/tests/**/*"
     ],
+    "compilerLint": [
+      "{projectRoot}/src/**/*.ts",
+      "{projectRoot}/src/**/*.tsx",
+      "{projectRoot}/app/**/*.ts",
+      "{projectRoot}/app/**/*.tsx",
+      "{projectRoot}/eslint.config.mjs",
+      "{workspaceRoot}/package-lock.json"
+    ],
     "sharedGlobals": [
       "{workspaceRoot}/package.json",
       "{workspaceRoot}/package-lock.json",
@@ -30,6 +38,10 @@
     "lint": {
       "cache": true,
       "inputs": ["default"]
+    },
+    "lint-compiler": {
+      "cache": true,
+      "inputs": ["compilerLint"]
     },
     "typecheck": {
       "cache": true,

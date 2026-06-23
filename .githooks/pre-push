@@ -11,6 +11,19 @@
 # Bypass intentionally:   git push --no-verify
 set -euo pipefail
 
+# React Compiler lint (ESLint, compiler-only rules — see apps/web/eslint.config.mjs).
+# Pre-push and CI only, never pre-commit, so commits stay fast on Biome alone. CI
+# runs the same target via `just check`; this is the local half. Skipped under CI
+# (the workflow is the source of truth) and when the affected graph excludes web.
+if [ -z "${CI:-}" ]; then
+  # Run the target directly (not `affected`, which needs a resolvable base ref):
+  # it is cached on the web sources, so this is instant when nothing changed.
+  npx nx run web:lint-compiler || {
+    echo "pre-push: react-compiler lint failed; fix it or bypass with git push --no-verify" >&2
+    exit 1
+  }
+fi
+
 # Detect this machine's arch so the same committed hook works for every developer.
 # It must be one of [capture].arches in screencomp.toml; if not, classify below
 # fails with an explanatory error telling you to add it.
