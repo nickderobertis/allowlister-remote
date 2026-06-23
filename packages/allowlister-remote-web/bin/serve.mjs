@@ -3,6 +3,7 @@ import { createReadStream, existsSync, statSync } from "node:fs";
 import { createServer } from "node:http";
 import { dirname, extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createGzip } from "node:zlib";
 
 const MIME = {
   ".html": "text/html",
@@ -18,6 +19,22 @@ const MIME = {
   ".map": "application/json",
   ".woff2": "font/woff2",
 };
+
+// The text-based assets gzip to roughly a third of their size — the PWA's first
+// load is ~700 kB of JS/CSS raw but ~210 kB gzipped — so serving them compressed
+// is the single biggest first-load win a static host gives (a Lighthouse audit of
+// the uncompressed build spent most of its LCP budget waiting on those bytes).
+// The image/font types are already compressed, so gzipping them only burns CPU
+// (and can grow them); they are excluded.
+const COMPRESSIBLE = new Set([
+  "text/html",
+  "text/javascript",
+  "text/css",
+  "application/json",
+  "application/manifest+json",
+  "image/svg+xml",
+  "text/plain",
+]);
 
 const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const staticDir = join(packageDir, "static");
@@ -78,18 +95,32 @@ function resolveTarget(dir, urlPath) {
 }
 
 function sendFile(req, res, filePath) {
-  const headers = { "Content-Type": mimeFor(filePath) };
+  const type = mimeFor(filePath);
+  const headers = { "Content-Type": type };
   const urlPath = decodeURIComponent((req.url ?? "/").split("?")[0]);
   if (urlPath === "/sw.js") {
     headers["Service-Worker-Allowed"] = "/";
     headers["Cache-Control"] = "no-cache";
+  }
+  // Compress text assets when the client accepts gzip; `Vary` keeps any shared
+  // cache from serving a gzipped body to a client that did not ask for one.
+  const acceptsGzip = /\bgzip\b/.test(req.headers["accept-encoding"] ?? "");
+  const compress = acceptsGzip && COMPRESSIBLE.has(type);
+  if (compress) {
+    headers["Content-Encoding"] = "gzip";
+    headers.Vary = "Accept-Encoding";
   }
   res.writeHead(200, headers);
   if (req.method === "HEAD") {
     res.end();
     return;
   }
-  createReadStream(filePath).pipe(res);
+  const file = createReadStream(filePath);
+  if (compress) {
+    file.pipe(createGzip()).pipe(res);
+  } else {
+    file.pipe(res);
+  }
 }
 
 function main() {
