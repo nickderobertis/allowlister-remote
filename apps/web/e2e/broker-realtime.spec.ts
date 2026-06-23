@@ -1,11 +1,6 @@
-import { type ChildProcess, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { existsSync } from "node:fs";
-import { rm } from "node:fs/promises";
-import { createConnection } from "node:net";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
-import { expect, type Page, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
+import { createBrokerHarness } from "./broker-harness";
 
 // The realtime path with every real component in the loop: the broker and daemon
 // binaries, the plugin binary in daemon mode, the Next app, and — crucially — the
@@ -14,157 +9,16 @@ import { expect, type Page, test } from "@playwright/test";
 // here the decision is made by a human-style click in a real Chromium page and
 // must travel SW → broker → daemon → plugin.
 
-const root = resolve(import.meta.dirname, "../../..");
-const targetDir = join(root, "target", "debug");
-// Honor the *_BIN env overrides so the post-release smoke drives the published
-// plugin and daemon binaries (the broker is server-side, built from source).
-const brokerBin =
-  process.env.ALLOWLISTER_REMOTE_BROKER_BIN ?? join(targetDir, "allowlister-remote-broker");
-const daemonBin =
-  process.env.ALLOWLISTER_REMOTE_DAEMON_BIN ?? join(targetDir, "allowlister-remote-daemon");
-const pluginBin =
-  process.env.ALLOWLISTER_REMOTE_PLUGIN_BIN ?? join(targetDir, "allowlister-remote-plugin");
-
-const socketPath = join(tmpdir(), `allowlister-remote-e2e-${randomUUID().slice(0, 8)}.sock`);
-
-// Fixed port for the broker this spec runs; each page is told to use it via a
-// client-side setting (localStorage) seeded in `subscribe` before navigation.
-const brokerPort = 4188;
-let broker: ChildProcess | undefined;
-let daemon: ChildProcess | undefined;
-
-function run(command: string, args: string[]): Promise<void> {
-  return new Promise((resolveRun, reject) => {
-    const child = spawn(command, args, { cwd: root, stdio: "inherit" });
-    child.on("close", (code) =>
-      code === 0 ? resolveRun() : reject(new Error(`${command} exited ${code}`)),
-    );
-  });
-}
-
-async function waitForPort(port: number): Promise<void> {
-  for (let attempt = 0; attempt < 200; attempt++) {
-    const open = await new Promise<boolean>((resolveOpen) => {
-      const socket = createConnection({ port, host: "127.0.0.1" }, () => {
-        socket.end();
-        resolveOpen(true);
-      });
-      socket.on("error", () => resolveOpen(false));
-    });
-    if (open) return;
-    await new Promise((r) => setTimeout(r, 50));
-  }
-  throw new Error(`broker port ${port} never opened`);
-}
-
-async function waitForSocket(): Promise<void> {
-  for (let attempt = 0; attempt < 200; attempt++) {
-    if (existsSync(socketPath)) return;
-    await new Promise((r) => setTimeout(r, 50));
-  }
-  throw new Error(`daemon socket ${socketPath} never appeared`);
-}
-
-// Spawn the plugin in daemon mode. It opens an approval request and blocks until
-// a decision is relayed back, printing the verdict JSON on exit.
-function runPlugin(payload: Record<string, unknown>) {
-  const child = spawn(pluginBin, ["--daemon-socket", socketPath], {
-    env: { ...process.env, NO_COLOR: "1" },
-  });
-  let stdout = "";
-  child.stdout.on("data", (chunk) => (stdout += String(chunk)));
-  child.stdin.write(JSON.stringify(payload));
-  child.stdin.end();
-  return {
-    promise: new Promise<{ code: number | null; stdout: string }>((resolveExit) => {
-      child.on("close", (code) => resolveExit({ code, stdout }));
-    }),
-    kill: () => child.kill(),
-  };
-}
-
-// The common case: a shell command allowlister deferred to remote approval.
-function runShell(command: string) {
-  return runPlugin({
-    subject: "shell",
-    current_verdict: "defer",
-    command,
-    cwd: "/workspace/repo",
-  });
-}
-
-// Make the page's service worker control it, so the live-sync effect can hand it
-// the broker connection. A reload is needed because the first load registers the
-// worker but is not yet controlled by it.
-async function subscribe(page: Page) {
-  // The broker URL is a per-device client setting; seed it before any load so the
-  // app (and the service worker it spawns) dials this spec's broker.
-  await page.addInitScript((port) => {
-    window.localStorage.setItem("allowlister-remote-broker-url", `ws://127.0.0.1:${port}`);
-  }, brokerPort);
-  await page.goto("/");
-  await page.evaluate(() => navigator.serviceWorker.ready);
-  await page.reload();
-  await page.evaluate(() => navigator.serviceWorker.ready);
-}
-
-async function expectStillRunning(running: { promise: Promise<unknown> }) {
-  const marker = Symbol("running");
-  const result = await Promise.race([
-    running.promise,
-    new Promise<typeof marker>((r) => setTimeout(() => r(marker), 1000)),
-  ]);
-  expect(result, "plugin should still be waiting for a decision").toBe(marker);
-}
-
-// Force-kill a spawned child and wait (bounded) for it to exit. A long-lived
-// broker/daemon left running would otherwise keep the Playwright runner alive
-// past the suite; SIGKILL is uncatchable, and the timeout never lets teardown
-// itself hang.
-async function terminate(child: ChildProcess | undefined): Promise<void> {
-  if (!child || child.exitCode !== null || child.signalCode !== null) return;
-  await new Promise<void>((resolveClose) => {
-    child.once("close", () => resolveClose());
-    child.kill("SIGKILL");
-    setTimeout(() => resolveClose(), 2000).unref();
-  });
-}
+const harness = createBrokerHarness(4188);
+const { runPlugin, runShell, subscribe, expectStillRunning } = harness;
 
 test.beforeAll(async () => {
   test.setTimeout(180_000); // the first run may compile the broker/daemon binaries
-
-  for (const [bin, pkg] of [
-    [brokerBin, "allowlister-remote-broker"],
-    [daemonBin, "allowlister-remote-daemon"],
-    [pluginBin, "allowlister-remote-plugin"],
-  ] as const) {
-    if (!existsSync(bin)) await run("cargo", ["build", "-p", pkg]);
-  }
-
-  broker = spawn(brokerBin, [], {
-    env: { ...process.env, ALLOWLISTER_REMOTE_BROKER_ADDR: `127.0.0.1:${brokerPort}` },
-    stdio: "ignore",
-  });
-  // Don't let the long-lived broker/daemon handles keep the Node runner alive on
-  // their own; afterAll still kills them, this just removes the leak as a hang.
-  broker.unref();
-  await waitForPort(brokerPort);
-
-  daemon = spawn(daemonBin, [], {
-    env: {
-      ...process.env,
-      ALLOWLISTER_REMOTE_DAEMON_SOCK: socketPath,
-      ALLOWLISTER_REMOTE_BROKER_URL: `ws://127.0.0.1:${brokerPort}/ws/daemon`,
-    },
-    stdio: "ignore",
-  });
-  daemon.unref();
-  await waitForSocket();
+  await harness.start();
 });
 
 test.afterAll(async () => {
-  await Promise.all([terminate(daemon), terminate(broker)]);
-  await rm(socketPath, { force: true });
+  await harness.stop();
 });
 
 test("a plugin request appears via the broker and an allow click releases it", async ({ page }) => {
