@@ -113,6 +113,11 @@ bundle-size:
     npx nx run web:build
     node scripts/web-bundle-size.mjs
 
+# Deterministic render-cost report: decision-surface recomputations per
+# interaction, without React Compiler vs with it. Runs the harness both ways.
+render-cost:
+    npx nx run web:render-cost
+
 # Lighthouse runtime audit of the built PWA (needs Chrome on PATH or CHROME_PATH).
 lighthouse:
     npx nx run web:build
