@@ -1,5 +1,5 @@
 import type { HTMLAttributes } from "react";
-import { cn } from "../../lib/utils";
+import { cn } from "@/lib/utils";
 
 // A small visual key cap used to surface a keyboard shortcut inline next to the
 // action it triggers, so every desktop shortcut is discoverable from the UI.

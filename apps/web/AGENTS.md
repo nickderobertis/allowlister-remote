@@ -1,23 +1,51 @@
 # AGENTS — `apps/web`
 
-The Next.js PWA/server project. It owns the browser UI, the API routes, and the
-browser/route/UI tests. Root-level guidance lives in the repo `CLAUDE.md`; this
-file documents conventions specific to the web app.
+The Next.js PWA project — a **fully static export** (`output: "export"`, no
+server of its own). It owns the browser UI and the browser/route/UI tests.
+Root-level guidance lives in the repo `CLAUDE.md`; this file documents conventions
+specific to the web app.
+
+## Structure & imports
+
+`src/App.tsx` is the thin orchestrator (state, effects, the `MainView` view
+selector); the views live under `src/components/` so no single file is a monolith:
+
+- `src/components/approval/` — `inbox.tsx`, `detail.tsx` (`ShellDetail` /
+  `ToolDetail`), `shortcuts.tsx`, and `shared.tsx` (presentational primitives,
+  the `Verdict`/`RequestProps`/`DetailChromeProps` types).
+- `src/components/broker-setup.tsx`, `connection-status.tsx`, `error-screen.tsx`.
+
+Intra-app imports use the **`@/*` path alias** (→ `apps/web/src`, configured in
+`tsconfig.json` and `vitest.config.ts`); reach for `@/…` rather than `../../`
+chains. Co-located siblings may stay relative (`./shared`).
 
 ## Approval UI shape
 
-The single-page approval UI (`src/App.tsx`) has three states:
+The single-page approval UI has these states:
 
+- **Broker setup** (`BrokerSetup`) — first-run screen to enter the broker URL
+  (validated as `ws://`/`wss://` by `isValidBrokerBase`); reused, with a Cancel,
+  to change the broker later via the **Broker** control in the top bar.
 - **Inbox** — a list of pending approvals, each card opening a detail view or
-  being allowed/denied inline.
+  being allowed/denied inline. Its header shows the live broker
+  `ConnectionStatus` (connecting / connected / reconnecting) so an unreachable
+  broker is distinct from an idle inbox.
 - **Detail** — one approval, either a shell script (`ShellDetail`) or a tool
   call (`ToolDetail`), with allow/deny and view-specific controls.
 - **Empty** — the resting state with no pending approvals.
 
 `page.tsx` mounts `App`, which connects to the broker (the only request source)
-using the URL from `/api/config` and renders whatever the broker relays. There is
-no demo/offline data path; unit tests drive it through a mocked broker bridge
-(`src/test/broker-fixtures.ts`).
+using the client-held URL resolved by `src/lib/broker-config.ts` (a `?broker=`
+deep link, `localStorage`, or a build-time default) and renders whatever the
+broker relays. There is no demo/offline data path; unit tests drive it through a
+mocked broker bridge (`src/test/broker-fixtures.ts`).
+
+## Error & not-found boundaries
+
+`app/error.tsx`, `app/global-error.tsx`, and `app/not-found.tsx` are the App
+Router boundaries; they share the token-styled `ErrorScreen` so a render-time
+throw (or a 404) shows a recoverable screen instead of blanking the static
+bundle. Keep them client-safe and free of broker/state assumptions.
 
 ## Keyboard navigation (desktop only)
 
@@ -78,6 +106,9 @@ the mouse follows on hover; the focused card is ringed and marked
 - `Kbd` (`src/components/ui/kbd.tsx`) is the only key-cap primitive. Buttons that
   embed a `Kbd` carry an explicit `aria-label` so the glyph stays out of the
   accessible name.
+- `ShortcutsOverlay` traps focus with `useFocusTrap` (`src/lib/focus-trap.ts`):
+  focus moves into the dialog on open, Tab cycles within it, and focus is
+  restored on close. Any new modal dialog should use the same hook.
 - The detail toggles bind their own keys: `ToolDetail` owns `F`/`J`,
   `ShellDetail` owns `S` (toggling the native `<details>` through a ref so click
   and keyboard stay in sync). Allow/deny/back are bound once in `ApprovalDetail`.

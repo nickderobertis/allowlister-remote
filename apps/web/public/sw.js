@@ -44,8 +44,24 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Cache-first for static assets that were precached or seen before.
-  event.respondWith(caches.match(request).then((cached) => cached ?? fetch(request)));
+  // Stale-while-revalidate for static assets: serve the cached copy immediately
+  // when there is one, but refresh it in the background so an updated shell asset
+  // (the precached, non-content-hashed files like the manifest or icons) replaces
+  // itself on the next load — no manual cache-version bump required. When nothing
+  // is cached yet, fall through to the network.
+  event.respondWith(
+    caches.open(CACHE).then((cache) =>
+      cache.match(request).then((cached) => {
+        const networked = fetch(request)
+          .then((response) => {
+            if (response.ok) cache.put(request, response.clone());
+            return response;
+          })
+          .catch(() => cached);
+        return cached ?? networked;
+      }),
+    ),
+  );
 });
 
 // --- Broker bridge -----------------------------------------------------------

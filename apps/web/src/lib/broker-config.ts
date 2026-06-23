@@ -65,3 +65,22 @@ export function resolveBrokerBase(
 export function brokerWsUrl(base: string): string {
   return `${base.replace(/\/+$/, "")}/ws/pwa`;
 }
+
+/**
+ * Whether a string is a usable broker base: a well-formed `ws://` or `wss://`
+ * URL. The broker is reached over a WebSocket, so an `http(s)://` (or otherwise
+ * malformed) value would fail to connect with no obvious cause — the setup form
+ * rejects it up front instead.
+ */
+export function isValidBrokerBase(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return false;
+  }
+  try {
+    const { protocol } = new URL(trimmed);
+    return protocol === "ws:" || protocol === "wss:";
+  } catch {
+    return false;
+  }
+}
