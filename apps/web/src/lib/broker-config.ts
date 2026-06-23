@@ -15,7 +15,18 @@
 export const BROKER_URL_STORAGE_KEY = "allowlister-remote-broker-url";
 const QUERY_PARAM = "broker";
 
-function buildTimeDefault(): string | null {
+/**
+ * The broker baked in at build time via
+ * `NEXT_PUBLIC_ALLOWLISTER_REMOTE_BROKER_URL`, or null when none is set.
+ *
+ * Unlike the saved setting and the `?broker=` deep link — which live in
+ * localStorage and the URL, so they exist only in the browser — this reads an
+ * env value Next inlines at build time, so it returns the *same* result during
+ * the static-export prerender and the client's first render. That makes it the
+ * one piece of broker config the app can resolve synchronously without a
+ * hydration mismatch, which is why the initial boot view is derived from it.
+ */
+export function buildTimeBrokerBase(): string | null {
   const fromEnv = process.env.NEXT_PUBLIC_ALLOWLISTER_REMOTE_BROKER_URL;
   return fromEnv && fromEnv.length > 0 ? fromEnv : null;
 }
@@ -58,7 +69,7 @@ export function resolveBrokerBase(
     setStoredBrokerBase(fromQuery);
     return fromQuery;
   }
-  return readStored() ?? buildTimeDefault();
+  return readStored() ?? buildTimeBrokerBase();
 }
 
 /** Derive the service-worker WebSocket endpoint from a broker base URL. */
