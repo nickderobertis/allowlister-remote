@@ -7,8 +7,8 @@ import { brokerRequestPayloads } from "./test/broker-fixtures";
 // The broker bridge is the app's only source of requests, so the unit tests
 // drive it directly: connectBroker is mocked to capture the handlers App
 // registers (so a test can push a snapshot / added / resolved event) and to
-// record the decisions App sends back. /api/config and navigator.serviceWorker
-// are stubbed so the connect effect runs under jsdom.
+// record the decisions App sends back. The broker URL (a client-side setting)
+// and navigator.serviceWorker are stubbed so the connect effect runs under jsdom.
 type BrokerHandlers = {
   onSnapshot?: (requests: unknown[]) => void;
   onAdded?: (request: unknown) => void;
@@ -59,15 +59,6 @@ function setServiceWorker(present: boolean) {
   });
 }
 
-function stubConfig(response: unknown | (() => Promise<never>)) {
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async () =>
-      typeof response === "function" ? response() : ({ json: async () => response } as Response),
-    ),
-  );
-}
-
 function focusedHeadline(): string | null {
   return document.querySelector('[aria-current="true"]')?.textContent ?? null;
 }
@@ -87,15 +78,19 @@ beforeEach(() => {
   broker.decisions = [];
   broker.closed = false;
   setServiceWorker(true);
-  stubConfig({ brokerUrl: "ws://test/ws/pwa" });
+  // The PWA is static: the broker URL is a client-side setting, so seed it the
+  // way a saved setting (or a `?broker=` deep link) would. The app derives the
+  // `/ws/pwa` endpoint from this base.
+  window.localStorage.setItem("allowlister-remote-broker-url", "ws://test");
 });
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  window.localStorage.clear();
 });
 
 describe("App broker connection", () => {
-  it("connects to the broker URL from /api/config and renders its snapshot", async () => {
+  it("connects to the saved broker URL and renders its snapshot", async () => {
     await renderApp();
     expect(broker.url).toBe("ws://test/ws/pwa");
     expect(await screen.findByRole("list", { name: "Pending approvals" })).toBeInTheDocument();
@@ -110,22 +105,23 @@ describe("App broker connection", () => {
     expect(broker.handlers).toBeNull();
   });
 
-  it("reports an error when no broker is configured", async () => {
-    stubConfig({ brokerUrl: null });
+  it("shows the broker setup screen when no broker is configured", async () => {
+    window.localStorage.clear();
     render(<App />);
     expect(
-      await screen.findByText("No approval broker is configured for this deployment."),
+      await screen.findByRole("heading", { name: "Connect to your broker" }),
     ).toBeInTheDocument();
     expect(broker.handlers).toBeNull();
   });
 
-  it("reports an error when the config request fails", async () => {
-    stubConfig(() => Promise.reject(new Error("offline")));
+  it("connects after a broker URL is entered on the setup screen", async () => {
+    const user = userEvent.setup();
+    window.localStorage.clear();
     render(<App />);
-    expect(
-      await screen.findByText("Could not load the approval broker configuration."),
-    ).toBeInTheDocument();
-    expect(broker.handlers).toBeNull();
+    await user.type(await screen.findByLabelText("Broker URL"), "ws://entered");
+    await user.click(screen.getByRole("button", { name: "Connect" }));
+    await waitFor(() => expect(broker.url).toBe("ws://entered/ws/pwa"));
+    expect(window.localStorage.getItem("allowlister-remote-broker-url")).toBe("ws://entered");
   });
 
   it("adds a newly announced request and ignores a duplicate re-announce", async () => {

@@ -6,8 +6,23 @@ use std::sync::Arc;
 
 use allowlister_remote_broker::{app, Broker};
 
+/// Broker version reported by `--version`. Release builds inject the published
+/// version from the git tag via `ALLOWLISTER_REMOTE_PLUGIN_VERSION` (see
+/// `publish.yml`), the same stamp-from-tag pattern the plugin and daemon use, so
+/// the broker downloaded from a GitHub Release reports the tag it was cut from;
+/// dev and test builds fall back to the crate's `Cargo.toml` version.
+const VERSION: &str = match option_env!("ALLOWLISTER_REMOTE_PLUGIN_VERSION") {
+    Some(version) => version,
+    None => env!("CARGO_PKG_VERSION"),
+};
+
 #[tokio::main]
 async fn main() {
+    if std::env::args().any(|argument| argument == "--version" || argument == "-V") {
+        println!("{VERSION}");
+        return;
+    }
+
     let addr =
         std::env::var("ALLOWLISTER_REMOTE_BROKER_ADDR").unwrap_or_else(|_| "127.0.0.1:4180".into());
     let listener = tokio::net::TcpListener::bind(&addr)

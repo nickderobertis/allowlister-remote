@@ -20,6 +20,7 @@
       "nx.json",
       "biome.jsonc",
       "!apps/web/.next",
+      "!apps/web/out",
       "!apps/web/coverage",
       "!apps/web/playwright-report",
       "!apps/web/test-results",

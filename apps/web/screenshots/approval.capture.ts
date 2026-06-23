@@ -58,6 +58,12 @@ test.beforeEach(async ({ page }) => {
   // Pin the clock before navigation so anything time-derived resolves to a
   // stable FIXED_TIME instead of the wall clock.
   await page.clock.setFixedTime(FIXED_TIME);
+  // The broker URL is a client-side setting now (the app is a static export), so
+  // seed it before load — the connect effect needs a configured broker to run,
+  // even though the stubbed worker below (not a real broker) supplies the data.
+  await page.addInitScript(() => {
+    window.localStorage.setItem("allowlister-remote-broker-url", "ws://127.0.0.1:4180");
+  });
   // The app's only request source is the broker, relayed by the service worker.
   // Capture is hermetic (no broker/daemon/plugin processes, and a live broker
   // would assign nondeterministic request ids that the detail view renders), so

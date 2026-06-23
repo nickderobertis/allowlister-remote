@@ -8,11 +8,16 @@ coverage
 .DS_Store
 
 .next
+# The PWA static export; built on demand and vendored into the web package only
+# at release time, never committed.
+apps/web/out
 target
 # Native binaries are vendored into the per-platform packages only at release
 # time; never commit them.
 packages/allowlister-remote-plugin-*/bin/allowlister-remote-plugin
 packages/allowlister-remote-plugin-*/bin/allowlister-remote-plugin.exe
+# The web package's static assets are staged from apps/web/out at release time.
+packages/allowlister-remote-web/static
 
 tsconfig.tsbuildinfo
 
