@@ -42,11 +42,7 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - name: Build web app
         run: npx nx run web:build
-      - name: Build broker binary
-        # The broker is server-side and not published to npm, so the realtime
-        # smoke runs it from source against the *published* plugin and daemon.
-        run: cargo build -p allowlister-remote-broker
-      - name: Resolve published plugin version
+      - name: Resolve published version
         id: version
         env:
           INPUT_VERSION: ${{ inputs.version }}
@@ -59,8 +55,29 @@ jobs:
           if [[ -z "$version" ]]; then
             version="$(npm view @nickderobertis/allowlister-remote-plugin version)"
           fi
-          echo "Resolved published plugin version: $version"
+          echo "Resolved published version: $version"
           echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Install the published broker via its release install script
+        # The broker ships on GitHub Releases (not npm), so install the *published*
+        # binary with the same cross-platform installer users run — exercising the
+        # broker Release artifact, scripts/install-broker.sh, and the tag-stamped
+        # --version end to end — instead of building it from source. The realtime
+        # e2e spec honors ALLOWLISTER_REMOTE_BROKER_BIN, so point it at the install.
+        env:
+          # Authenticate the installer's GitHub API access to dodge the shared-runner
+          # rate limit (a no-op for the download itself, which uses --version).
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          version="${{ steps.version.outputs.version }}"
+          bin_dir="$RUNNER_TEMP/broker-bin"
+          bash scripts/install-broker.sh --version "v${version}" --bin-dir "$bin_dir"
+          installed="$("$bin_dir/allowlister-remote-broker" --version)"
+          if [[ "$installed" != "$version" ]]; then
+            echo "installed broker --version ($installed) != published version ($version)" >&2
+            exit 1
+          fi
+          echo "installed published broker $installed via scripts/install-broker.sh"
+          echo "ALLOWLISTER_REMOTE_BROKER_BIN=$bin_dir/allowlister-remote-broker" >> "$GITHUB_ENV"
       - name: Run published-package e2e smoke
         run: npm run release:smoke-e2e -- "${{ steps.version.outputs.version }}"
       - uses: actions/upload-artifact@v7

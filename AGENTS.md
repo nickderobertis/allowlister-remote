@@ -108,8 +108,11 @@ Use `just`; do not hand-roll equivalent commands.
   asserts the installed `allowlister-remote-plugin` command resolves directly to the
   native Rust binary (no Node launcher in the hot path) and that the daemon ships
   next to it, then points `ALLOWLISTER_REMOTE_PLUGIN_BIN`/`ALLOWLISTER_REMOTE_DAEMON_BIN`
-  at those resolved binaries so the e2e drives the real Rust plugin and daemon against a
-  source-built broker.
+  at those resolved binaries. The broker is likewise the *published* artifact: the
+  workflow installs it with `scripts/install-broker.sh --version v<tag>` (checksum-verified,
+  the same installer users run), asserts its tag-stamped `--version`, and points
+  `ALLOWLISTER_REMOTE_BROKER_BIN` at it — so all three release binaries plus the install
+  script are verified end-to-end, not built from source.
 
 ## Monorepo projects
 
@@ -214,9 +217,6 @@ What is **not** yet done, and what closing each gap entails:
   behind `cfg(windows)` but is only built by `publish.yml`'s release matrix, not
   by any PR check, so it needs verification on a Windows runner before it is
   relied on.
-- **Post-release broker smoke.** `e2e-smoke` drives the *published* plugin and
-  daemon but still builds the broker from source; it could instead install the
-  published broker via `scripts/install-broker.sh` to verify that artifact too.
 - **Visual-docs baselines.** The static-export switch dropped the Next image
   optimizer, so the brand logo now renders via the browser — its bytes shifted in
   the two logo-bearing shots (`inbox`, `empty-state`). The committed baseline was
