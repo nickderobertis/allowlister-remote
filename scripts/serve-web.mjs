@@ -116,7 +116,14 @@ function main() {
   });
 
   const shutdown = () => {
+    // Force the listener and any lingering keep-alive sockets shut, then exit.
+    // `server.close()` alone waits for open keep-alive connections (the browser's
+    // and Playwright's) to drain, which can hang indefinitely — wedging the
+    // Playwright webServer teardown to the CI job's hard timeout. Destroying the
+    // sockets, plus a short hard-exit fallback, guarantees a prompt exit.
+    server.closeAllConnections?.();
     server.close(() => process.exit(0));
+    setTimeout(() => process.exit(0), 1000).unref();
   };
   process.on("SIGTERM", shutdown);
   process.on("SIGINT", shutdown);
