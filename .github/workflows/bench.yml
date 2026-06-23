@@ -341,6 +341,12 @@ jobs:
       - name: Render cost (deterministic)
         run: node scripts/web-render-cost.mjs
 
+      # Deterministic memory layer (the bench-allocs analogue): retained heap per
+      # inbox card plus an inbox retention/leak check. Pure data — no build, no
+      # browser — so it is reproducible and its base-vs-PR delta is trustworthy.
+      - name: Heap footprint (deterministic)
+        run: node scripts/web-heap.mjs
+
       # Wall-clock and noisy (the hyperfine analogue); informational only. CI
       # ubuntu images ship Google Chrome, which chrome-launcher finds. Best
       # effort: a launch failure must not sink the deterministic layers above.
@@ -366,10 +372,19 @@ jobs:
           git checkout -q "$base"
           npx nx run web:build
           BUNDLE_OUT="$PWD/target/web-perf-base" node target/web-bundle-size-pr.mjs
+          # Heap footprint measures base's *source*, so run base's own harness
+          # (it may not exist on base yet — e.g. the PR that adds it — hence the
+          # best-effort guard, exactly like the bundle-size delta).
+          HEAP_OUT="$PWD/target/web-perf-base" node scripts/web-heap.mjs || true
           git checkout -q -
           node scripts/web-bundle-size.mjs report \
             target/web-perf-base/bundle-size.tsv target/web-perf/bundle-size.tsv \
             | tee target/web-perf/bundle-size-delta.md
+          if [ -s target/web-perf-base/heap.tsv ]; then
+            node scripts/web-heap.mjs report \
+              target/web-perf-base/heap.tsv target/web-perf/heap.tsv \
+              | tee target/web-perf/heap-delta.md
+          fi
 
       - name: Assemble report
         run: |
@@ -410,6 +425,18 @@ jobs:
               echo "_Render-cost report did not produce a result this run (see the job log)._"
             fi
             echo
+            echo "### Heap footprint (deterministic)"
+            echo
+            if [ -s target/web-perf/heap-delta.md ]; then
+              cat target/web-perf/heap-delta.md
+              echo
+            fi
+            if [ -s target/web-perf/heap.md ]; then
+              cat target/web-perf/heap.md
+            else
+              echo "_Heap-footprint report did not produce a result this run (see the job log)._"
+            fi
+            echo
             echo "### Decision-path micro-benchmarks (Vitest)"
             echo
             cat target/web-perf/bench.md
@@ -430,6 +457,10 @@ jobs:
             target/web-perf/render-cost.baseline.json
             target/web-perf/render-cost.compiler.json
             target/web-perf/render-cost.md
+            target/web-perf/heap.json
+            target/web-perf/heap.tsv
+            target/web-perf/heap.md
+            target/web-perf/heap-delta.md
             target/web-perf/lighthouse.json
             target/web-perf/lighthouse.md
           if-no-files-found: warn

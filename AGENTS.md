@@ -74,17 +74,31 @@ Use `just`; do not hand-roll equivalent commands.
     Nx affected (a daemon-only change skips the plugin and broker suites, etc.),
     and posts the numbers as a sticky comment plus a job summary; it is
     informational, never a required check.
-- `just bench-web` / `just bundle-size` / `just render-cost` / `just lighthouse` run the PWA's
-  parallel performance suite: Vitest micro-benchmarks of the pure decision/summarization surface
-  (`apps/web/src/perf/*.bench.ts`), a deterministic gzip bundle-size report
+- `just bench-web` / `just bundle-size` / `just render-cost` / `just heap` / `just lighthouse` run
+  the PWA's parallel performance suite: Vitest micro-benchmarks of the pure decision/summarization
+  surface (`apps/web/src/perf/*.bench.ts`), a deterministic gzip bundle-size report
   (`scripts/web-bundle-size.mjs`), a deterministic render-cost report
-  (`scripts/web-render-cost.mjs`), and a Lighthouse runtime audit
+  (`scripts/web-render-cost.mjs`), a deterministic heap-footprint report
+  (`scripts/web-heap.mjs`), and a Lighthouse runtime audit
   (`scripts/web-lighthouse.mjs`). The same `Performance` workflow `web` job runs all of them
   on PRs that affect web and posts its own sticky comment plus job summary; like the plugin
-  suite it is informational, never a required check. Bundle size and render cost are the
-  deterministic, trustworthy deltas (the web counterpart of the plugin's cachegrind instruction
-  counts); the Vitest and Lighthouse numbers are absolute and noise-prone, so treat small deltas
-  with caution.
+  suite it is informational, never a required check. Bundle size, render cost, and heap footprint
+  are the deterministic, trustworthy deltas (the web counterpart of the plugin's cachegrind
+  instruction counts and allocation tallies); the Vitest and Lighthouse numbers are absolute and
+  noise-prone, so treat small deltas with caution.
+- The PWA's **memory** layer is the web analogue of the Rust binaries' allocation reports (`just
+  bench-allocs`): `just heap` runs the heap-footprint harness
+  (`apps/web/src/perf/heap.perf.ts`), which measures memory the deterministic way — a structural
+  walk of the retained object graph (object/array/string counts and string length), not
+  `process.memoryUsage()`, so the base-vs-PR delta is reproducible. JS exposes no allocation hook
+  the way a custom global allocator does in Rust, so it weighs what stays reachable: the per-inbox-card
+  decision surface (charted against script length), plus an **inbox retention/leak check** —
+  it folds a realistic broker event stream (snapshot → many `added` → resolve every one) through the
+  real inbox reducers (`apps/web/src/inbox.ts`, the pure `applySnapshot`/`applyAdded`/`applyResolved`
+  App uses) and asserts the retained graph returns to the empty baseline, since the PWA is the one
+  long-lived web component and holds the inbox for the whole session. The harness file is kept out of
+  the default `test`/coverage run by its `*.perf.ts` name and runs under its own
+  `vitest.heap.config.ts`.
 - The PWA enables **React Compiler** (`reactCompiler: true` in `apps/web/next.config.ts`,
   via `babel-plugin-react-compiler`): it auto-memoizes components/hooks at build time, so a
   re-render from state that does not touch a subtree skips it and each card's decision-surface

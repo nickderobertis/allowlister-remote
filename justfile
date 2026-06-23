@@ -147,6 +147,11 @@ bundle-size:
 render-cost:
     npx nx run web:render-cost
 
+# Deterministic heap-footprint report: retained memory per inbox card plus an
+# inbox retention/leak check. The web analogue of `just bench-allocs`.
+heap:
+    npx nx run web:heap
+
 # Lighthouse runtime audit of the built PWA (needs Chrome on PATH or CHROME_PATH).
 lighthouse:
     npx nx run web:build

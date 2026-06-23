@@ -1,5 +1,4 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
-import { normalizeBrokerRequest } from "@/approval-normalize";
 import { ApprovalDetail } from "@/components/approval/detail";
 import { EmptyInbox, InboxView } from "@/components/approval/inbox";
 import { ShortcutsHint, ShortcutsOverlay } from "@/components/approval/shortcuts";
@@ -7,6 +6,7 @@ import { BrokerSetup } from "@/components/broker-setup";
 import type { BrokerStatus } from "@/components/connection-status";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
+import { applyAdded, applyResolved, applySnapshot } from "@/inbox";
 import { brokerWsUrl, resolveBrokerBase, setStoredBrokerBase } from "@/lib/broker-config";
 import { useIsDesktop, useKeyboardShortcuts } from "@/lib/keyboard";
 import { ThemeProvider } from "@/lib/theme";
@@ -144,17 +144,9 @@ function App() {
     setBrokerStatus("connecting");
     const bridge = connectBroker(brokerWsUrl(brokerBase), {
       onStatus: (status) => setBrokerStatus(status === "open" ? "online" : "offline"),
-      onSnapshot: (snapshot) => setRequests(snapshot.map(normalizeBrokerRequest)),
-      onAdded: (request) =>
-        setRequests((current) => {
-          const normalized = normalizeBrokerRequest(request);
-          // Dedupe by id so a re-announce (e.g. after a broker restart) never
-          // double-renders a card.
-          return current.some((existing) => existing.id === normalized.id)
-            ? current
-            : [...current, normalized];
-        }),
-      onResolved: (id) => setRequests((current) => current.filter((request) => request.id !== id)),
+      onSnapshot: (snapshot) => setRequests(applySnapshot(snapshot)),
+      onAdded: (request) => setRequests((current) => applyAdded(current, request)),
+      onResolved: (id) => setRequests((current) => applyResolved(current, id)),
     });
     brokerRef.current = bridge;
     return () => {
@@ -185,7 +177,7 @@ function App() {
     // Route the decision back through the broker to the plugin waiting there, then
     // drop the card optimistically; the broker's `resolved` event confirms it.
     brokerRef.current?.decide(decision);
-    setRequests((current) => current.filter((request) => request.id !== id));
+    setRequests((current) => applyResolved(current, id));
     setSelectedId((current) => (current === id ? null : current));
   }
 
