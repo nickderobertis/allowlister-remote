@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.11.0](https://github.com/nickderobertis/allowlister-remote/compare/v0.10.0...v0.11.0) (2026-06-23)
+
+
+### ⚠ BREAKING CHANGES
+
+* make the broker the only approval transport, remove HTTP polling ([#75](https://github.com/nickderobertis/allowlister-remote/issues/75))
+
+### Features
+
+* auto-release every component — static PWA on npm, broker as a standalone CLI ([#76](https://github.com/nickderobertis/allowlister-remote/issues/76)) ([d708245](https://github.com/nickderobertis/allowlister-remote/commit/d70824528d0411c789ed9991311fc9bf7fc7079d))
+
+
+### Bug Fixes
+
+* **web:** render the approval script as a real for-loop and trip a loop-body command ([#70](https://github.com/nickderobertis/allowlister-remote/issues/70)) ([e7240b0](https://github.com/nickderobertis/allowlister-remote/commit/e7240b0e675f71809d309cfa22e2482e5a0b6a9d))
+
+
+### Code Refactoring
+
+* make the broker the only approval transport, remove HTTP polling ([#75](https://github.com/nickderobertis/allowlister-remote/issues/75)) ([58e9272](https://github.com/nickderobertis/allowlister-remote/commit/58e927219829ef1fd5dffc6ad2baae2fe288f4a5))
+
 ## [0.10.0](https://github.com/nickderobertis/allowlister-remote/compare/v0.9.1...v0.10.0) (2026-06-22)
 
 
