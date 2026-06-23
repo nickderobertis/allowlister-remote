@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.0](https://github.com/nickderobertis/allowlister-remote/compare/v0.13.0...v0.14.0) (2026-06-23)
+
+
+### Features
+
+* **web:** add deterministic heap-footprint profiling for the PWA ([#87](https://github.com/nickderobertis/allowlister-remote/issues/87)) ([2f0730e](https://github.com/nickderobertis/allowlister-remote/commit/2f0730e6cb6028a1a4bbb0c63bd86bd02e8802ee))
+
 ## [0.13.0](https://github.com/nickderobertis/allowlister-remote/compare/v0.12.0...v0.13.0) (2026-06-23)
 
 
