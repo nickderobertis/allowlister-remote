@@ -81,6 +81,13 @@ Use `just`; do not hand-roll equivalent commands.
   (`apps/web/vitest.render-cost.config.ts`, gated on `REACT_COMPILER=1`) to match the production
   build. The harness file is kept out of the default `test`/coverage run (its name is `*.perf.tsx`,
   not `*.test.tsx`).
+  - **Do not hand-write `useMemo`/`useCallback`/`React.memo` for performance.** The compiler
+    auto-memoizes every component and hook value at build time, so manual caching is redundant
+    here — leave it out, and prefer plain derived values and inline handlers. (Reach for `useMemo`
+    only on the rare occasion you need a *referentially stable value for correctness*, e.g. a
+    dependency the compiler cannot see, not as an optimization.) `react-compiler-healthcheck`
+    confirms the compiler optimizes all components; if it ever reports a bailout, fix the
+    Rules-of-React violation rather than papering over it with manual memoization.
 - Release helpers live behind `npm run release:*`; tags, GitHub Releases, and npm publishing run in Actions.
 
 ## Quality and tests

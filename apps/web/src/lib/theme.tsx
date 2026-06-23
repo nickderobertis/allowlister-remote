@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, type ReactNode, useCallback, useContext, useEffect, useState } from "react";
+import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
 
 // One key, shared with the no-flash bootstrap script in app/layout.tsx. Keep the
 // two literals in sync — the script runs before React hydrates and seeds the same
@@ -82,13 +82,15 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     return () => query.removeEventListener("change", apply);
   }, [preference]);
 
-  const setPreference = useCallback((next: ThemePreference) => {
+  // React Compiler keeps this referentially stable; no manual useCallback needed
+  // (see AGENTS.md).
+  const setPreference = (next: ThemePreference) => {
     setPreferenceState(next);
     /* v8 ignore next -- SSR has no localStorage; clicks only happen client-side. */
     if (typeof window !== "undefined") {
       window.localStorage.setItem(THEME_STORAGE_KEY, next);
     }
-  }, []);
+  };
 
   return (
     <ThemeContext.Provider value={{ preference, resolved, setPreference }}>

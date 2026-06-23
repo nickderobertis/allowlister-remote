@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { normalizeBrokerRequest } from "@/approval-normalize";
 import { ApprovalDetail } from "@/components/approval/detail";
 import { EmptyInbox, InboxView } from "@/components/approval/inbox";
@@ -173,10 +173,7 @@ function App() {
     setReconfiguring(false);
   }
 
-  const selected = useMemo(
-    () => requests.find((request) => request.id === selectedId) ?? null,
-    [requests, selectedId],
-  );
+  const selected = requests.find((request) => request.id === selectedId) ?? null;
 
   // Keep the inbox cursor in range as requests resolve or new ones arrive.
   useEffect(() => {
