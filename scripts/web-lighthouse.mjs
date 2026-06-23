@@ -60,9 +60,11 @@ async function waitForServer(url, timeoutMs = 30_000) {
   throw new Error(`server at ${url} did not become ready within ${timeoutMs}ms`);
 }
 
+// The PWA is a static export (apps/web/out); serve it with the zero-dep static
+// server rather than `next start`, which static export does not support.
 const server = spawn(
-  "npx",
-  ["next", "start", "apps/web", "--hostname", "127.0.0.1", "--port", String(port)],
+  "node",
+  ["scripts/serve-web.mjs", "--dir", "apps/web/out", "--host", "127.0.0.1", "--port", String(port)],
   { cwd: repoRoot, stdio: ["ignore", "ignore", "inherit"] },
 );
 const stopServer = () => {

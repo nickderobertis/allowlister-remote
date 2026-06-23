@@ -73,18 +73,16 @@ export default defineConfig({
     serviceWorkers: "block",
   },
   webServer: {
-    // Serves the production build from apps/web/.next (run `next build` first;
-    // the Nx `capture` target wires that as a dependency). cwd defaults to this
-    // config's directory (apps/web).
-    command: `npx next start --hostname 127.0.0.1 --port ${PORT}`,
+    // Serves the static export from apps/web/out (run `next build` first; the Nx
+    // `capture` target wires that as a dependency) with the zero-dep static
+    // server. cwd defaults to this config's directory (apps/web). The broker URL
+    // is seeded client-side in approval.capture.ts (the capture never dials a
+    // real broker — a stubbed service worker injects the fixture snapshot
+    // in-page — but the setting must be present so the connect effect runs).
+    command: `node ../../scripts/serve-web.mjs --dir out --port ${PORT}`,
     url: `http://127.0.0.1:${PORT}`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
-    // /api/config requires a broker URL (the app's only request source). The
-    // capture never dials it — a stubbed service worker injects the fixture
-    // snapshot in-page (see approval.capture.ts) — but the value must be present
-    // so /api/config returns 200 and the connect effect runs.
-    env: { ALLOWLISTER_REMOTE_BROKER_URL: "ws://127.0.0.1:4180" },
   },
   projects: [
     {

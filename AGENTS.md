@@ -5,21 +5,37 @@ allowlister dynamic approval requests.
 
 ## Stack and composition
 
-- **Product shape:** Nx monorepo containing a Next.js web app/PWA plus a Rust
+- **Product shape:** Nx monorepo containing a static Next.js PWA plus a Rust
   allowlister dynamic plugin client, a host daemon, and a broker. The broker is
   the only transport for approval requests: the plugin hands each request to the
   per-host daemon over local IPC (a Unix socket or a Windows named pipe), the
   daemon holds one WebSocket to the broker, and the PWA connects to the broker
   over a WebSocket (via its service worker). There is no HTTP polling fallback.
+- **The PWA has no server of its own.** It builds to a fully static bundle
+  (`output: "export"` → `apps/web/out`); the broker is the only backend. The
+  broker URL is a client-side setting the browser holds (localStorage, seeded by a
+  `?broker=` deep link or a build-time `NEXT_PUBLIC_ALLOWLISTER_REMOTE_BROKER_URL`
+  default), resolved in `apps/web/src/lib/broker-config.ts`. With nothing
+  configured the app shows a one-time broker-setup screen. There are no Next API
+  routes.
+- **Distribution.** The plugin and daemon ship on npm (per-platform native
+  packages under the parent `@nickderobertis/allowlister-remote-plugin`). The
+  static PWA ships as its own npm package `@nickderobertis/allowlister-remote-web`
+  (a tiny static server plus the prebuilt bundle; `npx` it or drop it on any
+  static host). The broker is a server-side standalone Rust CLI distributed via
+  GitHub Releases with a cross-platform `scripts/install-broker.sh`, the same way
+  `nickderobertis/allowlister` ships its CLI — not on npm.
 - **Languages:** TypeScript, React, and Next.js for the app; Rust for the
   allowlister plugin client, daemon, and broker; shell command surface via `just`.
 - **References composed:** `shapes/web-app.md`, `languages/typescript.md`, `ci.md`,
   `references/releasing.md`, and `references/monorepo.md` from the create-repo skill.
-- **Excluded, and why:** Durable multi-user persistence, auth, and push-notification delivery are
-  intentionally outside this first repo scaffold; the broker holds pending
-  request state in memory for local and CI-realistic approval journeys. The web
-  server itself is stateless — its only API route is `/api/config`, which hands
-  the runtime broker URL to the browser.
+- **Out of scope (today), and why:** Durable multi-user persistence, broker
+  authentication, and push-notification delivery are not yet built; the broker
+  holds pending request state in memory and serves any connected daemon/PWA. The
+  broker also terminates plain `ws://` and expects a TLS-terminating proxy in
+  front for `wss://` (the daemon trusts a private CA via
+  `ALLOWLISTER_REMOTE_BROKER_CA`). See **Follow-ups** below for what closing each
+  gap entails.
 
 ## Command surface
 
@@ -97,7 +113,10 @@ Use `just`; do not hand-roll equivalent commands.
 
 ## Monorepo projects
 
-- `apps/web` is the Next.js PWA/server project and owns browser, route, and UI tests.
+- `apps/web` is the static Next.js PWA project (`output: "export"`, no server of its own) and owns
+  the browser, UI, and service-worker tests. Its e2e and visual-docs capture serve the built
+  `out/` bundle with the zero-dep `scripts/serve-web.mjs` and seed the broker URL client-side
+  (localStorage) before navigating.
 - `crates/allowlister-remote-plugin` is the Rust allowlister dynamic plugin client. It is
   network-free: it hands each request to the daemon over local IPC and never opens a socket
   to the broker itself.
@@ -106,9 +125,19 @@ Use `just`; do not hand-roll equivalent commands.
   broker, re-announcing still-pending requests on reconnect. Plugin↔daemon is a Unix socket on
   Unix and a named pipe on Windows (a transport-generic `handle_plugin` serves both).
 - `crates/allowlister-remote-broker` is the standalone WebSocket broker (`/ws/daemon`, `/ws/pwa`,
-  `/healthz`); it holds pending requests in memory and mediates between daemons and PWAs.
+  `/healthz`); it holds pending requests in memory and mediates between daemons and PWAs. It ships
+  as a server-side CLI on GitHub Releases (built for all three platforms in `publish.yml`), not on
+  npm; `scripts/install-broker.sh` is the cross-platform installer (detect platform → download the
+  release binary + `SHA256SUMS` → checksum-verify → install), mirroring `allowlister`'s install
+  flow. Its `--version` is stamped from the tag via `ALLOWLISTER_REMOTE_PLUGIN_VERSION`, like the
+  plugin and daemon. The listen address comes from `ALLOWLISTER_REMOTE_BROKER_ADDR`.
 - `crates/allowlister-remote-e2e` drives the real broker + daemon + plugin binaries through the
   full chain.
+- `packages/allowlister-remote-web` is the npm package for the static PWA: a zero-dependency static
+  server (`bin/serve.mjs`) plus the prebuilt `out/` bundle vendored into `static/` at release time.
+  Run it with `npx @nickderobertis/allowlister-remote-web` (or host the assets anywhere) and point
+  it at a broker in the app. It is not a workspace member, so its publish-time version never drifts
+  the dev lockfile.
 - `packages/allowlister-remote-plugin` is the parent npm package users install; it carries
   only a small JS launcher plus an `install.mjs` that links the native binaries onto the command path.
 - `packages/allowlister-remote-plugin-{darwin-arm64,linux-x64,win32-x64}` are the per-platform npm
@@ -124,7 +153,10 @@ Use `just`; do not hand-roll equivalent commands.
   which removes load-time relocations there; the static musl build is already relocation-light and
   needs no such flag.
 - Native binaries are vendored into the per-platform packages only at release time and are never
-  committed; `npm run release:stage-npm` stages them from the downloaded release artifacts.
+  committed; `npm run release:stage-npm` stages them from the downloaded release artifacts. The PWA
+  bundle is likewise vendored into the web package only at release time: `npm run release:stage-web`
+  builds nothing itself but copies a prebuilt `apps/web/out` into `packages/allowlister-remote-web/static`
+  and stamps the version. Both `apps/web/out` and the web package's `static/` are gitignored.
 - Root commands must delegate to Nx affected/run targets; do not add bespoke root loops over projects.
 - Affected-only is the default for everything CI does — fmt, lint, typecheck, test, build, e2e,
   and perf (`bench.yml` gates each lane on its package via the `changes` job). The sole exception is
@@ -146,10 +178,45 @@ Use `just`; do not hand-roll equivalent commands.
   any Cargo file, so `Cargo.toml`/`Cargo.lock` never drift and every `--locked` bench step
   stays green. The crate `Cargo.toml` keeps a `0.0.0` placeholder; the published binary's
   version is the git tag, injected at compile time via `ALLOWLISTER_REMOTE_PLUGIN_VERSION`
-  (`option_env!` in `main.rs`, set by `publish.yml`) — the same stamp-from-tag pattern the
-  npm packages use, so `--version` matches the npm package version.
-- After the required checks (`check`, `install-smoke`, `pr-title`, and `Visual docs / visual-docs`) pass, Release Please opens or updates a release PR with `RELEASE_TOKEN` and turns on squash **auto-merge**, so the PR merges itself once required checks pass — no manual click. Merging tags `vX.Y.Z`, then the tag builds GitHub Release binaries, stamps every npm package from the tag, and publishes the per-platform packages followed by the parent `@nickderobertis/allowlister-remote-plugin` (which depends on them) with `NPM_TOKEN`.
+  (`option_env!` in `main.rs`, set by `publish.yml`) — the same stamp-from-tag pattern every
+  release binary (plugin, daemon, **and** broker) and every npm package uses, so `--version`
+  matches the npm/release version across the board.
+- After the required checks (`check`, `install-smoke`, `pr-title`, and `Visual docs / visual-docs`) pass, Release Please opens or updates a release PR with `RELEASE_TOKEN` and turns on squash **auto-merge**, so the PR merges itself once required checks pass — no manual click. Merging tags `vX.Y.Z`, which fires `publish.yml`. That tag build does three things, all stamped from the tag: (1) it builds the plugin, daemon, and **broker** for all three platforms and attaches them — with `SHA256SUMS` — to the **GitHub Release** (the broker's only distribution channel, consumed by `scripts/install-broker.sh`); (2) it stages and publishes the per-platform native npm packages followed by the parent `@nickderobertis/allowlister-remote-plugin` (which depends on them) with `NPM_TOKEN`; and (3) in a parallel `web-publish` job it builds the static PWA export, stages it into `@nickderobertis/allowlister-remote-web`, and publishes that package. The web package has no native binaries and no dependency on the plugin packages, so it publishes independently.
 - GitHub should stay squash-only with auto-merge, branch deletion, required `check`,
   `install-smoke`, `pr-title`, and `Visual docs / visual-docs` checks, linear
   history, conversation resolution, and admin override.
 - `gh-secrets.json` is the secret manifest; values stay in the local gh-secrets store or another configured source, never in git.
+
+## Follow-ups (known gaps to close)
+
+Every component now releases automatically — the plugin and daemon to npm, the
+broker to GitHub Releases (with an install script), and the static PWA to npm.
+What is **not** yet done, and what closing each gap entails:
+
+- **Broker durability and auth.** The broker keeps pending request state in
+  memory and accepts any daemon/PWA that connects. Multi-instance or
+  restart-survivable operation needs durable shared state, and any real
+  deployment needs authn/authz on `/ws/daemon` and `/ws/pwa` (e.g. a shared
+  token or per-user identity). Until then, run a single broker instance behind a
+  trusted boundary.
+- **Broker TLS.** The broker serves plain `ws://`; `wss://` requires a
+  TLS-terminating proxy in front (the daemon trusts a private CA via
+  `ALLOWLISTER_REMOTE_BROKER_CA`). Terminating TLS in the broker itself, or a
+  documented proxy recipe, would remove that external dependency.
+- **PWA hosting.** The PWA is a static bundle but nothing hosts it for users yet
+  — it must be `npx`-served, dropped on a static host/CDN, or self-hosted, then
+  pointed at a broker. A managed deployment (and a place to host the broker) is
+  still open.
+- **Push delivery.** Approvals surface only while the PWA is open (or at the
+  local terminal). Web Push / notifications so a request can reach a backgrounded
+  device are not implemented.
+- **Windows named-pipe daemon.** The plugin↔daemon named-pipe backend compiles
+  behind `cfg(windows)` but is only built by `publish.yml`'s release matrix, not
+  by any PR check, so it needs verification on a Windows runner before it is
+  relied on.
+- **Post-release broker smoke.** `e2e-smoke` drives the *published* plugin and
+  daemon but still builds the broker from source; it could instead install the
+  published broker via `scripts/install-broker.sh` to verify that artifact too.
+- **Visual-docs baselines.** The static-export switch changes how the app is
+  served during capture; if the byte-identical gallery gate drifts, regenerate
+  the baselines in the pinned Playwright image (`screencomp`), not locally.

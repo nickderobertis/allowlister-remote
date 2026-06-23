@@ -10,15 +10,14 @@ export default defineConfig({
     trace: "on-first-retry",
   },
   webServer: {
-    command: "npx next start --hostname 127.0.0.1 --port 4183",
+    // The PWA is a static export (apps/web/out); serve it with the zero-dep
+    // static server. cwd defaults to this config's directory (apps/web). The
+    // broker URL is no longer a server env — each spec seeds it client-side
+    // (localStorage) before navigating, since the broker is the app's only
+    // request transport and its URL is now a per-device setting.
+    command: "node ../../scripts/serve-web.mjs --dir out --port 4183",
     url: "http://127.0.0.1:4183",
     reuseExistingServer: false,
-    // The broker is the app's only request transport. The broker-realtime spec
-    // runs a broker on this fixed port and drives the app through it; /api/config
-    // returns the derived /ws/pwa endpoint at runtime. The other specs (offline
-    // shell, theme) do not need approval requests, so their service worker simply
-    // retries the (down) broker harmlessly in the background while they run.
-    env: { ALLOWLISTER_REMOTE_BROKER_URL: "ws://127.0.0.1:4188" },
   },
   projects: [
     {

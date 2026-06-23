@@ -27,8 +27,8 @@ const pluginBin =
 
 const socketPath = join(tmpdir(), `allowlister-remote-e2e-${randomUUID().slice(0, 8)}.sock`);
 
-// Fixed port shared with playwright.config.ts's webServer env so /api/config
-// returns this broker's /ws/pwa endpoint at runtime.
+// Fixed port for the broker this spec runs; each page is told to use it via a
+// client-side setting (localStorage) seeded in `subscribe` before navigation.
 const brokerPort = 4188;
 let broker: ChildProcess | undefined;
 let daemon: ChildProcess | undefined;
@@ -97,6 +97,11 @@ function runShell(command: string) {
 // the broker connection. A reload is needed because the first load registers the
 // worker but is not yet controlled by it.
 async function subscribe(page: Page) {
+  // The broker URL is a per-device client setting; seed it before any load so the
+  // app (and the service worker it spawns) dials this spec's broker.
+  await page.addInitScript((port) => {
+    window.localStorage.setItem("allowlister-remote-broker-url", `ws://127.0.0.1:${port}`);
+  }, brokerPort);
   await page.goto("/");
   await page.evaluate(() => navigator.serviceWorker.ready);
   await page.reload();

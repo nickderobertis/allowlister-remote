@@ -15,11 +15,13 @@
     "format": "nx affected -t format",
     "fmt-check": "nx affected -t fmt-check",
     "test:e2e": "nx affected -t test-e2e",
-    "start": "next start apps/web",
+    "start": "node scripts/serve-web.mjs --dir apps/web/out",
     "plugin": "cargo run --quiet -p allowlister-remote-plugin --",
     "release:set-npm-version": "node scripts/set-npm-package-version.mjs",
     "release:stage-npm": "node scripts/stage-npm-package.mjs",
+    "release:stage-web": "node scripts/stage-web-package.mjs",
     "release:smoke-npm": "bash scripts/smoke-npm-package.sh",
+    "release:smoke-web": "bash scripts/smoke-web-package.sh",
     "release:smoke-e2e": "bash scripts/smoke-e2e-published.sh"
   },
   "dependencies": {

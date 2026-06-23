@@ -53,9 +53,11 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y musl-tools
       - name: Build release binaries
         shell: bash
-        # Build the plugin and the daemon it auto-starts for every target. The
-        # daemon is the plugin's only transport to the broker on every OS (a Unix
-        # socket on Unix, a named pipe on Windows), so it ships everywhere.
+        # Build the plugin, the daemon it auto-starts, and the broker for every
+        # target. The daemon is the plugin's only transport to the broker on every
+        # OS (a Unix socket on Unix, a named pipe on Windows), so it ships
+        # everywhere; the broker is the WebSocket relay, shipped as a standalone
+        # CLI via GitHub Releases (see scripts/install-broker.sh) rather than npm.
         # `CC_<target>` points `ring`'s `cc` build at musl-gcc when cross-building
         # the musl target; unused on the other targets.
         env:
@@ -63,13 +65,15 @@ jobs:
         run: |
           cargo build --release --target "${{ matrix.target }}" -p allowlister-remote-plugin
           cargo build --release --target "${{ matrix.target }}" -p allowlister-remote-daemon
+          cargo build --release --target "${{ matrix.target }}" -p allowlister-remote-broker
       - name: Stage artifacts
         shell: bash
         # Name each artifact `<binary>-<platform>[.exe]` so release:stage-npm can
-        # pick it up by binary and platform. Both binaries ship on every platform.
+        # pick the plugin and daemon up by binary and platform. The broker is
+        # staged the same way for the GitHub Release; stage-npm ignores it.
         run: |
           mkdir -p dist/artifacts
-          binaries=(allowlister-remote-plugin allowlister-remote-daemon)
+          binaries=(allowlister-remote-plugin allowlister-remote-daemon allowlister-remote-broker)
           for binary in "${binaries[@]}"; do
             artifact="${binary}-${{ matrix.platform }}${{ matrix.exe }}"
             cp "target/${{ matrix.target }}/release/${binary}${{ matrix.exe }}" "dist/artifacts/${artifact}"
@@ -92,12 +96,13 @@ jobs:
       - name: Generate checksums
         run: |
           cd dist/release-artifacts
-          sha256sum allowlister-remote-plugin-* allowlister-remote-daemon-* > SHA256SUMS
+          sha256sum allowlister-remote-plugin-* allowlister-remote-daemon-* allowlister-remote-broker-* > SHA256SUMS
       - uses: softprops/action-gh-release@v3
         with:
           files: |
             dist/release-artifacts/allowlister-remote-plugin-*
             dist/release-artifacts/allowlister-remote-daemon-*
+            dist/release-artifacts/allowlister-remote-broker-*
             dist/release-artifacts/SHA256SUMS
 
   npm-publish:
@@ -192,3 +197,37 @@ jobs:
           fi
           [[ "$("$daemon" --version)" == "$version" ]]
           echo "published daemon binary resolves next to the plugin"
+
+  web-publish:
+    # The PWA is a fully static export with no server of its own, so it ships as
+    # its own npm package (@nickderobertis/allowlister-remote-web): a tiny static
+    # server plus the prebuilt `out/` bundle. It has no native binaries and no
+    # dependency on the plugin packages, so it builds and publishes independently
+    # of the binary jobs.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          cache: npm
+      - run: npm ci
+      - name: Build the static PWA export
+        run: npx nx run web:build
+      - name: Stage the PWA bundle and version from the tag
+        run: npm run release:stage-web -- "${GITHUB_REF_NAME#v}"
+      - name: Smoke-test the packed web package
+        run: npm run release:smoke-web
+      - name: Publish the web package
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          name="$(node -e "console.log(require('./packages/allowlister-remote-web/package.json').name)")"
+          version="$(node -e "console.log(require('./packages/allowlister-remote-web/package.json').version)")"
+          if npm view "$name@$version" version >/dev/null 2>&1; then
+            echo "$name@$version already published"
+          else
+            npm publish "./packages/allowlister-remote-web" --access public --provenance
+          fi

@@ -1,0 +1,26 @@
+{
+  "name": "@nickderobertis/allowlister-remote-web",
+  "version": "0.1.0",
+  "description": "Static remote-approval PWA for allowlister dynamic requests (serve the bundled UI; point it at your broker)",
+  "type": "module",
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nickderobertis/allowlister-remote.git"
+  },
+  "bin": {
+    "allowlister-remote-web": "bin/serve.mjs"
+  },
+  "files": [
+    "bin/",
+    "static/",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

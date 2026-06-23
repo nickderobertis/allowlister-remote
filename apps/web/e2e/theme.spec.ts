@@ -2,6 +2,15 @@ import { expect, test } from "@playwright/test";
 
 const html = (page: import("@playwright/test").Page) => page.locator("html");
 
+test.beforeEach(async ({ page }) => {
+  // Seed a broker URL so the app renders its inbox (empty — nothing is running)
+  // rather than the first-run setup screen. The background connect to this unused
+  // port fails harmlessly; theming is exercised either way.
+  await page.addInitScript(() => {
+    window.localStorage.setItem("allowlister-remote-broker-url", "ws://127.0.0.1:4188");
+  });
+});
+
 test("follows the OS colour scheme automatically", async ({ page }) => {
   await page.emulateMedia({ colorScheme: "dark" });
   await page.goto("/");

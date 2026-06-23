@@ -14,6 +14,7 @@ import { Button } from "./components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./components/ui/card";
 import { JsonView } from "./components/ui/json-view";
 import { Kbd } from "./components/ui/kbd";
+import { brokerWsUrl, resolveBrokerBase, setStoredBrokerBase } from "./lib/broker-config";
 import { SHORTCUT_GROUPS, useIsDesktop, useKeyboardShortcuts } from "./lib/keyboard";
 import { ThemeProvider } from "./lib/theme";
 import { cn } from "./lib/utils";
@@ -751,11 +752,56 @@ function EmptyInbox({ error }: { error: string | null }) {
   );
 }
 
+// Shown when no broker is configured yet. The PWA is fully static, so the broker
+// URL is a setting this device holds (saved to localStorage); the app derives the
+// `/ws/pwa` endpoint from it. A `?broker=` deep link skips this screen entirely.
+function BrokerSetup({ onSave }: { onSave: (base: string) => void }) {
+  const [value, setValue] = useState("");
+  const trimmed = value.trim();
+  return (
+    <main className="mx-auto flex max-w-md flex-col gap-4 p-8">
+      <BrandMark />
+      <h1 className="text-2xl font-semibold tracking-tight">Connect to your broker</h1>
+      <p className="text-muted-foreground">
+        allowlister-remote relays approval requests through a broker you run. Enter its URL to
+        connect this device — it is saved on this device only.
+      </p>
+      <form
+        className="flex flex-col gap-3"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (trimmed) onSave(trimmed);
+        }}
+      >
+        <label className="flex flex-col gap-1 text-sm font-medium" htmlFor="broker-url">
+          Broker URL
+          <input
+            id="broker-url"
+            name="broker-url"
+            type="url"
+            inputMode="url"
+            autoComplete="off"
+            placeholder="wss://broker.example.com"
+            value={value}
+            onChange={(event) => setValue(event.target.value)}
+            className="rounded-md border border-border bg-background px-3 py-2 text-sm font-normal focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          />
+        </label>
+        <Button type="submit" disabled={trimmed.length === 0}>
+          Connect
+        </Button>
+      </form>
+      <p className="text-xs text-muted-foreground">
+        Tip: open this app with <code>?broker=wss://…</code> to set the broker automatically.
+      </p>
+    </main>
+  );
+}
+
 function InboxView({
   requests,
   focusedIndex,
   isDesktop,
-  error,
   onOpen,
   onFocus,
   onDecide,
@@ -763,7 +809,6 @@ function InboxView({
   requests: ApprovalRequest[];
   focusedIndex: number;
   isDesktop: boolean;
-  error: string | null;
   onOpen: (id: string) => void;
   onFocus: (index: number) => void;
   onDecide: (id: string, verdict: Verdict) => void;
@@ -778,7 +823,6 @@ function InboxView({
           {isDesktop ? "use the keyboard or tap a card" : "tap a card"} to expand
         </p>
         {isDesktop ? <InboxHints /> : null}
-        <ErrorBanner error={error} />
       </header>
 
       <ul className="flex flex-col gap-3" aria-label="Pending approvals">
@@ -803,7 +847,15 @@ function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [focusedIndex, setFocusedIndex] = useState(0);
   const [showShortcuts, setShowShortcuts] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // The configured broker base, and where the app is in its one-time boot: until
+  // it resolves (a client-only read of navigator.serviceWorker, localStorage and
+  // the URL) the app shows a neutral empty shell, so the static-export prerender
+  // and the first client render match. Then it is either unsupported (no service
+  // worker), awaiting a broker URL, or ready to connect.
+  const [brokerBase, setBrokerBase] = useState<string | null>(null);
+  const [bootState, setBootState] = useState<"resolving" | "no-sw" | "needs-broker" | "ready">(
+    "resolving",
+  );
   const isDesktop = useIsDesktop();
   // Decisions travel back through the broker to the waiting plugin (the request
   // lives in the broker, never on the web server). Held in a ref so `decide` can
@@ -813,51 +865,52 @@ function App() {
     close: () => void;
   } | null>(null);
 
-  // The broker is the sole source of approval requests: the service worker holds
-  // one WebSocket to it and relays every live update, so approvals appear and
-  // dismiss the moment the daemon announces or resolves them. The broker URL is
-  // fetched at runtime from /api/config. There is no polling or HTTP fallback —
-  // without a service worker and a configured broker the app cannot receive
-  // requests, so each of those is surfaced as an error.
+  // Resolve the runtime environment once on mount. This reads browser-only state
+  // (the service worker, the saved broker setting, the URL), so it lives in an
+  // effect rather than during render.
   useEffect(() => {
     if (!navigator.serviceWorker) {
-      setError("This browser has no service worker, which allowlister-remote requires.");
+      setBootState("no-sw");
       return;
     }
-    let cancelled = false;
-    void fetch("/api/config")
-      .then((response) => response.json())
-      .then((config: { brokerUrl?: string | null }) => {
-        if (cancelled) return;
-        if (!config.brokerUrl) {
-          setError("No approval broker is configured for this deployment.");
-          return;
-        }
-        setError(null);
-        brokerRef.current = connectBroker(config.brokerUrl, {
-          onSnapshot: (snapshot) => setRequests(snapshot.map(normalizeBrokerRequest)),
-          onAdded: (request) =>
-            setRequests((current) => {
-              const normalized = normalizeBrokerRequest(request);
-              // Dedupe by id so a re-announce (e.g. after a broker restart) never
-              // double-renders a card.
-              return current.some((existing) => existing.id === normalized.id)
-                ? current
-                : [...current, normalized];
-            }),
-          onResolved: (id) =>
-            setRequests((current) => current.filter((request) => request.id !== id)),
-        });
-      })
-      .catch(() => {
-        if (!cancelled) setError("Could not load the approval broker configuration.");
-      });
+    const base = resolveBrokerBase();
+    setBrokerBase(base);
+    setBootState(base ? "ready" : "needs-broker");
+  }, []);
+
+  // The broker is the sole source of approval requests: the service worker holds
+  // one WebSocket to it and relays every live update, so approvals appear and
+  // dismiss the moment the daemon announces or resolves them. There is no polling
+  // or HTTP fallback — without a configured broker the app shows its setup screen
+  // instead. Re-runs when the user saves a new broker URL.
+  useEffect(() => {
+    if (bootState !== "ready" || !brokerBase) return;
+    const bridge = connectBroker(brokerWsUrl(brokerBase), {
+      onSnapshot: (snapshot) => setRequests(snapshot.map(normalizeBrokerRequest)),
+      onAdded: (request) =>
+        setRequests((current) => {
+          const normalized = normalizeBrokerRequest(request);
+          // Dedupe by id so a re-announce (e.g. after a broker restart) never
+          // double-renders a card.
+          return current.some((existing) => existing.id === normalized.id)
+            ? current
+            : [...current, normalized];
+        }),
+      onResolved: (id) => setRequests((current) => current.filter((request) => request.id !== id)),
+    });
+    brokerRef.current = bridge;
     return () => {
-      cancelled = true;
-      brokerRef.current?.close();
+      bridge.close();
       brokerRef.current = null;
     };
-  }, []);
+  }, [bootState, brokerBase]);
+
+  // Persist a broker URL entered on the setup screen, then connect to it.
+  function saveBrokerBase(base: string) {
+    setStoredBrokerBase(base);
+    setBrokerBase(base);
+    setBootState("ready");
+  }
 
   const selected = useMemo(
     () => requests.find((request) => request.id === selectedId) ?? null,
@@ -911,7 +964,13 @@ function App() {
   );
 
   let content: ReactNode;
-  if (selected) {
+  if (bootState === "no-sw") {
+    content = (
+      <EmptyInbox error="This browser has no service worker, which allowlister-remote requires." />
+    );
+  } else if (bootState === "needs-broker") {
+    content = <BrokerSetup onSave={saveBrokerBase} />;
+  } else if (selected) {
     content = (
       <ApprovalDetail
         request={selected}
@@ -922,14 +981,13 @@ function App() {
       />
     );
   } else if (requests.length === 0) {
-    content = <EmptyInbox error={error} />;
+    content = <EmptyInbox error={null} />;
   } else {
     content = (
       <InboxView
         requests={requests}
         focusedIndex={focusedIndex}
         isDesktop={isDesktop}
-        error={error}
         onOpen={setSelectedId}
         onFocus={setFocusedIndex}
         onDecide={decide}
