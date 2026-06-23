@@ -156,7 +156,7 @@ fn main() {
     };
 
     match daemon::connect_or_start(&config) {
-        Some(stream) => {
+        Ok(stream) => {
             // For a shell payload this names the command; for a tool call, the
             // tool — so the local prompt always names the action awaiting approval.
             let summary = request_summary(&input);
@@ -168,10 +168,11 @@ fn main() {
             daemon::run_via_daemon(stream, build_create_body(&input), &summary, &cwd);
         }
         // No daemon and we could not start one: there is no other transport, so
-        // surface it as `ask` rather than blocking forever or guessing a verdict.
-        None => write_response(
+        // surface it as `ask` (naming the specific cause) rather than blocking
+        // forever or guessing a verdict.
+        Err(reason) => write_response(
             "ask",
-            "allowlister-remote daemon unavailable: could not open the approval channel",
+            format!("allowlister-remote daemon unavailable: {reason}"),
         ),
     }
 }

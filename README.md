@@ -98,6 +98,18 @@ structured `fragments` array, for tool calls the `tool` object, and the harness
 `session_id` — so the app renders the engine's real decomposition (and the
 originating harness session) rather than re-deriving it.
 
+### Troubleshooting
+
+The broker and daemon log to stderr, filtered by `RUST_LOG` (default `info`); set
+`RUST_LOG=debug` for per-connection detail. Run either with `--help` to see its
+environment and options, or `--version` for the build. The daemon is normally
+auto-started by the plugin with its output discarded; set `RUST_LOG` before
+running the gated command and the auto-started daemon writes to a log file beside
+its socket (e.g. `/tmp/allowlister-remote-daemon-0.log`) so a broker-link problem
+is visible. If the plugin returns `ask: allowlister-remote daemon unavailable: …`,
+the reason names the specific cause (the daemon binary could not be started, or it
+started but never began listening).
+
 ## Releases
 
 PR titles use Conventional Commits. Once a PR is squash-merged to `main` and the

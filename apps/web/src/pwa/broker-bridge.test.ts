@@ -2,20 +2,29 @@ import { describe, expect, it, vi } from "vitest";
 import { connectBroker } from "./broker-bridge";
 
 /** A fake ServiceWorkerContainer that captures posts and lets a test emit
- * messages back as the service worker would. */
+ * messages back as the service worker would. `takeControl` simulates the worker
+ * taking control of the page (sets `controller` and fires `controllerchange`),
+ * the first-load handoff the bridge must wait for. */
 function fakeContainer(withController = true) {
   const posted: unknown[] = [];
-  let handler: ((event: MessageEvent) => void) | undefined;
-  const removeEventListener = vi.fn();
+  const listeners: Record<string, ((event: Event) => void) | undefined> = {};
+  const removeEventListener = vi.fn((type: string) => {
+    listeners[type] = undefined;
+  });
+  const controller = { postMessage: (m: unknown) => posted.push(m) };
   const container = {
-    controller: withController ? { postMessage: (m: unknown) => posted.push(m) } : null,
-    addEventListener: (_type: string, h: (event: MessageEvent) => void) => {
-      handler = h;
+    controller: withController ? controller : null,
+    addEventListener: (type: string, h: (event: Event) => void) => {
+      listeners[type] = h;
     },
     removeEventListener,
   } as unknown as ServiceWorkerContainer;
-  const emit = (data: unknown) => handler?.({ data } as MessageEvent);
-  return { container, posted, emit, removeEventListener };
+  const emit = (data: unknown) => listeners.message?.({ data } as MessageEvent);
+  const takeControl = () => {
+    (container as { controller: unknown }).controller = controller;
+    listeners.controllerchange?.(new Event("controllerchange"));
+  };
+  return { container, posted, emit, removeEventListener, takeControl };
 }
 
 describe("broker bridge", () => {
@@ -85,6 +94,34 @@ describe("broker bridge", () => {
     emit({ type: "broker-event", event: { type: "unknown" } });
     emit({ type: "broker-event" }); // no event payload
     expect(onAdded).not.toHaveBeenCalled();
+  });
+
+  it("defers the connect until the worker takes control on first load", () => {
+    // First load: no controller yet, so the connect must not be dropped — it is
+    // sent once the worker claims the page and fires controllerchange.
+    const { container, posted, takeControl } = fakeContainer(false);
+    connectBroker("ws://broker/ws/pwa", {}, container);
+    expect(posted).toHaveLength(0); // nothing sent while uncontrolled
+
+    takeControl();
+    expect(posted).toContainEqual({ type: "broker-connect", url: "ws://broker/ws/pwa" });
+  });
+
+  it("only sends one connect even if control changes again", () => {
+    const { container, posted, takeControl } = fakeContainer(false);
+    connectBroker("ws://broker/ws/pwa", {}, container);
+    takeControl();
+    takeControl(); // a later worker update fires controllerchange again
+    const connects = posted.filter((m) => (m as { type?: string }).type === "broker-connect");
+    expect(connects).toHaveLength(1);
+  });
+
+  it("stops waiting for control when closed before the worker takes over", () => {
+    const { container, posted, takeControl } = fakeContainer(false);
+    const bridge = connectBroker("ws://broker/ws/pwa", {}, container);
+    bridge.close();
+    takeControl(); // control arrives after close — must not connect
+    expect(posted).toHaveLength(0);
   });
 
   it("no-ops without a controlling service worker", () => {

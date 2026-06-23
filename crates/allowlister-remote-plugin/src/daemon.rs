@@ -14,6 +14,7 @@ use allowlister_remote_plugin::{
 };
 use serde_json::{json, Value};
 use std::env;
+use std::fs::OpenOptions;
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Command, Stdio};
 use std::sync::mpsc;
@@ -76,16 +77,19 @@ fn connect(path: &str) -> std::io::Result<LocalStream> {
         .open(path)
 }
 
-/// Connect to the daemon, auto-starting it if nothing is listening yet. Returns
-/// `None` if it still cannot be reached, so the caller settles the request with
-/// `ask` (there is no other transport to fall back to).
-pub fn connect_or_start(config: &DaemonConfig) -> Option<LocalStream> {
+/// Connect to the daemon, auto-starting it if nothing is listening yet. On
+/// failure returns a human-readable reason (not just `None`) so the caller can
+/// settle the request with an `ask` that says *why* the approval channel could
+/// not be opened — a missing/non-executable daemon binary reads very differently
+/// from a daemon that started but never listened (see issue #93). There is no
+/// other transport to fall back to.
+pub fn connect_or_start(config: &DaemonConfig) -> Result<LocalStream, String> {
     if let Ok(stream) = connect(&config.socket_path) {
-        return Some(stream);
+        return Ok(stream);
     }
     // Nothing listening: start a daemon (it may lose a bind race with another
     // plugin starting concurrently — that is fine, we just connect to the winner).
-    spawn_daemon(config);
+    let spawned = spawn_daemon(config);
 
     let wait_ms = env::var("ALLOWLISTER_REMOTE_DAEMON_WAIT_MS")
         .ok()
@@ -94,25 +98,57 @@ pub fn connect_or_start(config: &DaemonConfig) -> Option<LocalStream> {
     let deadline = Instant::now() + Duration::from_millis(wait_ms);
     while Instant::now() < deadline {
         if let Ok(stream) = connect(&config.socket_path) {
-            return Some(stream);
+            return Ok(stream);
         }
         thread::sleep(Duration::from_millis(20));
     }
-    None
+
+    // Could not reach a daemon within the window. Report the most specific cause.
+    Err(match spawned {
+        Err(error) => format!(
+            "could not start the daemon binary ({}): {error}",
+            resolve_daemon_bin(config)
+        ),
+        Ok(log_path) => {
+            let mut reason = format!(
+                "the daemon did not start listening at {} within {wait_ms}ms",
+                config.socket_path
+            );
+            if let Some(path) = log_path {
+                reason.push_str(&format!("; see {path} for daemon logs"));
+            }
+            reason
+        }
+    })
 }
 
 /// Spawn the daemon detached so a Ctrl-C to the gated command's group does not
-/// also kill it, and with null stdio so it does not hold the plugin's pipes open.
-fn spawn_daemon(config: &DaemonConfig) {
+/// also kill it. Stdio is null by default so it does not hold the plugin's pipes
+/// open or spam the gated command's terminal; when `RUST_LOG` is set the operator
+/// wants diagnostics, so its output is routed to a log file beside the socket
+/// instead (the detached daemon has no terminal of its own). Returns the log path
+/// when one was set up, or the spawn error so the caller can report it.
+fn spawn_daemon(config: &DaemonConfig) -> std::io::Result<Option<String>> {
     let mut command = Command::new(resolve_daemon_bin(config));
     command.env("ALLOWLISTER_REMOTE_DAEMON_SOCK", &config.socket_path);
     if let Some(url) = &config.broker_url {
         command.env("ALLOWLISTER_REMOTE_BROKER_URL", url);
     }
-    command
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
+    command.stdin(Stdio::null());
+
+    let log_path = match env::var("RUST_LOG") {
+        Ok(value) if !value.is_empty() => {
+            open_daemon_log(&config.socket_path).map(|(out, err, path)| {
+                command.stdout(out).stderr(err);
+                path
+            })
+        }
+        _ => None,
+    };
+    if log_path.is_none() {
+        command.stdout(Stdio::null()).stderr(Stdio::null());
+    }
+
     #[cfg(unix)]
     {
         // Its own process group, so a Ctrl-C to the command's group spares it.
@@ -128,7 +164,41 @@ fn spawn_daemon(config: &DaemonConfig) {
         const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
         command.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP);
     }
-    let _ = command.spawn();
+    command.spawn()?;
+    Ok(log_path)
+}
+
+/// Open (append) the daemon's log file and return stdio handles for its stdout
+/// and stderr plus the path. `None` if the file cannot be opened, so logging is
+/// best-effort and never blocks auto-start.
+fn open_daemon_log(socket_path: &str) -> Option<(Stdio, Stdio, String)> {
+    let path = daemon_log_path(socket_path);
+    let file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .ok()?;
+    let err = file.try_clone().ok()?;
+    Some((Stdio::from(file), Stdio::from(err), path))
+}
+
+/// The auto-started daemon's log path. On Unix it sits beside the socket
+/// (`…-daemon-0.sock` → `…-daemon-0.log`) so it is easy to find; on Windows the
+/// socket is a named pipe (not a filesystem path), so the temp dir is used.
+#[cfg(unix)]
+fn daemon_log_path(socket_path: &str) -> String {
+    match socket_path.strip_suffix(".sock") {
+        Some(stem) => format!("{stem}.log"),
+        None => format!("{socket_path}.log"),
+    }
+}
+
+#[cfg(windows)]
+fn daemon_log_path(_socket_path: &str) -> String {
+    env::temp_dir()
+        .join("allowlister-remote-daemon.log")
+        .to_string_lossy()
+        .into_owned()
 }
 
 /// Resolve the daemon binary: explicit override, else a sibling of this plugin
@@ -245,5 +315,23 @@ pub fn run_via_daemon(stream: LocalStream, create_body: Value, summary: &str, cw
                 crate::write_response("ask", "allowlister-remote daemon closed the connection")
             }
         }
+    }
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::daemon_log_path;
+
+    #[test]
+    fn log_path_sits_beside_the_socket() {
+        assert_eq!(
+            daemon_log_path("/tmp/allowlister-remote-daemon-0.sock"),
+            "/tmp/allowlister-remote-daemon-0.log"
+        );
+    }
+
+    #[test]
+    fn log_path_appends_when_there_is_no_sock_suffix() {
+        assert_eq!(daemon_log_path("/run/daemon"), "/run/daemon.log");
     }
 }
