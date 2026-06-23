@@ -4,6 +4,12 @@ export default defineConfig({
   testDir: "./e2e",
   timeout: 30_000,
   expect: { timeout: 10_000 },
+  // Hard cap on the whole run as a backstop: the realtime spec drives real
+  // broker/daemon/plugin processes and a static webServer, so a wedged hook or
+  // teardown (rather than a single test, which the per-test timeout already
+  // bounds) could otherwise ride the CI job to its 30-minute cap. The suite
+  // finishes in a few minutes; 10 fails fast while leaving generous headroom.
+  globalTimeout: 600_000,
   workers: 1,
   use: {
     baseURL: "http://127.0.0.1:4183",

@@ -117,6 +117,19 @@ async function expectStillRunning(running: { promise: Promise<unknown> }) {
   expect(result, "plugin should still be waiting for a decision").toBe(marker);
 }
 
+// Force-kill a spawned child and wait (bounded) for it to exit. A long-lived
+// broker/daemon left running would otherwise keep the Playwright runner alive
+// past the suite; SIGKILL is uncatchable, and the timeout never lets teardown
+// itself hang.
+async function terminate(child: ChildProcess | undefined): Promise<void> {
+  if (!child || child.exitCode !== null || child.signalCode !== null) return;
+  await new Promise<void>((resolveClose) => {
+    child.once("close", () => resolveClose());
+    child.kill("SIGKILL");
+    setTimeout(() => resolveClose(), 2000).unref();
+  });
+}
+
 test.beforeAll(async () => {
   test.setTimeout(180_000); // the first run may compile the broker/daemon binaries
 
@@ -132,6 +145,9 @@ test.beforeAll(async () => {
     env: { ...process.env, ALLOWLISTER_REMOTE_BROKER_ADDR: `127.0.0.1:${brokerPort}` },
     stdio: "ignore",
   });
+  // Don't let the long-lived broker/daemon handles keep the Node runner alive on
+  // their own; afterAll still kills them, this just removes the leak as a hang.
+  broker.unref();
   await waitForPort(brokerPort);
 
   daemon = spawn(daemonBin, [], {
@@ -142,12 +158,12 @@ test.beforeAll(async () => {
     },
     stdio: "ignore",
   });
+  daemon.unref();
   await waitForSocket();
 });
 
 test.afterAll(async () => {
-  daemon?.kill();
-  broker?.kill();
+  await Promise.all([terminate(daemon), terminate(broker)]);
   await rm(socketPath, { force: true });
 });
 
