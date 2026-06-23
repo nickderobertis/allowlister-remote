@@ -75,39 +75,31 @@ fi
 [ -x "$bin" ] || fail "release binary not found at $bin"
 
 # Payload fixtures in a temp sandbox: a static allow verdict that defers without
-# any network call, a defer verdict that would open a request, and a malformed
-# body that falls back to `ask`.
+# touching the daemon, and a malformed body that falls back to `ask`. The
+# needs-approval path (a `defer` verdict) is deliberately not benched here — it
+# hands off to the daemon and waits for a human, which the e2e suite covers.
 sandbox="$(mktemp -d)"
 cleanup() { rm -rf "$sandbox"; }
 trap cleanup EXIT
 
 allow="$sandbox/allow.json"
-defer="$sandbox/defer.json"
 malformed="$sandbox/malformed.json"
 printf '{"current_verdict":"allow","command":"git status","cwd":"/tmp"}\n' >"$allow"
-printf '{"current_verdict":"defer","command":"gh pr merge 42","cwd":"/tmp","harness":"codex"}\n' >"$defer"
 printf 'not json\n' >"$malformed"
-
-# An unreachable server URL — 127.0.0.1:9 (the discard port) refuses instantly —
-# so the request-opening path measures stdin read + parse + triage + the create
-# POST attempt without blocking on a real decision.
-dead="http://127.0.0.1:9"
 
 mkdir -p "$out"
 
 note "» benchmarking $bin"
-# `version` is pure startup; `defer:static` short-circuits before any socket;
-# `ask:malformed` rejects bad input before any socket; `ask:unavailable` adds the
-# failed create POST against the dead port. All exit 0, so hyperfine needs no
-# `|| true`.
+# `version` is pure startup; `defer:static` short-circuits before any IPC;
+# `ask:malformed` rejects bad input before any IPC. All exit 0, so hyperfine
+# needs no `|| true`.
 hyperfine \
     --warmup "$warmup" "${runs_opt[@]}" \
     --export-json "$out/results.json" \
     --export-markdown "$out/results.md" \
     -n "version" "'$bin' --version" \
-    -n "defer:static" "'$bin' --server-url '$dead' < '$allow'" \
-    -n "ask:malformed" "'$bin' --server-url '$dead' < '$malformed'" \
-    -n "ask:unavailable" "'$bin' --server-url '$dead' < '$defer'"
+    -n "defer:static" "'$bin' < '$allow'" \
+    -n "ask:malformed" "'$bin' < '$malformed'"
 
 note ""
 note "✓ wrote $out/results.json"

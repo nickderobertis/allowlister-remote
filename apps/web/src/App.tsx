@@ -1,6 +1,5 @@
 import Image from "next/image";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import { createApprovalApi } from "./api";
 import {
   flaggedFragments,
   requestHeadline,
@@ -800,55 +799,41 @@ function InboxView({
 }
 
 function App() {
-  const api = useMemo(() => createApprovalApi(), []);
   const [requests, setRequests] = useState<ApprovalRequest[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [focusedIndex, setFocusedIndex] = useState(0);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const isDesktop = useIsDesktop();
-  // When the broker is live, decisions must travel back through it to the waiting
-  // plugin (the request lives in the broker, not the Next store). Held in a ref so
-  // `decide` can reach it without re-rendering on connect.
+  // Decisions travel back through the broker to the waiting plugin (the request
+  // lives in the broker, never on the web server). Held in a ref so `decide` can
+  // reach it without re-rendering on connect.
   const brokerRef = useRef<{
     decide: (decision: { requestId: string; verdict: "allow" | "deny"; reason: string }) => void;
     close: () => void;
   } | null>(null);
 
+  // The broker is the sole source of approval requests: the service worker holds
+  // one WebSocket to it and relays every live update, so approvals appear and
+  // dismiss the moment the daemon announces or resolves them. The broker URL is
+  // fetched at runtime from /api/config. There is no polling or HTTP fallback —
+  // without a service worker and a configured broker the app cannot receive
+  // requests, so each of those is surfaced as an error.
   useEffect(() => {
-    let active = true;
-    async function refresh() {
-      try {
-        const next = await api.listRequests();
-        if (!active) return;
-        setRequests(next);
-        setError(null);
-      } catch (caught) {
-        /* v8 ignore next 2 -- defensive fetch error rendering is covered through API tests. */
-        if (active) setError(caught instanceof Error ? caught.message : "Unknown error");
-      }
+    if (!navigator.serviceWorker) {
+      setError("This browser has no service worker, which allowlister-remote requires.");
+      return;
     }
-    void refresh();
-    const poll = window.setInterval(refresh, 2_000);
-    return () => {
-      active = false;
-      window.clearInterval(poll);
-    };
-  }, [api]);
-
-  // Realtime sync: when a broker is configured, the service worker holds one
-  // WebSocket to it and relays live updates, so approvals appear and dismiss
-  // instantly instead of waiting for the 2s poll above (which stays as the
-  // fallback). The broker URL is fetched at runtime from /api/config. Requires a
-  // service worker, so this is inert under jsdom and exercised via e2e.
-  /* v8 ignore start -- realtime path runs against the broker; covered by e2e. */
-  useEffect(() => {
-    if (!navigator.serviceWorker) return;
     let cancelled = false;
     void fetch("/api/config")
       .then((response) => response.json())
       .then((config: { brokerUrl?: string | null }) => {
-        if (cancelled || !config.brokerUrl) return;
+        if (cancelled) return;
+        if (!config.brokerUrl) {
+          setError("No approval broker is configured for this deployment.");
+          return;
+        }
+        setError(null);
         brokerRef.current = connectBroker(config.brokerUrl, {
           onSnapshot: (snapshot) => setRequests(snapshot.map(normalizeBrokerRequest)),
           onAdded: (request) =>
@@ -864,14 +849,15 @@ function App() {
             setRequests((current) => current.filter((request) => request.id !== id)),
         });
       })
-      .catch(() => {});
+      .catch(() => {
+        if (!cancelled) setError("Could not load the approval broker configuration.");
+      });
     return () => {
       cancelled = true;
       brokerRef.current?.close();
       brokerRef.current = null;
     };
   }, []);
-  /* v8 ignore stop */
 
   const selected = useMemo(
     () => requests.find((request) => request.id === selectedId) ?? null,
@@ -883,12 +869,11 @@ function App() {
     setFocusedIndex((index) => Math.min(index, Math.max(0, requests.length - 1)));
   }, [requests.length]);
 
-  async function decide(id: string, verdict: Verdict) {
+  function decide(id: string, verdict: Verdict) {
     const decision = { requestId: id, verdict, reason: `${verdict}ed in allowlister-remote` };
-    // Route through the broker when it is live (the plugin is waiting there); the
-    // HTTP call covers the polling path and is a harmless no-op otherwise.
+    // Route the decision back through the broker to the plugin waiting there, then
+    // drop the card optimistically; the broker's `resolved` event confirms it.
     brokerRef.current?.decide(decision);
-    await api.decide(decision);
     setRequests((current) => current.filter((request) => request.id !== id));
     setSelectedId((current) => (current === id ? null : current));
   }

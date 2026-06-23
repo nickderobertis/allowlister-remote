@@ -3,9 +3,9 @@
 //! These measure the in-process work a single plugin invocation does between
 //! reading its stdin payload and touching the network: parse the harness JSON
 //! and triage a static verdict (`triage`), build the create-request body
-//! (`build_create_body`), interpret a poll response (`interpret_decision`), and
-//! map a line typed at the terminal (`parse_local_input`). Process startup,
-//! HTTP, and terminal I/O are deliberately excluded here — `scripts/bench.sh`
+//! (`build_create_body`), interpret a relayed decision (`interpret_decision`),
+//! and map a line typed at the terminal (`parse_local_input`). Process startup,
+//! IPC, and terminal I/O are deliberately excluded here — `scripts/bench.sh`
 //! covers the no-network CLI cost end to end with hyperfine, and the full remote
 //! round-trip is covered by the e2e suite.
 //!

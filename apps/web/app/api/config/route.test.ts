@@ -16,8 +16,12 @@ describe("runtime config route", () => {
     expect(await GET().json()).toEqual({ brokerUrl: "ws://broker:4180/ws/pwa" });
   });
 
-  it("returns null when no broker is configured", async () => {
+  it("fails with a 500 when no broker is configured", async () => {
     delete process.env.ALLOWLISTER_REMOTE_BROKER_URL;
-    expect(await GET().json()).toEqual({ brokerUrl: null });
+    const response = GET();
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({
+      error: "ALLOWLISTER_REMOTE_BROKER_URL is not configured",
+    });
   });
 });

@@ -1,4 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
+import { brokerRequestPayloads } from "../src/test/broker-fixtures";
 import { recordShot } from "./capture-index";
 
 // A fixed instant pinned defensively so nothing time-derived can drift bytes
@@ -57,7 +58,27 @@ test.beforeEach(async ({ page }) => {
   // Pin the clock before navigation so anything time-derived resolves to a
   // stable FIXED_TIME instead of the wall clock.
   await page.clock.setFixedTime(FIXED_TIME);
-  await page.goto("/?demo=1");
+  // The app's only request source is the broker, relayed by the service worker.
+  // Capture is hermetic (no broker/daemon/plugin processes, and a live broker
+  // would assign nondeterministic request ids that the detail view renders), so
+  // stub navigator.serviceWorker with one that replays a fixed fixture snapshot
+  // to the page's broker bridge — exactly the `snapshot` event shape the real
+  // worker relays — the moment the bridge subscribes.
+  await page.addInitScript((requests) => {
+    const snapshot = { type: "broker-event", event: { type: "snapshot", requests } };
+    const fake = {
+      controller: { postMessage() {} },
+      register: () => Promise.resolve(undefined),
+      addEventListener(type: string, listener: (event: { data: unknown }) => void) {
+        if (type !== "message") return;
+        // Deliver the snapshot once this (the bridge's) listener attaches.
+        queueMicrotask(() => listener({ data: snapshot }));
+      },
+      removeEventListener() {},
+    };
+    Object.defineProperty(navigator, "serviceWorker", { configurable: true, value: fake });
+  }, brokerRequestPayloads);
+  await page.goto("/");
   await expect(page.getByRole("heading", { name: "Approvals inbox" })).toBeVisible();
 });
 

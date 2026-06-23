@@ -53,27 +53,23 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y musl-tools
       - name: Build release binaries
         shell: bash
-        # Build the plugin for every target. The daemon it auto-starts is built on
-        # Unix domain sockets, so it is Unix-only — skip it on Windows, which uses
-        # the plugin's HTTP path. `CC_<target>` points `ring`'s `cc` build at
-        # musl-gcc when cross-building the musl target; unused on the other targets.
+        # Build the plugin and the daemon it auto-starts for every target. The
+        # daemon is the plugin's only transport to the broker on every OS (a Unix
+        # socket on Unix, a named pipe on Windows), so it ships everywhere.
+        # `CC_<target>` points `ring`'s `cc` build at musl-gcc when cross-building
+        # the musl target; unused on the other targets.
         env:
           CC_x86_64_unknown_linux_musl: musl-gcc
         run: |
           cargo build --release --target "${{ matrix.target }}" -p allowlister-remote-plugin
-          if [[ "${{ matrix.os }}" != windows-* ]]; then
-            cargo build --release --target "${{ matrix.target }}" -p allowlister-remote-daemon
-          fi
+          cargo build --release --target "${{ matrix.target }}" -p allowlister-remote-daemon
       - name: Stage artifacts
         shell: bash
         # Name each artifact `<binary>-<platform>[.exe]` so release:stage-npm can
-        # pick it up by binary and platform. The daemon is Unix-only (see above).
+        # pick it up by binary and platform. Both binaries ship on every platform.
         run: |
           mkdir -p dist/artifacts
-          binaries=(allowlister-remote-plugin)
-          if [[ "${{ matrix.os }}" != windows-* ]]; then
-            binaries+=(allowlister-remote-daemon)
-          fi
+          binaries=(allowlister-remote-plugin allowlister-remote-daemon)
           for binary in "${binaries[@]}"; do
             artifact="${binary}-${{ matrix.platform }}${{ matrix.exe }}"
             cp "target/${{ matrix.target }}/release/${binary}${{ matrix.exe }}" "dist/artifacts/${artifact}"
@@ -173,8 +169,10 @@ jobs:
             echo "published npm package $version did not become fully installable" >&2
             exit 1
           fi
+          # A static allow defers without any transport, so this needs no daemon
+          # or broker — it confirms the native binary runs and answers on stdout.
           printf '{"current_verdict":"allow","command":"git status","cwd":"/tmp"}' \
-            | "$cmd" --server-url http://127.0.0.1:9 \
+            | "$cmd" \
             | grep '"verdict":"defer"' >/dev/null
           # Confirm the install linked the native binary directly onto PATH (no
           # Node launcher); the launcher fallback would start with a `#!` shebang.

@@ -6,6 +6,8 @@
 //! `wss://localhost:PORT/ws/daemon` URL, and assert that a request opened by a
 //! plugin arrives over the TLS link — i.e. the daemon completed a real TLS
 //! WebSocket handshake and forwarded the `create`.
+//!
+//! Unix-only: the fake plugin connects to the daemon over a Unix-domain socket.
 
 use std::time::Duration;
 

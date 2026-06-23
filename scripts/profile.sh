@@ -74,7 +74,7 @@ if [[ "$mode" == "callgrind" ]]; then
     out="$outdir/callgrind.out"
     echo "» running '$bin' under callgrind (defer fast path)"
     valgrind --tool=callgrind --callgrind-out-file="$out" -- \
-        "$bin" --server-url http://127.0.0.1:9 <"$payload" >/dev/null || true
+        "$bin" <"$payload" >/dev/null || true
     echo
     echo "» top ${PROFILE_TOP:-30} functions by instruction count (full data: $out)"
     callgrind_annotate --threshold=99 "$out" | head -n "$((${PROFILE_TOP:-30} + 12))"
@@ -116,5 +116,5 @@ payload="$repo_root/target/profiling/payload.json"
 write_payload "$payload"
 echo "» profiling '$bin' (defer fast path) over $repeat invocations"
 samply record "${samply_args[@]}" -- \
-    bash -c 'n="$1"; bin="$2"; payload="$3"; for ((i = 0; i < n; i++)); do "$bin" --server-url http://127.0.0.1:9 <"$payload" >/dev/null 2>&1 || true; done' \
+    bash -c 'n="$1"; bin="$2"; payload="$3"; for ((i = 0; i < n; i++)); do "$bin" <"$payload" >/dev/null 2>&1 || true; done' \
     _ "$repeat" "$bin" "$payload"

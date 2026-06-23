@@ -15,10 +15,10 @@ path = "src/main.rs"
 
 [dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "sync", "time", "signal"] }
-# WebSocket client to the broker. rustls + ring (matching the plugin's reqwest
-# backend) handles `wss://` without OpenSSL, so the static musl release binary
-# builds with just the musl C toolchain. A custom CA can be trusted via
-# ALLOWLISTER_REMOTE_BROKER_CA for self-hosted/private-CA brokers.
+# WebSocket client to the broker. rustls + ring handles `wss://` without
+# OpenSSL, so the static musl release binary builds with just the musl C
+# toolchain. A custom CA can be trusted via ALLOWLISTER_REMOTE_BROKER_CA for
+# self-hosted/private-CA brokers.
 tokio-tungstenite = { version = "0.24", default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 rustls-pemfile = "2"

@@ -1,7 +1,9 @@
-//! Tests for the plugin's daemon mode: the unix-socket handoff and the
-//! fall-back-to-HTTP path when no daemon can be reached. The full broker↔daemon
-//! chain is covered by the daemon crate's end-to-end tests; here we drive the
-//! real plugin binary against a fake daemon socket.
+//! Tests for the plugin's daemon handoff over the local IPC channel. The
+//! Unix-domain-socket backend is driven here against a fake daemon socket; the
+//! full broker↔daemon chain is covered by the daemon crate's end-to-end tests.
+//! The Windows named-pipe backend shares the same line protocol and is exercised
+//! by the cross-platform e2e suite.
+#![cfg(unix)]
 
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixListener;
@@ -68,11 +70,10 @@ fn plugin_hands_off_to_daemon_and_returns_its_decision() {
 }
 
 #[test]
-fn plugin_falls_back_to_http_when_daemon_unreachable() {
+fn plugin_asks_when_no_daemon_can_be_reached() {
     // A bogus socket and a daemon binary that exits immediately: the plugin
-    // cannot reach a daemon, so it must fall through to the HTTP path. The HTTP
-    // server is also unreachable here, so the deterministic outcome is the
-    // "server unavailable" ask — which proves the fallback branch ran.
+    // cannot reach a daemon and there is no other transport, so the deterministic
+    // outcome is `ask` naming the unavailable approval channel.
     let bogus_socket = format!(
         "/tmp/allowlister-plugin-nodaemon-{}.sock",
         std::process::id()
@@ -81,13 +82,7 @@ fn plugin_falls_back_to_http_when_daemon_unreachable() {
 
     let input = r#"{"subject":"shell","current_verdict":"defer","command":"ls"}"#;
     let mut child = Command::new(plugin())
-        .args([
-            "--use-daemon",
-            "--daemon-socket",
-            &bogus_socket,
-            "--server-url",
-            "http://127.0.0.1:9", // discard port: connection refused
-        ])
+        .args(["--daemon-socket", &bogus_socket])
         .env("ALLOWLISTER_REMOTE_DAEMON_BIN", "/bin/false")
         .env("ALLOWLISTER_REMOTE_DAEMON_WAIT_MS", "200")
         .stdin(Stdio::piped())
@@ -108,7 +103,7 @@ fn plugin_falls_back_to_http_when_daemon_unreachable() {
         value["reason"]
             .as_str()
             .unwrap()
-            .contains("server unavailable"),
-        "expected HTTP fallback, got {value}"
+            .contains("daemon unavailable"),
+        "expected daemon-unavailable ask, got {value}"
     );
 }

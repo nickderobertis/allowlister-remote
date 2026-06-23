@@ -1,12 +1,13 @@
 //! Pure, network-free decision helpers for the allowlister-remote plugin.
 //!
 //! The binary (`src/main.rs`) is mostly I/O: it reads a harness payload on
-//! stdin, opens an approval request over HTTP, then races a local-terminal
-//! prompt against the server's verdict. The work that is *not* I/O — parsing
-//! the incoming payload, deciding whether a static verdict short-circuits the
-//! remote round-trip, building the create-request body, and interpreting a
-//! decision response — lives here so it can be unit-tested and benchmarked
-//! (`benches/engine.rs`) without spawning a process or opening a socket.
+//! stdin, hands the approval request to the host daemon over local IPC, then
+//! races a local-terminal prompt against the verdict the daemon relays from the
+//! broker. The work that is *not* I/O — parsing the incoming payload, deciding
+//! whether a static verdict short-circuits the remote round-trip, building the
+//! create-request body, and interpreting a decision message — lives here so it
+//! can be unit-tested and benchmarked (`benches/engine.rs`) without spawning a
+//! process or opening a socket.
 
 use serde::Deserialize;
 use serde_json::Value;
@@ -221,7 +222,7 @@ pub fn request_summary(input: &Value) -> String {
 pub enum Triage {
     /// A static verdict settled it; defer to allowlister without a round-trip.
     Defer,
-    /// Needs remote approval; carries the body to POST to `/api/plugin/requests`.
+    /// Needs remote approval; carries the body the plugin hands to the daemon.
     NeedsApproval(Value),
 }
 
@@ -239,17 +240,14 @@ pub fn triage(stdin: &str) -> Result<Triage, serde_json::Error> {
 }
 
 #[derive(Debug, Deserialize)]
-struct PendingOrDecision {
-    status: Option<String>,
+struct DecisionBody {
     verdict: Option<String>,
     reason: Option<String>,
 }
 
-/// A poll response interpreted from the server's decision endpoint.
+/// A decision message interpreted from the line the daemon relays off the broker.
 #[derive(Debug, PartialEq)]
 pub enum RemoteDecision {
-    /// The server is still waiting on a human; keep polling.
-    Pending,
     /// A human decided. `verdict` is normalized to `allow`/`deny`.
     Decided {
         verdict: &'static str,
@@ -259,17 +257,14 @@ pub enum RemoteDecision {
     Invalid(String),
 }
 
-/// Interpret a poll response body. Any verdict other than `deny` is treated as
-/// `allow` (the server only ever sends `allow`/`deny`), and a parse failure is
-/// reported so the caller can fall back to `ask` rather than block forever.
+/// Interpret a decision message body. Any verdict other than `deny` is treated
+/// as `allow` (the broker only ever relays `allow`/`deny`), and a parse failure
+/// is reported so the caller can fall back to `ask` rather than block forever.
 pub fn interpret_decision(body: &str) -> RemoteDecision {
-    let decision: PendingOrDecision = match serde_json::from_str(body) {
+    let decision: DecisionBody = match serde_json::from_str(body) {
         Ok(decision) => decision,
         Err(error) => return RemoteDecision::Invalid(format!("invalid remote decision: {error}")),
     };
-    if decision.status.as_deref() == Some("pending") {
-        return RemoteDecision::Pending;
-    }
     let verdict = match decision.verdict.as_deref() {
         Some("deny") => "deny",
         _ => "allow",
@@ -487,11 +482,7 @@ mod tests {
     }
 
     #[test]
-    fn decision_pending_then_allow_deny_and_invalid() {
-        assert_eq!(
-            interpret_decision(r#"{"status":"pending"}"#),
-            RemoteDecision::Pending
-        );
+    fn decision_allow_deny_and_invalid() {
         assert_eq!(
             interpret_decision(r#"{"verdict":"deny","reason":"nope"}"#),
             RemoteDecision::Decided {

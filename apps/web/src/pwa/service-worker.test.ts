@@ -203,7 +203,7 @@ describe("service worker", () => {
   it("ignores non-GET requests", async () => {
     const { listeners } = createScope(async () => new Response("net"));
     const response = await dispatch(listeners, "fetch", {
-      url: "/api/approval-requests",
+      url: "/api/config",
       method: "POST",
       mode: "cors",
     });

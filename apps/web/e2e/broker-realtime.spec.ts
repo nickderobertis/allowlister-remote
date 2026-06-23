@@ -5,7 +5,7 @@ import { rm } from "node:fs/promises";
 import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 
 // The realtime path with every real component in the loop: the broker and daemon
 // binaries, the plugin binary in daemon mode, the Next app, and — crucially — the
@@ -67,15 +67,13 @@ async function waitForSocket(): Promise<void> {
 
 // Spawn the plugin in daemon mode. It opens an approval request and blocks until
 // a decision is relayed back, printing the verdict JSON on exit.
-function runPlugin(command: string) {
+function runPlugin(payload: Record<string, unknown>) {
   const child = spawn(pluginBin, ["--daemon-socket", socketPath], {
     env: { ...process.env, NO_COLOR: "1" },
   });
   let stdout = "";
   child.stdout.on("data", (chunk) => (stdout += String(chunk)));
-  child.stdin.write(
-    JSON.stringify({ subject: "shell", current_verdict: "defer", command, cwd: "/workspace/repo" }),
-  );
+  child.stdin.write(JSON.stringify(payload));
   child.stdin.end();
   return {
     promise: new Promise<{ code: number | null; stdout: string }>((resolveExit) => {
@@ -83,6 +81,26 @@ function runPlugin(command: string) {
     }),
     kill: () => child.kill(),
   };
+}
+
+// The common case: a shell command allowlister deferred to remote approval.
+function runShell(command: string) {
+  return runPlugin({
+    subject: "shell",
+    current_verdict: "defer",
+    command,
+    cwd: "/workspace/repo",
+  });
+}
+
+// Make the page's service worker control it, so the live-sync effect can hand it
+// the broker connection. A reload is needed because the first load registers the
+// worker but is not yet controlled by it.
+async function subscribe(page: Page) {
+  await page.goto("/");
+  await page.evaluate(() => navigator.serviceWorker.ready);
+  await page.reload();
+  await page.evaluate(() => navigator.serviceWorker.ready);
 }
 
 async function expectStillRunning(running: { promise: Promise<unknown> }) {
@@ -131,17 +149,12 @@ test.afterAll(async () => {
 test("a plugin request appears via the broker and an allow click releases it", async ({ page }) => {
   const command = `gh pr merge ${randomUUID().slice(0, 8)}`;
 
-  const running = runPlugin(command);
+  const running = runShell(command);
   try {
     // The request is open and the plugin is blocked, before the browser subscribes.
     await expectStillRunning(running);
 
-    // Load the app and make sure the service worker controls the page, so the
-    // live-sync effect can hand it the broker connection.
-    await page.goto("/");
-    await page.evaluate(() => navigator.serviceWorker.ready);
-    await page.reload();
-    await page.evaluate(() => navigator.serviceWorker.ready);
+    await subscribe(page);
 
     // The request arrives over the broker (snapshot on subscribe) and renders.
     const list = page.getByRole("list", { name: "Pending approvals" });
@@ -161,6 +174,61 @@ test("a plugin request appears via the broker and an allow click releases it", a
   }
 });
 
+test("a deny decision travels back through the broker to the plugin", async ({ page }) => {
+  const command = `rm -rf ${randomUUID().slice(0, 8)}`;
+
+  const running = runShell(command);
+  try {
+    await expectStillRunning(running);
+    await subscribe(page);
+
+    // Open the expanded detail view, then deny from its decision bar.
+    const list = page.getByRole("list", { name: "Pending approvals" });
+    await expect(list.getByText(command, { exact: true })).toBeVisible({ timeout: 20_000 });
+    await page.getByRole("button", { name: `Open approval for ${command}` }).click();
+    await page.getByRole("button", { name: "Deny", exact: true }).click();
+
+    const result = await running.promise;
+    expect(result.code).toBe(0);
+    expect(JSON.parse(result.stdout).verdict).toBe("deny");
+  } finally {
+    running.kill();
+  }
+});
+
+test("a tool-call request renders over the broker and resolves", async ({ page }) => {
+  const toolName = `mcp__github__create_issue_${randomUUID().slice(0, 8)}`;
+
+  const running = runPlugin({
+    subject: "tool",
+    current_verdict: "defer",
+    cwd: "/workspace/repo",
+    tool: {
+      name: toolName,
+      capability: "mcp",
+      params: {},
+      raw: { title: "Production is down", owner: "acme" },
+    },
+  });
+  try {
+    await expectStillRunning(running);
+    await subscribe(page);
+
+    // The tool call arrives over the broker and the detail view shows its input.
+    await page.getByRole("button", { name: `Open approval for ${toolName}` }).click();
+    await expect(page.getByText("Approve this tool call")).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText("Production is down")).toBeVisible();
+
+    await page.getByRole("button", { name: "Allow once" }).click();
+
+    const result = await running.promise;
+    expect(result.code).toBe(0);
+    expect(JSON.parse(result.stdout).verdict).toBe("allow");
+  } finally {
+    running.kill();
+  }
+});
+
 test("two PWA clients both see a request and either can resolve it", async ({ browser }) => {
   const command = `npm publish ${randomUUID().slice(0, 8)}`;
 
@@ -171,15 +239,12 @@ test("two PWA clients both see a request and either can resolve it", async ({ br
   const pageA = await contextA.newPage();
   const pageB = await contextB.newPage();
 
-  const running = runPlugin(command);
+  const running = runShell(command);
   try {
     await expectStillRunning(running);
 
     for (const page of [pageA, pageB]) {
-      await page.goto("/");
-      await page.evaluate(() => navigator.serviceWorker.ready);
-      await page.reload();
-      await page.evaluate(() => navigator.serviceWorker.ready);
+      await subscribe(page);
     }
 
     const listA = pageA.getByRole("list", { name: "Pending approvals" });
@@ -202,5 +267,84 @@ test("two PWA clients both see a request and either can resolve it", async ({ br
     running.kill();
     await contextA.close();
     await contextB.close();
+  }
+});
+
+test("a request opened while the PWA is watching arrives live", async ({ page }) => {
+  // The existing tests subscribe after the request exists (the broker `snapshot`
+  // on subscribe). This exercises the `added` fan-out: subscribe to an empty
+  // inbox first, then open a request and watch it appear without a reload.
+  await subscribe(page);
+  await expect(page.getByRole("heading", { name: "No pending approvals" })).toBeVisible();
+
+  const command = `kubectl delete ns ${randomUUID().slice(0, 8)}`;
+  const running = runShell(command);
+  try {
+    const list = page.getByRole("list", { name: "Pending approvals" });
+    await expect(list.getByText(command, { exact: true })).toBeVisible({ timeout: 20_000 });
+
+    await page.getByRole("button", { name: `Allow ${command}` }).click();
+    const result = await running.promise;
+    expect(result.code).toBe(0);
+    expect(JSON.parse(result.stdout).verdict).toBe("allow");
+  } finally {
+    running.kill();
+  }
+});
+
+test("concurrent requests from one daemon resolve independently", async ({ page }) => {
+  // Several plugins open requests through the same daemon at once. Each is its own
+  // card; deciding one must release only that plugin and clear only its card,
+  // proving the daemon's multiplexing and the broker's per-request routing.
+  const commands = [0, 1, 2].map((i) => `terraform destroy ${i} ${randomUUID().slice(0, 8)}`);
+  const running = commands.map((command) => runShell(command));
+  try {
+    for (const r of running) await expectStillRunning(r);
+    await subscribe(page);
+
+    const list = page.getByRole("list", { name: "Pending approvals" });
+    for (const command of commands) {
+      await expect(list.getByText(command, { exact: true })).toBeVisible({ timeout: 20_000 });
+    }
+
+    // Deny the middle one: only its plugin resolves, only its card clears.
+    await page.getByRole("button", { name: `Deny ${commands[1]}` }).click();
+
+    const result = await running[1].promise;
+    expect(result.code).toBe(0);
+    expect(JSON.parse(result.stdout).verdict).toBe("deny");
+
+    await expect(list.getByText(commands[1], { exact: true })).toHaveCount(0);
+    // The other two are untouched: still on screen and still blocking their plugins.
+    await expect(list.getByText(commands[0], { exact: true })).toBeVisible();
+    await expect(list.getByText(commands[2], { exact: true })).toBeVisible();
+    await expectStillRunning(running[0]);
+    await expectStillRunning(running[2]);
+  } finally {
+    for (const r of running) r.kill();
+  }
+});
+
+test("a plugin that exits withdraws its card from the PWA", async ({ page }) => {
+  // If the gated command is cancelled (the plugin process dies) before anyone
+  // decides, the daemon withdraws the request and the broker tells every PWA to
+  // drop the card — no dead prompt is left behind.
+  const command = `rm -rf / ${randomUUID().slice(0, 8)}`;
+  const running = runShell(command);
+  try {
+    await expectStillRunning(running);
+    await subscribe(page);
+
+    const list = page.getByRole("list", { name: "Pending approvals" });
+    await expect(list.getByText(command, { exact: true })).toBeVisible({ timeout: 20_000 });
+
+    // The plugin process dies before any decision.
+    running.kill();
+    await running.promise;
+
+    // The daemon's withdraw → broker `resolved` clears the card live.
+    await expect(list.getByText(command, { exact: true })).toHaveCount(0, { timeout: 20_000 });
+  } finally {
+    running.kill();
   }
 });

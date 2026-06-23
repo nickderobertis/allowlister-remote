@@ -49,19 +49,19 @@ pub fn chain(len: usize) -> String {
         .join(" && ")
 }
 
-/// Labelled decision-response bodies the plugin interprets while polling: a
-/// pending hold, a remote allow, a remote deny, and a malformed body that must
-/// fall back to `ask`.
+/// Labelled decision messages the plugin interprets off the daemon: a minimal
+/// decision missing its reason (the synthesized-reason path), a remote allow, a
+/// remote deny, and a malformed body that must fall back to `ask`.
 pub fn decision_bodies() -> Vec<(&'static str, &'static str)> {
     vec![
-        ("pending", r#"{"status":"pending"}"#),
+        ("minimal", r#"{"type":"decision","verdict":"allow"}"#),
         (
             "allow",
-            r#"{"requestId":"req_1","verdict":"allow","reason":"remote allowed"}"#,
+            r#"{"type":"decision","requestId":"req_1","verdict":"allow","reason":"remote allowed"}"#,
         ),
         (
             "deny",
-            r#"{"requestId":"req_1","verdict":"deny","reason":"remote denied"}"#,
+            r#"{"type":"decision","requestId":"req_1","verdict":"deny","reason":"remote denied"}"#,
         ),
         ("malformed", r#"{"verdict":"#),
     ]

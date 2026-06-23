@@ -80,6 +80,11 @@ export default defineConfig({
     url: `http://127.0.0.1:${PORT}`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
+    // /api/config requires a broker URL (the app's only request source). The
+    // capture never dials it — a stubbed service worker injects the fixture
+    // snapshot in-page (see approval.capture.ts) — but the value must be present
+    // so /api/config returns 200 and the connect effect runs.
+    env: { ALLOWLISTER_REMOTE_BROKER_URL: "ws://127.0.0.1:4180" },
   },
   projects: [
     {
