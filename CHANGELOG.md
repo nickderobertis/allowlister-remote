@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.13.0](https://github.com/nickderobertis/allowlister-remote/compare/v0.12.0...v0.13.0) (2026-06-23)
+
+
+### Features
+
+* **web:** lint-error React Compiler bailouts and fix the one we had ([#84](https://github.com/nickderobertis/allowlister-remote/issues/84)) ([e621b94](https://github.com/nickderobertis/allowlister-remote/commit/e621b9435ca2188fcddbd5dd4bfb00ac11bbafe1))
+
+
+### Performance Improvements
+
+* add profiling coverage for the daemon and broker ([#85](https://github.com/nickderobertis/allowlister-remote/issues/85)) ([0384086](https://github.com/nickderobertis/allowlister-remote/commit/0384086597df0b02a45bd4100426f151cddb36b2))
+
 ## [0.12.0](https://github.com/nickderobertis/allowlister-remote/compare/v0.11.0...v0.12.0) (2026-06-23)
 
 
