@@ -48,6 +48,14 @@
       },
       "cache": false
     },
+    "render-cost": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node scripts/web-render-cost.mjs",
+        "cwd": "."
+      },
+      "cache": false
+    },
     "build": {
       "executor": "nx:run-commands",
       "options": {

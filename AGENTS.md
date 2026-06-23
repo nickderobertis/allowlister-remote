@@ -58,15 +58,29 @@ Use `just`; do not hand-roll equivalent commands.
   and `scripts/{bench,bench-instructions,profile}.sh`. The `Performance` workflow
   (`bench.yml`) runs these on PRs that affect the plugin and posts the numbers as a sticky
   comment plus a job summary; it is informational, never a required check.
-- `just bench-web` / `just bundle-size` / `just lighthouse` run the PWA's parallel
-  performance suite: Vitest micro-benchmarks of the pure decision/summarization surface
+- `just bench-web` / `just bundle-size` / `just render-cost` / `just lighthouse` run the PWA's
+  parallel performance suite: Vitest micro-benchmarks of the pure decision/summarization surface
   (`apps/web/src/perf/*.bench.ts`), a deterministic gzip bundle-size report
-  (`scripts/web-bundle-size.mjs`), and a Lighthouse runtime audit
-  (`scripts/web-lighthouse.mjs`). The same `Performance` workflow `web` job runs all three
+  (`scripts/web-bundle-size.mjs`), a deterministic render-cost report
+  (`scripts/web-render-cost.mjs`), and a Lighthouse runtime audit
+  (`scripts/web-lighthouse.mjs`). The same `Performance` workflow `web` job runs all of them
   on PRs that affect web and posts its own sticky comment plus job summary; like the plugin
-  suite it is informational, never a required check. Bundle size is the deterministic, trustworthy
-  delta (the web counterpart of the plugin's cachegrind instruction counts); the Vitest and
-  Lighthouse numbers are absolute and noise-prone, so treat small deltas with caution.
+  suite it is informational, never a required check. Bundle size and render cost are the
+  deterministic, trustworthy deltas (the web counterpart of the plugin's cachegrind instruction
+  counts); the Vitest and Lighthouse numbers are absolute and noise-prone, so treat small deltas
+  with caution.
+- The PWA enables **React Compiler** (`reactCompiler: true` in `apps/web/next.config.ts`,
+  via `babel-plugin-react-compiler`): it auto-memoizes components/hooks at build time, so a
+  re-render from state that does not touch a subtree skips it and each card's decision-surface
+  work is cached across renders where its request is unchanged. The render-cost harness
+  (`apps/web/src/perf/render-cost.perf.tsx`, run by `just render-cost`) is the render-side
+  analogue of the plugin's instruction counts: it renders the real `<App>` over an inbox and
+  counts how many decision-surface calls each interaction recomputes without the compiler vs
+  with it (the deterministic delta). `@vitejs/plugin-react` transforms JSX with oxc, not Babel,
+  so the harness wires the compiler through `@rolldown/plugin-babel` + `reactCompilerPreset`
+  (`apps/web/vitest.render-cost.config.ts`, gated on `REACT_COMPILER=1`) to match the production
+  build. The harness file is kept out of the default `test`/coverage run (its name is `*.perf.tsx`,
+  not `*.test.tsx`).
 - Release helpers live behind `npm run release:*`; tags, GitHub Releases, and npm publishing run in Actions.
 
 ## Quality and tests

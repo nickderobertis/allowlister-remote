@@ -258,6 +258,12 @@ jobs:
       - name: Bundle size (deterministic)
         run: node scripts/web-bundle-size.mjs
 
+      # Deterministic render-side delta: how much per-interaction decision-surface
+      # recomputation React Compiler removes. Self-contained — it runs the harness
+      # without and with the compiler in one go, so it needs no base checkout.
+      - name: Render cost (deterministic)
+        run: node scripts/web-render-cost.mjs
+
       # Wall-clock and noisy (the hyperfine analogue); informational only. CI
       # ubuntu images ship Google Chrome, which chrome-launcher finds. Best
       # effort: a launch failure must not sink the deterministic layers above.
@@ -319,6 +325,14 @@ jobs:
               echo "_Lighthouse did not produce a result this run (see the job log)._"
             fi
             echo
+            echo "### Render cost — React Compiler (deterministic)"
+            echo
+            if [ -s target/web-perf/render-cost.md ]; then
+              cat target/web-perf/render-cost.md
+            else
+              echo "_Render-cost report did not produce a result this run (see the job log)._"
+            fi
+            echo
             echo "### Decision-path micro-benchmarks (Vitest)"
             echo
             cat target/web-perf/bench.md
@@ -336,6 +350,9 @@ jobs:
             target/web-perf/bundle-size.tsv
             target/web-perf/bundle-size.md
             target/web-perf/bundle-size-delta.md
+            target/web-perf/render-cost.baseline.json
+            target/web-perf/render-cost.compiler.json
+            target/web-perf/render-cost.md
             target/web-perf/lighthouse.json
             target/web-perf/lighthouse.md
           if-no-files-found: warn
