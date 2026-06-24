@@ -79,10 +79,11 @@ fn connect(path: &str) -> std::io::Result<LocalStream> {
 
 /// Connect to the daemon, auto-starting it if nothing is listening yet. On
 /// failure returns a human-readable reason (not just `None`) so the caller can
-/// settle the request with an `ask` that says *why* the approval channel could
+/// settle the request with a `defer` that says *why* the approval channel could
 /// not be opened — a missing/non-executable daemon binary reads very differently
 /// from a daemon that started but never listened (see issue #93). There is no
-/// other transport to fall back to.
+/// other transport to fall back to, so the remote plugin steps aside and lets
+/// allowlister decide on its own.
 pub fn connect_or_start(config: &DaemonConfig) -> Result<LocalStream, String> {
     if let Ok(stream) = connect(&config.socket_path) {
         return Ok(stream);
@@ -311,9 +312,13 @@ pub fn run_via_daemon(stream: LocalStream, create_body: Value, summary: &str, cw
                 crate::write_response(verdict, reason);
             }
             Ok(Event::Ack) => {}
-            Ok(Event::Closed) | Err(_) => {
-                crate::write_response("ask", "allowlister-remote daemon closed the connection")
-            }
+            // The daemon dropped the connection before relaying a decision: the
+            // approval channel is gone, so `defer` (skip the remote plugin) rather
+            // than force an `ask`, matching the daemon-unavailable path above.
+            Ok(Event::Closed) | Err(_) => crate::write_response(
+                "defer",
+                "allowlister-remote daemon closed the connection, deferring to allowlister",
+            ),
         }
     }
 }

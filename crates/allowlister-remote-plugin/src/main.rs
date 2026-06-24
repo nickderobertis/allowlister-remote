@@ -167,12 +167,16 @@ fn main() {
                 .to_string();
             daemon::run_via_daemon(stream, build_create_body(&input), &summary, &cwd);
         }
-        // No daemon and we could not start one: there is no other transport, so
-        // surface it as `ask` (naming the specific cause) rather than blocking
-        // forever or guessing a verdict.
+        // No daemon and we could not start one: there is no other transport. Rather
+        // than force an `ask` for a request the harness might already allow on its
+        // own — which would turn a broken approval channel into a prompt for
+        // everything — `defer` so the remote plugin is skipped entirely and
+        // allowlister falls back to whatever it would normally do for this request.
+        // The reason still names the specific cause so the operator can see why
+        // remote approval was unavailable.
         Err(reason) => write_response(
-            "ask",
-            format!("allowlister-remote daemon unavailable: {reason}"),
+            "defer",
+            format!("allowlister-remote daemon unavailable, deferring to allowlister: {reason}"),
         ),
     }
 }

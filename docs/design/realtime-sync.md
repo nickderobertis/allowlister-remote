@@ -144,14 +144,19 @@ when they drop.
 
 | Situation | Behavior |
 | --- | --- |
-| No daemon running | Plugin **auto-starts** it, else falls back to direct HTTPS long-poll. |
-| Daemon crashes mid-wait | Plugin detects socket close; reconnect to a restarted daemon, else direct fallback, else **fail-closed** (`ask`/deny). |
+| No daemon running | Plugin **auto-starts** it; if it still cannot open the approval channel, the plugin **defers** so allowlister decides the request as it normally would (no HTTP fallback exists). |
+| Daemon crashes mid-wait | Plugin detects socket close; with no decision channel left it **defers** to allowlister rather than forcing a prompt for every request. |
 | Plugin killed / command Ctrl-C'd | Socket close ⇒ daemon **withdraws** the request upstream so the PWA stops showing a stale prompt. *(implemented + tested)* |
 | Daemon disconnects from broker | Broker withdraws that daemon's pending requests so no PWA shows a dead prompt; on a transient drop the daemon reconnects and **re-announces**, restoring the cards. *(implemented + tested)* |
 | Broker restarts mid-wait | Daemon reconnects (backoff) and re-announces still-pending requests to the fresh broker; a new PWA learns them and can decide — the original plugin, still waiting, gets the decision. *(implemented + tested)* |
 | Broker unreachable | Daemon retries with capped backoff; the plugin waits indefinitely. |
 
-Recommended default: **fail-closed** when no decision channel can be established.
+Default: when no decision channel can be established, the remote plugin **defers**
+and steps aside, letting allowlister resolve the request on its own — a broken
+approval channel must not turn into a prompt for everything, including requests the
+harness would otherwise allow. (A local-terminal decision still wins whenever a
+channel *is* up; deferring only applies when the remote path is entirely
+unavailable.)
 
 ## 7. Many clients on one broker (decided scope: single broker, in-memory)
 

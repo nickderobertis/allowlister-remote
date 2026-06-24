@@ -106,9 +106,11 @@ environment and options, or `--version` for the build. The daemon is normally
 auto-started by the plugin with its output discarded; set `RUST_LOG` before
 running the gated command and the auto-started daemon writes to a log file beside
 its socket (e.g. `/tmp/allowlister-remote-daemon-0.log`) so a broker-link problem
-is visible. If the plugin returns `ask: allowlister-remote daemon unavailable: …`,
-the reason names the specific cause (the daemon binary could not be started, or it
-started but never began listening).
+is visible. If the approval channel cannot be opened, the plugin returns
+`defer: allowlister-remote daemon unavailable, deferring to allowlister: …` — it
+steps aside so allowlister decides the request as it normally would, rather than
+forcing a prompt for everything — and the reason names the specific cause (the
+daemon binary could not be started, or it started but never began listening).
 
 ## Releases
 
