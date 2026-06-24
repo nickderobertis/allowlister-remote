@@ -99,11 +99,55 @@ fn plugin_asks_when_no_daemon_can_be_reached() {
     let output = child.wait_with_output().unwrap();
     let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(value["verdict"], "ask");
+    let reason = value["reason"].as_str().unwrap();
     assert!(
-        value["reason"]
-            .as_str()
-            .unwrap()
-            .contains("daemon unavailable"),
+        reason.contains("daemon unavailable"),
         "expected daemon-unavailable ask, got {value}"
+    );
+    // `/bin/false` spawns fine but exits at once, so the specific cause is the
+    // socket never coming up — not a spawn failure.
+    assert!(
+        reason.contains("did not start listening"),
+        "expected the listen-timeout cause, got {value}"
+    );
+}
+
+#[test]
+fn plugin_reports_a_failed_daemon_spawn() {
+    // A daemon binary path that does not exist: the spawn itself fails, and the
+    // plugin must surface that specific cause (not a generic "unavailable") so the
+    // operator can see the daemon binary could not be launched at all.
+    let bogus_socket = format!(
+        "/tmp/allowlister-plugin-nospawn-{}.sock",
+        std::process::id()
+    );
+    let _ = std::fs::remove_file(&bogus_socket);
+
+    let input = r#"{"subject":"shell","current_verdict":"defer","command":"ls"}"#;
+    let mut child = Command::new(plugin())
+        .args(["--daemon-socket", &bogus_socket])
+        .env(
+            "ALLOWLISTER_REMOTE_DAEMON_BIN",
+            "/nonexistent/allowlister-remote-daemon",
+        )
+        .env("ALLOWLISTER_REMOTE_DAEMON_WAIT_MS", "200")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .as_mut()
+        .unwrap()
+        .write_all(input.as_bytes())
+        .unwrap();
+    let output = child.wait_with_output().unwrap();
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(value["verdict"], "ask");
+    let reason = value["reason"].as_str().unwrap();
+    assert!(
+        reason.contains("could not start the daemon binary"),
+        "expected a spawn-failure cause, got {value}"
     );
 }
