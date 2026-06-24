@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.2](https://github.com/nickderobertis/allowlister-remote/compare/v0.15.1...v0.15.2) (2026-06-24)
+
+
+### Bug Fixes
+
+* only surface 'ask' verdicts for remote approval ([#99](https://github.com/nickderobertis/allowlister-remote/issues/99)) ([10bb6f3](https://github.com/nickderobertis/allowlister-remote/commit/10bb6f39aea8da48059ba5d04c938aa59f38f553))
+
 ## [0.15.1](https://github.com/nickderobertis/allowlister-remote/compare/v0.15.0...v0.15.1) (2026-06-24)
 
 
