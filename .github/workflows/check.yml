@@ -89,12 +89,15 @@ jobs:
           fi
           echo "NX_BASE=$base" >> "$GITHUB_ENV"
           echo "NX_HEAD=${{ github.sha }}" >> "$GITHUB_ENV"
-      # TEMP diagnostic: macOS/Windows hang ~28 min somewhere in the test lane.
-      # Run only `test`, serially (--parallel=1) with live streamed, name-prefixed
-      # output, so the hanging project is unambiguously the last one to start and
-      # never finish. Reverted once the culprit is fixed.
+      # TEMP diagnostic: the `test` lane passes on macOS, so the ~28 min hang is
+      # in a later `just check` lane. Run those post-test lanes serially
+      # (--parallel=1) with live streamed, name-prefixed output, so the hanging
+      # task is the last to start and never finish. shell: bash so Windows does
+      # not default to pwsh (where $NX_BASE/$NX_HEAD would not expand).
+      # Reverted once the culprit is fixed.
       - name: Run affected check (TEMP diagnostic — isolate the hang)
-        run: npx nx affected -t test --base "$NX_BASE" --head "$NX_HEAD" --parallel=1 --output-style=stream --verbose
+        shell: bash
+        run: npx nx affected -t fmt-check lint lint-compiler typecheck build test-e2e --base "$NX_BASE" --head "$NX_HEAD" --parallel=1 --output-style=stream
 
   # Aggregate context so branch protection can require a single "check" status
   # regardless of the matrix legs.
