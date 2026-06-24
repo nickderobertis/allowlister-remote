@@ -11,24 +11,62 @@ use allowlister_remote_broker::{app, Broker};
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{json, Value};
 use tokio::net::TcpStream;
+use tokio::task::JoinHandle;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::{connect_async, MaybeTlsStream, WebSocketStream};
 
 type Ws = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
-async fn start_broker() -> String {
+/// A running broker plus the task serving it. Each test ends with `stop().await`,
+/// which aborts the accept loop and awaits it *inside* the test's runtime so the
+/// listener is fully torn down before the runtime drops. This matters on Windows:
+/// a dropped current-thread tokio runtime does not cancel a pending IOCP `accept`,
+/// so a leaked `axum::serve` task makes the whole `cargo test` process hang after
+/// the suite passes. Aborting-and-awaiting first leaves nothing pending.
+struct TestBroker {
+    url: String,
+    server: Option<JoinHandle<()>>,
+}
+
+impl TestBroker {
+    async fn stop(mut self) {
+        if let Some(server) = self.server.take() {
+            server.abort();
+            let _ = server.await;
+        }
+    }
+}
+
+impl Drop for TestBroker {
+    fn drop(&mut self) {
+        // Fallback for a panicking (failing) test, where stop() never runs.
+        if let Some(server) = self.server.take() {
+            server.abort();
+        }
+    }
+}
+
+async fn start_broker() -> TestBroker {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
-    tokio::spawn(async move {
-        axum::serve(listener, app(Arc::new(Broker::default())))
-            .await
-            .unwrap();
+    let server = tokio::spawn(async move {
+        let _ = axum::serve(listener, app(Arc::new(Broker::default()))).await;
     });
-    format!("ws://{addr}")
+    TestBroker {
+        url: format!("ws://{addr}"),
+        server: Some(server),
+    }
 }
 
 async fn connect(base: &str, path: &str) -> Ws {
-    let (ws, _) = connect_async(format!("{base}{path}")).await.unwrap();
+    // Bound the dial so a connect regression fails fast instead of hanging.
+    let (ws, _) = tokio::time::timeout(
+        Duration::from_secs(5),
+        connect_async(format!("{base}{path}")),
+    )
+    .await
+    .expect("timed out connecting to the broker")
+    .unwrap();
     ws
 }
 
@@ -57,7 +95,8 @@ async fn recv(ws: &mut Ws) -> Value {
 
 #[tokio::test]
 async fn web_decision_routes_back_to_owning_daemon_and_dismisses_all_pwas() {
-    let base = start_broker().await;
+    let broker = start_broker().await;
+    let base = broker.url.clone();
     let mut daemon = connect(&base, "/ws/daemon").await;
     let mut pwa_a = connect(&base, "/ws/pwa").await;
     let mut pwa_b = connect(&base, "/ws/pwa").await;
@@ -100,11 +139,13 @@ async fn web_decision_routes_back_to_owning_daemon_and_dismisses_all_pwas() {
         recv(&mut pwa_b).await,
         json!({"type":"resolved","requestId":"r1"})
     );
+    broker.stop().await;
 }
 
 #[tokio::test]
 async fn local_terminal_decision_dismisses_web_without_echo_to_daemon() {
-    let base = start_broker().await;
+    let broker = start_broker().await;
+    let base = broker.url.clone();
     let mut daemon = connect(&base, "/ws/daemon").await;
     let mut pwa = connect(&base, "/ws/pwa").await;
     send(&mut pwa, json!({"type":"subscribe"})).await;
@@ -146,11 +187,13 @@ async fn local_terminal_decision_dismisses_web_without_echo_to_daemon() {
         next["requestId"], "r3",
         "daemon should not have received an r2 echo"
     );
+    broker.stop().await;
 }
 
 #[tokio::test]
 async fn subscribe_snapshot_includes_in_flight_requests() {
-    let base = start_broker().await;
+    let broker = start_broker().await;
+    let base = broker.url.clone();
     let mut daemon = connect(&base, "/ws/daemon").await;
     send(
         &mut daemon,
@@ -164,11 +207,13 @@ async fn subscribe_snapshot_includes_in_flight_requests() {
     let snapshot = recv(&mut late).await;
     assert_eq!(snapshot["type"], "snapshot");
     assert_eq!(snapshot["requests"][0]["id"], "r4");
+    broker.stop().await;
 }
 
 #[tokio::test]
 async fn daemon_disconnect_withdraws_its_pending_requests() {
-    let base = start_broker().await;
+    let broker = start_broker().await;
+    let base = broker.url.clone();
     let mut daemon = connect(&base, "/ws/daemon").await;
     let mut pwa = connect(&base, "/ws/pwa").await;
     send(&mut pwa, json!({"type":"subscribe"})).await;
@@ -183,11 +228,15 @@ async fn daemon_disconnect_withdraws_its_pending_requests() {
 
     // The host went away (plugin killed, daemon crashed). The broker withdraws
     // the orphaned request so the web app stops showing a dead prompt.
-    daemon.close(None).await.unwrap();
+    tokio::time::timeout(Duration::from_secs(5), daemon.close(None))
+        .await
+        .expect("timed out closing the daemon connection")
+        .unwrap();
     assert_eq!(
         recv(&mut pwa).await,
         json!({"type":"resolved","requestId":"r5"})
     );
+    broker.stop().await;
 }
 
 #[tokio::test]
@@ -195,7 +244,8 @@ async fn many_daemons_and_pwas_all_interoperate() {
     // The core single-broker guarantee: every PWA sees every daemon's requests,
     // any PWA can decide any daemon's request, and each decision routes to the one
     // owning daemon — never to the wrong one.
-    let base = start_broker().await;
+    let broker = start_broker().await;
+    let base = broker.url.clone();
     let mut daemon_a = connect(&base, "/ws/daemon").await;
     let mut daemon_b = connect(&base, "/ws/daemon").await;
     let mut pwa_a = connect(&base, "/ws/pwa").await;
@@ -259,6 +309,7 @@ async fn many_daemons_and_pwas_all_interoperate() {
     for pwa in [&mut pwa_a, &mut pwa_b] {
         assert_eq!(recv(pwa).await, json!({"type":"resolved","requestId":"rA"}));
     }
+    broker.stop().await;
 }
 
 #[tokio::test]
@@ -266,7 +317,8 @@ async fn broker_sends_heartbeat_pings() {
     // A short interval so the keepalive is observable quickly. Pings keep an idle
     // connection alive through proxy/LB idle timeouts during a long wait.
     std::env::set_var("ALLOWLISTER_REMOTE_BROKER_PING_MS", "150");
-    let base = start_broker().await;
+    let broker = start_broker().await;
+    let base = broker.url.clone();
     let mut pwa = connect(&base, "/ws/pwa").await;
 
     let got_ping = tokio::time::timeout(Duration::from_secs(2), async {
@@ -281,4 +333,5 @@ async fn broker_sends_heartbeat_pings() {
     .await
     .unwrap_or(false);
     assert!(got_ping, "expected a heartbeat ping from the broker");
+    broker.stop().await;
 }
