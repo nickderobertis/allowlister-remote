@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.15.0](https://github.com/nickderobertis/allowlister-remote/compare/v0.14.1...v0.15.0) (2026-06-24)
+
+
+### Features
+
+* add logging, CLI help, and first-load/auto-start robustness ([#95](https://github.com/nickderobertis/allowlister-remote/issues/95)) ([860b4ef](https://github.com/nickderobertis/allowlister-remote/commit/860b4ef67f85d6412d932630b783003c3124f7a9))
+
+
+### Bug Fixes
+
+* **plugin:** make the no-daemon test portable so macOS CI passes ([#98](https://github.com/nickderobertis/allowlister-remote/issues/98)) ([a809de2](https://github.com/nickderobertis/allowlister-remote/commit/a809de261f836ffd945acbd1bcc281f5b0146ff5))
+
 ## [0.14.1](https://github.com/nickderobertis/allowlister-remote/compare/v0.14.0...v0.14.1) (2026-06-23)
 
 
