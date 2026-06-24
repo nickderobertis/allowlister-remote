@@ -659,7 +659,7 @@ fn plugin_static_allow_defers() {
     assert_eq!(verdict["verdict"], "defer");
     assert_eq!(
         verdict["reason"],
-        "static allowlister verdict does not need remote approval"
+        "allowlister verdict does not need remote approval"
     );
 }
 
