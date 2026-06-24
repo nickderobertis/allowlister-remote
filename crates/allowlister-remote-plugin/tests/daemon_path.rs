@@ -83,10 +83,11 @@ fn plugin_hands_off_to_daemon_and_returns_its_decision() {
 }
 
 #[test]
-fn plugin_asks_when_no_daemon_can_be_reached() {
+fn plugin_defers_when_no_daemon_can_be_reached() {
     // A bogus socket and a daemon binary that exits immediately: the plugin
-    // cannot reach a daemon and there is no other transport, so the deterministic
-    // outcome is `ask` naming the unavailable approval channel.
+    // cannot reach a daemon and there is no other transport, so it skips remote
+    // approval entirely with `defer` — falling back to whatever allowlister would
+    // normally do — while still naming the unavailable approval channel.
     let bogus_socket = format!(
         "/tmp/allowlister-plugin-nodaemon-{}.sock",
         std::process::id()
@@ -111,11 +112,11 @@ fn plugin_asks_when_no_daemon_can_be_reached() {
         .unwrap();
     let output = child.wait_with_output().unwrap();
     let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(value["verdict"], "ask");
+    assert_eq!(value["verdict"], "defer");
     let reason = value["reason"].as_str().unwrap();
     assert!(
         reason.contains("daemon unavailable"),
-        "expected daemon-unavailable ask, got {value}"
+        "expected daemon-unavailable defer, got {value}"
     );
     // `false` spawns fine but exits at once, so the specific cause is the socket
     // never coming up — not a spawn failure.
@@ -129,7 +130,9 @@ fn plugin_asks_when_no_daemon_can_be_reached() {
 fn plugin_reports_a_failed_daemon_spawn() {
     // A daemon binary path that does not exist: the spawn itself fails, and the
     // plugin must surface that specific cause (not a generic "unavailable") so the
-    // operator can see the daemon binary could not be launched at all.
+    // operator can see the daemon binary could not be launched at all. The verdict
+    // is still `defer` — a broken approval channel skips the remote plugin rather
+    // than forcing an `ask` — but the reason names the spawn failure.
     let bogus_socket = format!(
         "/tmp/allowlister-plugin-nospawn-{}.sock",
         std::process::id()
@@ -157,7 +160,7 @@ fn plugin_reports_a_failed_daemon_spawn() {
         .unwrap();
     let output = child.wait_with_output().unwrap();
     let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(value["verdict"], "ask");
+    assert_eq!(value["verdict"], "defer");
     let reason = value["reason"].as_str().unwrap();
     assert!(
         reason.contains("could not start the daemon binary"),
