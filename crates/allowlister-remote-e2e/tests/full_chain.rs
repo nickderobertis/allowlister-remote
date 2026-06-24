@@ -18,6 +18,12 @@
 //! startup regression fails fast instead of hanging CI forever, and every
 //! port/socket path is made unique per test (via an atomic counter) so the
 //! parallel test runner cannot make two stacks collide.
+//!
+//! Most of this suite drives the daemon over a Unix-domain socket, so those
+//! tests and their helpers are `#[cfg(unix)]`; on Windows only the transport-
+//! agnostic cases compile, leaving the Unix-only helpers unused. Allow dead code
+//! there rather than scattering `#[cfg(unix)]` across every helper.
+#![cfg_attr(windows, allow(dead_code))]
 
 use std::net::TcpStream as StdTcpStream;
 use std::path::{Path, PathBuf};

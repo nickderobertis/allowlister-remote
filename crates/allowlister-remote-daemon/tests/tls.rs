@@ -7,8 +7,13 @@
 //! plugin arrives over the TLS link — i.e. the daemon completed a real TLS
 //! WebSocket handshake and forwarded the `create`.
 //!
-//! Unix-only: the fake plugin connects to the daemon over a Unix-domain socket.
+//! Unix-only: the fake plugin drives the daemon over a Unix-domain socket. The
+//! daemon's `wss://` client is rustls and platform-generic, so this Unix run
+//! covers the TLS path on every platform; the Windows named-pipe transport is
+//! covered by the cross-platform e2e suite.
+#![cfg(unix)]
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use allowlister_remote_daemon::{serve, Config};
@@ -16,12 +21,15 @@ use futures_util::StreamExt;
 use tokio::io::AsyncWriteExt;
 use tokio::net::{TcpListener, UnixStream};
 use tokio::sync::oneshot;
+use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer};
+use tokio_rustls::rustls::ServerConfig;
+use tokio_rustls::TlsAcceptor;
 use tokio_tungstenite::tungstenite::Message;
 
 #[tokio::test]
 async fn daemon_connects_to_broker_over_wss_with_custom_ca() {
-    // Self-signed cert for "localhost" (a DNS SAN, so native-tls's hostname
-    // verification passes when we dial wss://localhost).
+    // Self-signed cert for "localhost" (a DNS SAN, so hostname verification
+    // passes when we dial wss://localhost).
     let cert = rcgen::generate_simple_self_signed(vec!["localhost".to_string()]).unwrap();
     let cert_pem = cert.cert.pem();
     let key_pem = cert.key_pair.serialize_pem();
@@ -30,11 +38,26 @@ async fn daemon_connects_to_broker_over_wss_with_custom_ca() {
         std::env::temp_dir().join(format!("allowlister-wss-ca-{}.pem", std::process::id()));
     std::fs::write(&ca_file, &cert_pem).unwrap();
 
-    // TLS WebSocket server standing in for the broker's /ws/daemon endpoint.
-    let identity =
-        native_tls::Identity::from_pkcs8(cert_pem.as_bytes(), key_pem.as_bytes()).unwrap();
-    let acceptor =
-        tokio_native_tls::TlsAcceptor::from(native_tls::TlsAcceptor::new(identity).unwrap());
+    // TLS WebSocket server standing in for the broker's /ws/daemon endpoint. Build
+    // it with rustls — the same stack the daemon's client uses — so the acceptor
+    // loads its identity from PEM identically on every platform. native-tls's
+    // PKCS#8 import is unsupported on the macOS Security framework (it fails with
+    // errSecUnknownFormat), which is why this stand-in does not use it.
+    let certs: Vec<CertificateDer<'static>> = rustls_pemfile::certs(&mut cert_pem.as_bytes())
+        .map(|c| c.unwrap())
+        .collect();
+    let key: PrivateKeyDer<'static> = rustls_pemfile::private_key(&mut key_pem.as_bytes())
+        .unwrap()
+        .expect("self-signed key is PKCS#8 PEM");
+    let server_config = ServerConfig::builder_with_provider(Arc::new(
+        tokio_rustls::rustls::crypto::ring::default_provider(),
+    ))
+    .with_safe_default_protocol_versions()
+    .unwrap()
+    .with_no_client_auth()
+    .with_single_cert(certs, key)
+    .unwrap();
+    let acceptor = TlsAcceptor::from(Arc::new(server_config));
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
 
