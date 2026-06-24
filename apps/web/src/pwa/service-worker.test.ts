@@ -310,6 +310,37 @@ describe("service worker broker bridge", () => {
     expect(sockets).toHaveLength(1);
   });
 
+  it("bootstraps a page that connects while the socket is already open", async () => {
+    // A reload or second tab attaches to the already-connected worker. It must be
+    // told the connection is open and get a fresh snapshot, or it sits on
+    // "Connecting…" with an empty inbox (regression: issue #93 related findings).
+    const { listeners, sockets, clientMessages } = createScope(async () => new Response("net"));
+    message(listeners, { type: "broker-connect", url: "ws://b" });
+    const socket = only(sockets);
+    socket.open();
+    await flush(); // let the open handler's async broadcast settle, then reset
+    clientMessages.length = 0;
+    socket.sent.length = 0;
+
+    message(listeners, { type: "broker-connect", url: "ws://b" });
+    await flush();
+
+    expect(sockets).toHaveLength(1); // still no second socket
+    expect(clientMessages).toContainEqual({ type: "broker-status", status: "open" });
+    expect(socket.sent).toContain(JSON.stringify({ type: "subscribe" }));
+  });
+
+  it("does not resubscribe while the socket is still connecting", () => {
+    // readyState 0: the open handler will subscribe and broadcast once it opens,
+    // so re-asking to connect must not send a premature subscribe on the dead pipe.
+    const { listeners, sockets } = createScope(async () => new Response("net"));
+    message(listeners, { type: "broker-connect", url: "ws://b" });
+    const socket = only(sockets);
+    socket.sent.length = 0;
+    message(listeners, { type: "broker-connect", url: "ws://b" });
+    expect(socket.sent).toHaveLength(0);
+  });
+
   it("ignores malformed broker frames and unknown client messages", async () => {
     const { listeners, sockets, clientMessages } = createScope(async () => new Response("net"));
     message(listeners, null);
