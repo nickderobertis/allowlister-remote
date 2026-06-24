@@ -114,10 +114,7 @@ fn main() {
     // `Value` tree, no arg collection — and exit before any of the
     // request-opening setup below.
     if static_decision(&stdin) == Some(true) {
-        write_response(
-            "defer",
-            "allowlister verdict does not need remote approval",
-        );
+        write_response("defer", "allowlister verdict does not need remote approval");
     }
 
     // Non-static (or unparseable): now do the full parse, which also surfaces a
