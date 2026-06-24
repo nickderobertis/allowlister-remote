@@ -7,6 +7,13 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { expect, type Page } from "@playwright/test";
 
+// The plugin/daemon IPC channel is a Unix-domain socket on Unix and a named pipe
+// on Windows (see the daemon's accept_plugins #[cfg]s), so the harness picks the
+// matching address shape and readiness probe per platform. Built binaries also
+// carry the `.exe` suffix on Windows.
+const isWindows = process.platform === "win32";
+const exe = isWindows ? ".exe" : "";
+
 // Shared harness for the realtime e2e: the broker and daemon binaries, the plugin
 // binary in daemon mode, and the helpers a spec needs to open a request and let a
 // real Chromium page (driven by the real service worker over the broker
@@ -18,11 +25,11 @@ const targetDir = join(root, "target", "debug");
 // Honor the *_BIN env overrides so the post-release smoke drives the published
 // plugin and daemon binaries (the broker is server-side, built from source).
 const brokerBin =
-  process.env.ALLOWLISTER_REMOTE_BROKER_BIN ?? join(targetDir, "allowlister-remote-broker");
+  process.env.ALLOWLISTER_REMOTE_BROKER_BIN ?? join(targetDir, `allowlister-remote-broker${exe}`);
 const daemonBin =
-  process.env.ALLOWLISTER_REMOTE_DAEMON_BIN ?? join(targetDir, "allowlister-remote-daemon");
+  process.env.ALLOWLISTER_REMOTE_DAEMON_BIN ?? join(targetDir, `allowlister-remote-daemon${exe}`);
 const pluginBin =
-  process.env.ALLOWLISTER_REMOTE_PLUGIN_BIN ?? join(targetDir, "allowlister-remote-plugin");
+  process.env.ALLOWLISTER_REMOTE_PLUGIN_BIN ?? join(targetDir, `allowlister-remote-plugin${exe}`);
 
 function run(command: string, args: string[]): Promise<void> {
   return new Promise((resolveRun, reject) => {
@@ -48,9 +55,29 @@ async function waitForPort(port: number): Promise<void> {
   throw new Error(`broker port ${port} never opened`);
 }
 
+// A bound Unix socket shows up on the filesystem, but a Windows named pipe does
+// not — and fs.existsSync/readdir over the `\\.\pipe\` namespace is unreliable.
+// Probe readiness with a real client connection instead: the daemon's accept
+// loop pre-creates a fresh pipe instance right after each connect, so this
+// throwaway probe never steals the instance the plugin will use.
+function socketReady(socketPath: string): Promise<boolean> {
+  if (!isWindows) return Promise.resolve(existsSync(socketPath));
+  return new Promise((resolve) => {
+    const probe = createConnection(socketPath);
+    probe.once("connect", () => {
+      probe.destroy();
+      resolve(true);
+    });
+    probe.once("error", () => {
+      probe.destroy();
+      resolve(false);
+    });
+  });
+}
+
 async function waitForSocket(socketPath: string): Promise<void> {
   for (let attempt = 0; attempt < 200; attempt++) {
-    if (existsSync(socketPath)) return;
+    if (await socketReady(socketPath)) return;
     await new Promise((r) => setTimeout(r, 50));
   }
   throw new Error(`daemon socket ${socketPath} never appeared`);
@@ -90,9 +117,20 @@ export interface BrokerHarness {
 }
 
 export function createBrokerHarness(brokerPort: number): BrokerHarness {
-  const socketPath = join(tmpdir(), `allowlister-remote-e2e-${randomUUID().slice(0, 8)}.sock`);
+  const pipeName = `allowlister-remote-e2e-${randomUUID().slice(0, 8)}`;
+  const socketPath = isWindows ? `\\\\.\\pipe\\${pipeName}` : join(tmpdir(), `${pipeName}.sock`);
   let broker: ChildProcess | undefined;
   let daemon: ChildProcess | undefined;
+
+  // Reap both long-lived processes (and the Unix socket file). Shared by stop()
+  // and by start()'s failure path, so a harness that throws mid-startup never
+  // leaks a broker/daemon that would hold the runner's pipes open and hang it.
+  async function teardown() {
+    await Promise.all([terminate(daemon), terminate(broker)]);
+    // A Unix socket is a real file to unlink; a Windows named pipe is torn down
+    // with the daemon process, and rm() on a `\\.\pipe\` path would throw.
+    if (!isWindows) await rm(socketPath, { force: true });
+  }
 
   function runPlugin(payload: Record<string, unknown>): RunningPlugin {
     const child = spawn(pluginBin, ["--daemon-socket", socketPath], {
@@ -150,29 +188,35 @@ export function createBrokerHarness(brokerPort: number): BrokerHarness {
         if (!existsSync(bin)) await run("cargo", ["build", "-p", pkg]);
       }
 
-      broker = spawn(brokerBin, [], {
-        env: { ...process.env, ALLOWLISTER_REMOTE_BROKER_ADDR: `127.0.0.1:${brokerPort}` },
-        stdio: "ignore",
-      });
-      // Don't let the long-lived broker/daemon handles keep the Node runner alive
-      // on their own; stop() still kills them, this just removes the leak as a hang.
-      broker.unref();
-      await waitForPort(brokerPort);
+      // If readiness ever fails, reap whatever did start before rethrowing, so a
+      // startup failure surfaces as a fast error instead of a leaked-process hang.
+      try {
+        broker = spawn(brokerBin, [], {
+          env: { ...process.env, ALLOWLISTER_REMOTE_BROKER_ADDR: `127.0.0.1:${brokerPort}` },
+          stdio: "ignore",
+        });
+        // Don't let the long-lived broker/daemon handles keep the Node runner
+        // alive on their own; teardown still kills them, this removes the hang.
+        broker.unref();
+        await waitForPort(brokerPort);
 
-      daemon = spawn(daemonBin, [], {
-        env: {
-          ...process.env,
-          ALLOWLISTER_REMOTE_DAEMON_SOCK: socketPath,
-          ALLOWLISTER_REMOTE_BROKER_URL: `ws://127.0.0.1:${brokerPort}/ws/daemon`,
-        },
-        stdio: "ignore",
-      });
-      daemon.unref();
-      await waitForSocket(socketPath);
+        daemon = spawn(daemonBin, [], {
+          env: {
+            ...process.env,
+            ALLOWLISTER_REMOTE_DAEMON_SOCK: socketPath,
+            ALLOWLISTER_REMOTE_BROKER_URL: `ws://127.0.0.1:${brokerPort}/ws/daemon`,
+          },
+          stdio: "ignore",
+        });
+        daemon.unref();
+        await waitForSocket(socketPath);
+      } catch (err) {
+        await teardown();
+        throw err;
+      }
     },
     async stop() {
-      await Promise.all([terminate(daemon), terminate(broker)]);
-      await rm(socketPath, { force: true });
+      await teardown();
     },
   };
 }

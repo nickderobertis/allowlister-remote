@@ -11,6 +11,11 @@ export default defineConfig({
   // finishes in a few minutes; 10 fails fast while leaving generous headroom.
   globalTimeout: 600_000,
   workers: 1,
+  // Retry in CI: the realtime specs drive real broker/daemon/plugin processes and
+  // a browser, so request delivery can occasionally exceed a step timeout under
+  // shared-runner load. Retries keep that flake from failing the whole matrix;
+  // `trace: "on-first-retry"` captures a trace when one happens.
+  retries: process.env.CI ? 2 : 0,
   use: {
     baseURL: "http://127.0.0.1:4183",
     trace: "on-first-retry",

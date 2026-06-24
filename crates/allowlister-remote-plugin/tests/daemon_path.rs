@@ -15,6 +15,19 @@ fn plugin() -> &'static str {
     env!("CARGO_BIN_EXE_allowlister-remote-plugin")
 }
 
+/// An absolute path to a binary that spawns successfully and exits immediately,
+/// used to drive the "daemon started but never listened" path. `false` lives at
+/// `/usr/bin/false` on macOS and at `/usr/bin/false` (with a `/bin` symlink) on
+/// Linux, so prefer that and fall back to `/bin/false`; hardcoding `/bin/false`
+/// alone fails to spawn on macOS (ENOENT), turning a listen-timeout into a
+/// spurious spawn-failure.
+fn exits_immediately_bin() -> &'static str {
+    ["/usr/bin/false", "/bin/false"]
+        .into_iter()
+        .find(|p| std::path::Path::new(p).exists())
+        .unwrap_or("/usr/bin/false")
+}
+
 #[test]
 fn plugin_hands_off_to_daemon_and_returns_its_decision() {
     let socket = format!("/tmp/allowlister-plugin-daemon-{}.sock", std::process::id());
@@ -84,7 +97,7 @@ fn plugin_defers_when_no_daemon_can_be_reached() {
     let input = r#"{"subject":"shell","current_verdict":"defer","command":"ls"}"#;
     let mut child = Command::new(plugin())
         .args(["--daemon-socket", &bogus_socket])
-        .env("ALLOWLISTER_REMOTE_DAEMON_BIN", "/bin/false")
+        .env("ALLOWLISTER_REMOTE_DAEMON_BIN", exits_immediately_bin())
         .env("ALLOWLISTER_REMOTE_DAEMON_WAIT_MS", "200")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -105,8 +118,8 @@ fn plugin_defers_when_no_daemon_can_be_reached() {
         reason.contains("daemon unavailable"),
         "expected daemon-unavailable defer, got {value}"
     );
-    // `/bin/false` spawns fine but exits at once, so the specific cause is the
-    // socket never coming up — not a spawn failure.
+    // `false` spawns fine but exits at once, so the specific cause is the socket
+    // never coming up — not a spawn failure.
     assert!(
         reason.contains("did not start listening"),
         "expected the listen-timeout cause, got {value}"
