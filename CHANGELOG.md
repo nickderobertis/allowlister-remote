@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.1](https://github.com/nickderobertis/allowlister-remote/compare/v0.15.0...v0.15.1) (2026-06-24)
+
+
+### Bug Fixes
+
+* defer to allowlister when the remote approval channel is unavailable ([#97](https://github.com/nickderobertis/allowlister-remote/issues/97)) ([ba056b6](https://github.com/nickderobertis/allowlister-remote/commit/ba056b6913bf266c0c19ad147988f6245cdf50df))
+
 ## [0.15.0](https://github.com/nickderobertis/allowlister-remote/compare/v0.14.1...v0.15.0) (2026-06-24)
 
 
