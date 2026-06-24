@@ -53,7 +53,7 @@ changing the notification options shape (`actions`, `data`) or the click handler
    suppressed while the inbox is focused, by design.
 4. **Open a request:**
    ```
-   echo '{"subject":"shell","current_verdict":"defer","command":"git push --force","cwd":"/repo"}' \
+   echo '{"subject":"shell","current_verdict":"ask","command":"git push --force","cwd":"/repo"}' \
      | target/debug/allowlister-remote-plugin --daemon-socket /tmp/alr.sock
    ```
 5. **Confirm the OS notification appears** with the command preview and the

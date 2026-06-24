@@ -76,7 +76,7 @@ test("a tool-call request renders over the broker and resolves", async ({ page }
 
   const running = runPlugin({
     subject: "tool",
-    current_verdict: "defer",
+    current_verdict: "ask",
     cwd: "/workspace/repo",
     tool: {
       name: toolName,

@@ -35,7 +35,7 @@ pub fn create_msg(command: &str, harness: Option<&str>) -> String {
         .map(|harness| format!(r#","harness":"{harness}""#))
         .unwrap_or_default();
     format!(
-        r#"{{"type":"create","payload":{{"current_verdict":"defer","command":"{command}","cwd":"/home/user/project"{harness}}}}}"#
+        r#"{{"type":"create","payload":{{"current_verdict":"ask","command":"{command}","cwd":"/home/user/project"{harness}}}}}"#
     )
 }
 

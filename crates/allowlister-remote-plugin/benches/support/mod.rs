@@ -9,17 +9,19 @@
 /// Labelled harness payloads covering the shapes the plugin parses on stdin: a
 /// bare command, a multi-stage pipeline, a static allow verdict that
 /// short-circuits before any network call, a fully-populated payload, and a
-/// long `&&` chain that stresses command-string parsing.
+/// long `&&` chain that stresses command-string parsing. The non-`static_allow`
+/// cases carry an `ask` verdict so they exercise the approval path (parse +
+/// build), the only verdict the plugin now surfaces.
 pub fn corpus() -> Vec<(&'static str, String)> {
     vec![
-        ("simple", payload("ls -la", "defer", None)),
+        ("simple", payload("ls -la", "ask", None)),
         (
             "pipeline",
-            payload("gh pr list | head -20 | wc -l", "defer", None),
+            payload("gh pr list | head -20 | wc -l", "ask", None),
         ),
         ("static_allow", payload("git status", "allow", None)),
         ("rich", rich_payload("gh pr merge 42")),
-        ("chain", payload(&chain(32), "defer", None)),
+        ("chain", payload(&chain(32), "ask", None)),
     ]
 }
 
@@ -37,7 +39,7 @@ pub fn payload(command: &str, verdict: &str, reason: Option<&str>) -> String {
 /// build step does real work for every key rather than filling nulls.
 pub fn rich_payload(command: &str) -> String {
     format!(
-        r#"{{"current_verdict":"defer","current_reason":"needs approval","command":"{command}","cwd":"/home/user/project","harness":"codex"}}"#
+        r#"{{"current_verdict":"ask","current_reason":"needs approval","command":"{command}","cwd":"/home/user/project","harness":"codex"}}"#
     )
 }
 

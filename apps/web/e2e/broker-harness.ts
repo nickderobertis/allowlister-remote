@@ -153,7 +153,7 @@ export function createBrokerHarness(brokerPort: number): BrokerHarness {
     runShell(command: string) {
       return runPlugin({
         subject: "shell",
-        current_verdict: "defer",
+        current_verdict: "ask",
         command,
         cwd: "/workspace/repo",
       });

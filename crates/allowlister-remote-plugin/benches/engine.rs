@@ -38,9 +38,9 @@ fn bench_triage(c: &mut Criterion) {
 }
 
 /// The hot, no-UI path: the binary probes `current_verdict` on every invocation
-/// and short-circuits a static allow/deny to `defer` without building the full
-/// payload tree. Benched over the whole corpus so the static case (the
-/// short-circuit) and the defer cases (the probe that then falls through to the
+/// and short-circuits every non-`ask` verdict to `defer` without building the
+/// full payload tree. Benched over the whole corpus so the short-circuit case
+/// (`static_allow`) and the `ask` cases (the probe that then falls through to the
 /// network path) are both visible.
 fn bench_static_decision(c: &mut Criterion) {
     let mut group = c.benchmark_group("static_decision");
@@ -89,7 +89,7 @@ fn bench_parse_local_input(c: &mut Criterion) {
 fn bench_triage_scaling(c: &mut Criterion) {
     let mut group = c.benchmark_group("triage_scaling/command_len");
     for len in [4usize, 32, 256] {
-        let body = payload(&chain(len), "defer", None);
+        let body = payload(&chain(len), "ask", None);
         group.bench_with_input(BenchmarkId::from_parameter(len), &body, |b, body| {
             b.iter(|| triage(black_box(body)));
         });

@@ -284,7 +284,7 @@ fn spawn_plugin(plugin: &Path, socket: &Path, command: &str) -> Child {
         .spawn()
         .expect("spawn plugin");
     let payload =
-        format!(r#"{{"subject":"shell","current_verdict":"defer","command":"{command}"}}"#);
+        format!(r#"{{"subject":"shell","current_verdict":"ask","command":"{command}"}}"#);
     child
         .stdin
         .take()
@@ -374,7 +374,7 @@ async fn full_chain_with_real_binaries() {
         let mut stdin = plugin_child.stdin.take().expect("plugin stdin");
         stdin
             .write_all(
-                br#"{"subject":"shell","current_verdict":"defer","command":"gh pr merge 42"}"#,
+                br#"{"subject":"shell","current_verdict":"ask","command":"gh pr merge 42"}"#,
             )
             .expect("write plugin stdin");
         // Dropping stdin closes it so the plugin's read_to_string returns.
@@ -524,7 +524,7 @@ async fn plugin_auto_starts_the_real_daemon() {
         let mut stdin = plugin_child.stdin.take().expect("plugin stdin");
         stdin
             .write_all(
-                br#"{"subject":"shell","current_verdict":"defer","command":"gh pr merge 99"}"#,
+                br#"{"subject":"shell","current_verdict":"ask","command":"gh pr merge 99"}"#,
             )
             .expect("write plugin stdin");
     }

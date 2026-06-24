@@ -154,15 +154,18 @@ pub fn parse_local_input(line: &str) -> Option<LocalDecision> {
 }
 
 /// The shared predicate behind [`is_static_decision`] and [`static_decision`]:
-/// a present verdict that is neither `defer` nor `ask` settled the command, so
-/// only those two (or a missing verdict) reach the server.
+/// only an explicit `ask` verdict — allowlister wanting to prompt the operator —
+/// needs remote approval. Every other state settles without a round-trip: a
+/// terminal `allow`/`deny`, a `defer` (allowlister abstains and runs its normal
+/// flow), or a missing verdict. So only `ask` reaches the server.
 fn is_static_verdict(verdict: Option<&str>) -> bool {
-    matches!(verdict, Some(v) if v != "defer" && v != "ask")
+    verdict != Some("ask")
 }
 
-/// Whether the harness already settled this command with a static allow/deny
-/// verdict, so no remote approval is needed. Only `defer`/`ask` (or a missing
-/// verdict) reach the server.
+/// Whether the harness settled this command without needing remote approval, so
+/// the plugin can defer without contacting the daemon. Only an `ask` verdict —
+/// the case allowlister would itself prompt on — reaches the server; `allow`,
+/// `deny`, `defer`, and a missing verdict are all left to allowlister's own flow.
 pub fn is_static_decision(input: &Value) -> bool {
     is_static_verdict(input.get("current_verdict").and_then(Value::as_str))
 }
@@ -176,13 +179,14 @@ struct StaticProbe<'a> {
     current_verdict: Option<&'a str>,
 }
 
-/// The hot path's cheap front door: decide whether a payload carries a static
-/// verdict that settles the command without remote approval, reading only
-/// `current_verdict` rather than building the whole [`Value`] tree. The binary
-/// runs this on every invocation, so the common static-allow/deny case
-/// short-circuits to `defer` without parsing the rest of the payload or
-/// collecting CLI args. Returns `None` when the payload does not parse, so the
-/// caller falls back to a full parse that surfaces the precise error.
+/// The hot path's cheap front door: decide whether a payload settles the command
+/// without remote approval, reading only `current_verdict` rather than building
+/// the whole [`Value`] tree. The binary runs this on every invocation, so the
+/// common non-`ask` case (allow/deny/defer/missing) short-circuits to `defer`
+/// without parsing the rest of the payload or collecting CLI args; only an `ask`
+/// verdict falls through to the network path. Returns `None` when the payload
+/// does not parse, so the caller falls back to a full parse that surfaces the
+/// precise error.
 /// [`is_static_decision`] is the same predicate over an already-parsed value.
 pub fn static_decision(stdin: &str) -> Option<bool> {
     let probe: StaticProbe = serde_json::from_str(stdin).ok()?;
@@ -220,9 +224,11 @@ pub fn request_summary(input: &Value) -> String {
 /// Outcome of [`triage`].
 #[derive(Debug, PartialEq)]
 pub enum Triage {
-    /// A static verdict settled it; defer to allowlister without a round-trip.
+    /// The verdict needs no remote approval (allow/deny/defer/missing); defer to
+    /// allowlister without a round-trip.
     Defer,
-    /// Needs remote approval; carries the body the plugin hands to the daemon.
+    /// An `ask` verdict needs remote approval; carries the body the plugin hands
+    /// to the daemon.
     NeedsApproval(Value),
 }
 
@@ -403,11 +409,11 @@ mod tests {
     }
 
     #[test]
-    fn static_allow_defers_but_defer_and_ask_reach_server() {
-        // A protocol-v3 shell payload: the create body forwards the structured
-        // fragments and the harness session id verbatim, not just the flat
-        // command/verdict fields.
-        let body = r#"{"protocol_version":3,"subject":"shell","session_id":"9f3c1a2b","current_verdict":"defer","command":"gh pr merge 42","fragments":[{"display":"gh pr merge 42","verdict":"defer","role":"standalone","rule":null}]}"#;
+    fn only_ask_reaches_the_server_other_verdicts_defer() {
+        // A protocol-v3 shell payload with an `ask` verdict: the create body
+        // forwards the structured fragments and the harness session id verbatim,
+        // not just the flat command/verdict fields.
+        let body = r#"{"protocol_version":3,"subject":"shell","session_id":"9f3c1a2b","current_verdict":"ask","command":"gh pr merge 42","fragments":[{"display":"gh pr merge 42","verdict":"ask","role":"standalone","rule":"ask before merging a PR"}]}"#;
         match triage(body).expect("valid payload") {
             Triage::NeedsApproval(create) => {
                 assert_eq!(create["command"], "gh pr merge 42");
@@ -416,16 +422,18 @@ mod tests {
                 assert_eq!(create["session_id"], "9f3c1a2b");
                 assert_eq!(create["fragments"][0]["display"], "gh pr merge 42");
             }
-            Triage::Defer => panic!("defer verdict must reach the server"),
+            Triage::Defer => panic!("ask verdict must reach the server"),
         }
-        assert_eq!(
-            triage(r#"{"current_verdict":"allow"}"#).expect("valid"),
-            Triage::Defer
-        );
-        assert!(matches!(
-            triage(r#"{"current_verdict":"ask"}"#).expect("valid"),
-            Triage::NeedsApproval(_)
-        ));
+        // Everything that is not `ask` defers without a round-trip: terminal
+        // allow/deny, allowlister's no-opinion `defer`, and a missing verdict.
+        for settled in [
+            r#"{"current_verdict":"allow"}"#,
+            r#"{"current_verdict":"deny"}"#,
+            r#"{"current_verdict":"defer"}"#,
+            r#"{"command":"gh pr merge 42"}"#,
+        ] {
+            assert_eq!(triage(settled).expect("valid"), Triage::Defer);
+        }
     }
 
     #[test]
@@ -438,9 +446,9 @@ mod tests {
                 true,
             ),
             (r#"{"current_verdict":"deny"}"#, true),
-            (r#"{"current_verdict":"defer","command":"x"}"#, false),
+            (r#"{"current_verdict":"defer","command":"x"}"#, true),
             (r#"{"current_verdict":"ask"}"#, false),
-            (r#"{"command":"git status"}"#, false),
+            (r#"{"command":"git status"}"#, true),
         ] {
             let input: Value = serde_json::from_str(payload).expect("valid");
             assert_eq!(static_decision(payload), Some(expected));
