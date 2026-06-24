@@ -3,9 +3,7 @@ name: check
 on:
   pull_request:
   push:
-    # TEMP: claude/macos-e2e-setup-kv45ey runs the full matrix on direct pushes
-    # because pull_request CI is suppressed for this bot-authored PR. Remove before merge.
-    branches: [main, claude/macos-e2e-setup-kv45ey]
+    branches: [main]
 
 concurrency:
   group: check-${{ github.workflow }}-${{ github.head_ref || github.ref }}
