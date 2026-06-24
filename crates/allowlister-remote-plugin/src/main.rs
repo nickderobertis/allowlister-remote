@@ -108,14 +108,13 @@ fn main() {
         .read_to_string(&mut stdin)
         .expect("read allowlister plugin stdin");
 
-    // Hot path: a static allow/deny verdict settles the command without remote
-    // approval. Probe `current_verdict` alone — no full `Value` tree, no arg
-    // collection — and exit before any of the request-opening setup below.
+    // Hot path: only an `ask` verdict needs remote approval. Every other state —
+    // a terminal allow/deny, allowlister's no-opinion `defer`, or a missing
+    // verdict — settles the command here. Probe `current_verdict` alone — no full
+    // `Value` tree, no arg collection — and exit before any of the
+    // request-opening setup below.
     if static_decision(&stdin) == Some(true) {
-        write_response(
-            "defer",
-            "static allowlister verdict does not need remote approval",
-        );
+        write_response("defer", "allowlister verdict does not need remote approval");
     }
 
     // Non-static (or unparseable): now do the full parse, which also surfaces a

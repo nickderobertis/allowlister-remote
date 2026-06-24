@@ -38,10 +38,12 @@ is no HTTP polling. The repository ships four pieces:
   reads the allowlister plugin JSON payload from stdin and hands the approval
   request to the host **daemon** over local IPC (a Unix-domain socket on Unix, a
   named pipe on Windows), then waits for the relayed decision and returns the
-  `allow` or `deny` verdict to the allowlister process. If allowlister has
-  already produced a static `allow` or `deny` verdict, the plugin immediately
-  defers without contacting the daemon. The plugin is spawned once per gated
-  command, so it never opens a network socket itself.
+  `allow` or `deny` verdict to the allowlister process. Only an `ask` verdict —
+  the case allowlister would itself prompt on — is surfaced for remote approval;
+  every other verdict (a terminal `allow`/`deny`, or a `defer` where allowlister
+  abstains and runs its normal flow) makes the plugin immediately defer without
+  contacting the daemon. The plugin is spawned once per gated command, so it
+  never opens a network socket itself.
 - `allowlister-remote-daemon` is one long-lived process per host. It auto-starts
   when the plugin first needs it, multiplexes the host's short-lived plugin
   processes onto a single supervised WebSocket to the broker, and routes each
@@ -90,7 +92,7 @@ Configure allowlister to use the plugin process, pointing it at the broker:
 ```
 
 With the plugin pointed at the broker (it auto-starts the daemon, which dials
-that URL), `allowlister check` blocks only for `ask`/`defer` decisions, the PWA
+that URL), `allowlister check` blocks only for `ask` decisions, the PWA
 displays the flagged command fragments (or the tool call), and the selected
 button releases the original allowlister process back through the broker. The
 plugin forwards allowlister's protocol-v3 payload verbatim — including the
@@ -184,8 +186,8 @@ verbatim `raw` input) for `command`/`fragments`:
   "subject": "tool",
   "harness": "claude-code",
   "cwd": "/workspace/app",
-  "currentVerdict": "defer",
-  "currentReason": "no rule matched tool `mcp__github__create_issue`",
+  "currentVerdict": "ask",
+  "currentReason": "needs approval per rule 'ask before creating GitHub issues'",
   "tool": {
     "name": "mcp__github__create_issue",
     "capability": "mcp",

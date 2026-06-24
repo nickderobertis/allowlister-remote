@@ -42,6 +42,13 @@ impl Drop for TestBroker {
 }
 
 fn start_broker() -> TestBroker {
+    start_broker_with(Broker::default())
+}
+
+/// Start a broker from a pre-built [`Broker`], so a test can inject configuration
+/// (e.g. a short ping interval) without mutating the process-global environment —
+/// which would leak into the brokers the other parallel tests are running.
+fn start_broker_with(broker: Broker) -> TestBroker {
     let (addr_tx, addr_rx) = std::sync::mpsc::channel();
     let (stop_tx, stop_rx) = std::sync::mpsc::channel::<()>();
     let thread = std::thread::spawn(move || {
@@ -53,7 +60,7 @@ fn start_broker() -> TestBroker {
         rt.spawn(async move {
             let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
             let _ = addr_tx.send(listener.local_addr().unwrap());
-            let _ = axum::serve(listener, app(Arc::new(Broker::default()))).await;
+            let _ = axum::serve(listener, app(Arc::new(broker))).await;
         });
         // Block this dedicated thread until the test signals stop, then force the
         // runtime down within a bounded window so a pending IOCP accept can never
@@ -82,13 +89,26 @@ async fn connect(base: &str, path: &str) -> Ws {
 }
 
 async fn send(ws: &mut Ws, value: Value) {
-    ws.send(Message::Text(value.to_string())).await.unwrap();
+    // Bound the write like `recv`/`connect` do: a back-pressure deadlock (e.g. a
+    // ping flood filling the socket while both ends try to write) then fails fast
+    // instead of hanging CI until the job timeout.
+    tokio::time::timeout(
+        Duration::from_secs(5),
+        ws.send(Message::Text(value.to_string())),
+    )
+    .await
+    .expect("timed out sending to the broker")
+    .unwrap();
 }
 
 /// Read the next JSON frame, ignoring pings/pongs, failing if nothing arrives in
 /// time so a routing regression surfaces as a test failure rather than a hang.
 async fn recv(ws: &mut Ws) -> Value {
-    let deadline = Duration::from_secs(2);
+    // Generous-but-finite: a real routing regression still fails the test in
+    // seconds (not the 30-min job timeout), but the window is wide enough that a
+    // CPU-starved runner delivering a localhost frame late is not mistaken for
+    // one that never sends it. A tight 2s here was a flaky-failure source.
+    let deadline = Duration::from_secs(10);
     loop {
         let message = tokio::time::timeout(deadline, ws.next())
             .await
@@ -188,6 +208,11 @@ async fn local_terminal_decision_dismisses_web_without_echo_to_daemon() {
         json!({"type":"create","request":{"id":"r3","subject":"shell","command":"ls"}}),
     )
     .await;
+    // Wait for r3's `added` before deciding it: create (daemon connection) and
+    // decision (pwa connection) are processed by independent tasks, so without
+    // this the decision can reach the broker before r3 is registered and be
+    // dropped as unknown — leaving the daemon's recv below hanging.
+    assert_eq!(recv(&mut pwa).await["request"]["id"], "r3");
     send(
         &mut pwa,
         json!({"type":"decision","requestId":"r3","verdict":"allow","reason":"ok"}),
@@ -326,9 +351,10 @@ async fn many_daemons_and_pwas_all_interoperate() {
 #[tokio::test]
 async fn broker_sends_heartbeat_pings() {
     // A short interval so the keepalive is observable quickly. Pings keep an idle
-    // connection alive through proxy/LB idle timeouts during a long wait.
-    std::env::set_var("ALLOWLISTER_REMOTE_BROKER_PING_MS", "150");
-    let broker = start_broker();
+    // connection alive through proxy/LB idle timeouts during a long wait. Injected
+    // per broker rather than via a process-global env var, which would leak the
+    // 150ms flood into the brokers the other parallel tests run and deadlock them.
+    let broker = start_broker_with(Broker::with_ping_ms(150));
     let base = broker.url.clone();
     let mut pwa = connect(&base, "/ws/pwa").await;
 

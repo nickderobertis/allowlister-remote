@@ -58,7 +58,7 @@ fn plugin_hands_off_to_daemon_and_returns_its_decision() {
         thread::sleep(Duration::from_millis(200));
     });
 
-    let input = r#"{"protocol_version":3,"subject":"shell","session_id":"9f3c1a2b","current_verdict":"defer","command":"gh pr merge 42","cwd":"/repo"}"#;
+    let input = r#"{"protocol_version":3,"subject":"shell","session_id":"9f3c1a2b","current_verdict":"ask","command":"gh pr merge 42","cwd":"/repo"}"#;
     let mut child = Command::new(plugin())
         .args(["--daemon-socket", &socket])
         .stdin(Stdio::piped())
@@ -94,7 +94,7 @@ fn plugin_defers_when_no_daemon_can_be_reached() {
     );
     let _ = std::fs::remove_file(&bogus_socket);
 
-    let input = r#"{"subject":"shell","current_verdict":"defer","command":"ls"}"#;
+    let input = r#"{"subject":"shell","current_verdict":"ask","command":"ls"}"#;
     let mut child = Command::new(plugin())
         .args(["--daemon-socket", &bogus_socket])
         .env("ALLOWLISTER_REMOTE_DAEMON_BIN", exits_immediately_bin())
@@ -139,7 +139,7 @@ fn plugin_reports_a_failed_daemon_spawn() {
     );
     let _ = std::fs::remove_file(&bogus_socket);
 
-    let input = r#"{"subject":"shell","current_verdict":"defer","command":"ls"}"#;
+    let input = r#"{"subject":"shell","current_verdict":"ask","command":"ls"}"#;
     let mut child = Command::new(plugin())
         .args(["--daemon-socket", &bogus_socket])
         .env(

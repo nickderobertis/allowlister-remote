@@ -44,7 +44,7 @@ pub fn decision_frame(id: &str, verdict: &str) -> String {
 pub fn request(id: &str, command: &str) -> Value {
     json!({
         "id": id,
-        "current_verdict": "defer",
+        "current_verdict": "ask",
         "command": command,
         "cwd": "/home/user/project",
         "harness": "codex",

@@ -45,7 +45,7 @@ SCENARIOS = [
         "payload": {
             "protocol_version": 3,
             "subject": "shell",
-            "current_verdict": "defer",
+            "current_verdict": "ask",
             "command": "gh pr merge 42 --squash --delete-branch",
             "cwd": "~/src/allowlister-remote",
             # A single standalone fragment that matched no rule: the prompt
@@ -73,7 +73,7 @@ SCENARIOS = [
         "payload": {
             "protocol_version": 3,
             "subject": "tool",
-            "current_verdict": "defer",
+            "current_verdict": "ask",
             "tool": {
                 "name": "mcp__github__create_issue",
                 "capability": "mcp",

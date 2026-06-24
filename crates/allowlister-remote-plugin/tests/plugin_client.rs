@@ -41,7 +41,7 @@ fn static_allow_verdict_defers_without_opening_the_daemon_channel() {
     assert_eq!(output["verdict"], "defer");
     assert_eq!(
         output["reason"],
-        "static allowlister verdict does not need remote approval"
+        "allowlister verdict does not need remote approval"
     );
 }
 

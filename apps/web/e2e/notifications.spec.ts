@@ -108,7 +108,7 @@ test("builds and shows the approval notification from the live broker request", 
 
   const running = runPlugin({
     subject: "shell",
-    current_verdict: "defer",
+    current_verdict: "ask",
     harness: "claude-code",
     cwd: "/workspace/repo",
     command: fragments.map((fragment) => fragment.display).join("\n"),
