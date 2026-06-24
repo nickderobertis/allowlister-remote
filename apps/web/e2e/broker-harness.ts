@@ -1,11 +1,18 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { expect, type Page } from "@playwright/test";
+
+// The plugin/daemon IPC channel is a Unix-domain socket on Unix and a named pipe
+// on Windows (see the daemon's accept_plugins #[cfg]s), so the harness picks the
+// matching address shape and readiness probe per platform. Built binaries also
+// carry the `.exe` suffix on Windows.
+const isWindows = process.platform === "win32";
+const exe = isWindows ? ".exe" : "";
 
 // Shared harness for the realtime e2e: the broker and daemon binaries, the plugin
 // binary in daemon mode, and the helpers a spec needs to open a request and let a
@@ -18,11 +25,11 @@ const targetDir = join(root, "target", "debug");
 // Honor the *_BIN env overrides so the post-release smoke drives the published
 // plugin and daemon binaries (the broker is server-side, built from source).
 const brokerBin =
-  process.env.ALLOWLISTER_REMOTE_BROKER_BIN ?? join(targetDir, "allowlister-remote-broker");
+  process.env.ALLOWLISTER_REMOTE_BROKER_BIN ?? join(targetDir, `allowlister-remote-broker${exe}`);
 const daemonBin =
-  process.env.ALLOWLISTER_REMOTE_DAEMON_BIN ?? join(targetDir, "allowlister-remote-daemon");
+  process.env.ALLOWLISTER_REMOTE_DAEMON_BIN ?? join(targetDir, `allowlister-remote-daemon${exe}`);
 const pluginBin =
-  process.env.ALLOWLISTER_REMOTE_PLUGIN_BIN ?? join(targetDir, "allowlister-remote-plugin");
+  process.env.ALLOWLISTER_REMOTE_PLUGIN_BIN ?? join(targetDir, `allowlister-remote-plugin${exe}`);
 
 function run(command: string, args: string[]): Promise<void> {
   return new Promise((resolveRun, reject) => {
@@ -48,9 +55,23 @@ async function waitForPort(port: number): Promise<void> {
   throw new Error(`broker port ${port} never opened`);
 }
 
+// A bound Unix socket shows up on the filesystem, but a Windows named pipe does
+// not — it only appears in the `\\.\pipe\` namespace. List that namespace and
+// match the bare pipe name; this is non-blocking and, unlike a probe connection,
+// does not consume a pipe instance the daemon would otherwise hand to a plugin.
+function socketReady(socketPath: string): boolean {
+  if (!isWindows) return existsSync(socketPath);
+  const name = socketPath.slice(socketPath.lastIndexOf("\\") + 1);
+  try {
+    return readdirSync("\\\\.\\pipe\\").includes(name);
+  } catch {
+    return false;
+  }
+}
+
 async function waitForSocket(socketPath: string): Promise<void> {
   for (let attempt = 0; attempt < 200; attempt++) {
-    if (existsSync(socketPath)) return;
+    if (socketReady(socketPath)) return;
     await new Promise((r) => setTimeout(r, 50));
   }
   throw new Error(`daemon socket ${socketPath} never appeared`);
@@ -90,7 +111,8 @@ export interface BrokerHarness {
 }
 
 export function createBrokerHarness(brokerPort: number): BrokerHarness {
-  const socketPath = join(tmpdir(), `allowlister-remote-e2e-${randomUUID().slice(0, 8)}.sock`);
+  const pipeName = `allowlister-remote-e2e-${randomUUID().slice(0, 8)}`;
+  const socketPath = isWindows ? `\\\\.\\pipe\\${pipeName}` : join(tmpdir(), `${pipeName}.sock`);
   let broker: ChildProcess | undefined;
   let daemon: ChildProcess | undefined;
 
@@ -172,7 +194,9 @@ export function createBrokerHarness(brokerPort: number): BrokerHarness {
     },
     async stop() {
       await Promise.all([terminate(daemon), terminate(broker)]);
-      await rm(socketPath, { force: true });
+      // A Unix socket is a real file to unlink; a Windows named pipe is torn down
+      // with the daemon process, and rm() on a `\\.\pipe\` path would throw.
+      if (!isWindows) await rm(socketPath, { force: true });
     },
   };
 }
