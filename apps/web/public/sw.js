@@ -84,7 +84,20 @@ function broadcastToClients(message) {
 function connectBroker(url) {
   brokerUrl = url;
   // Reuse a live or still-connecting socket rather than stacking connections.
-  if (brokerSocket && (brokerSocket.readyState === 0 || brokerSocket.readyState === 1)) return;
+  // But a page that attaches to an already-connected worker (a reload, a second
+  // tab, or a first-load page that connected then reloaded) must still be
+  // bootstrapped: re-announce the open status and re-subscribe so the broker
+  // re-sends a snapshot the new client receives — otherwise it sits forever on
+  // "Connecting…" with an empty inbox even though the socket is live.
+  if (brokerSocket && (brokerSocket.readyState === 0 || brokerSocket.readyState === 1)) {
+    if (brokerSocket.readyState === 1) {
+      broadcastToClients({ type: "broker-status", status: "open" });
+      brokerSocket.send(JSON.stringify({ type: "subscribe" }));
+    }
+    // While still CONNECTING (readyState 0) the open handler below will subscribe
+    // and broadcast "open" to every client, so the attaching page is covered then.
+    return;
+  }
   if (typeof WebSocket === "undefined") return;
 
   const socket = new WebSocket(url);

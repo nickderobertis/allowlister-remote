@@ -131,6 +131,7 @@ async fn serve_connection(socket: WebSocket, broker: SharedBroker, role: Role) {
     let conn = broker.next_conn.fetch_add(1, Ordering::Relaxed);
     let (tx, mut rx) = unbounded_channel::<String>();
     broker.register(conn, role, tx);
+    tracing::debug!(conn, ?role, "connection established");
 
     let (mut sink, mut stream) = socket.split();
     // Outbound pump: everything the broker sends this client flows through the
@@ -176,6 +177,7 @@ async fn serve_connection(socket: WebSocket, broker: SharedBroker, role: Role) {
 
     broker.disconnect(conn, role);
     send_task.abort();
+    tracing::debug!(conn, ?role, "connection closed");
 }
 
 impl Broker {

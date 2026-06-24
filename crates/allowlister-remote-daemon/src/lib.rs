@@ -121,8 +121,14 @@ pub async fn serve(config: Config) -> std::io::Result<()> {
     // channel. While the link is down, messages queue here and flush on reconnect.
     let (broker_tx, broker_rx) = unbounded_channel::<String>();
 
+    let broker_url = daemon_ws_url(&config.broker_url);
+    tracing::info!(
+        socket = %config.socket_path,
+        broker = %broker_url,
+        "daemon starting"
+    );
     tokio::spawn(broker_loop(
-        daemon_ws_url(&config.broker_url),
+        broker_url,
         config.ca_path,
         routes.clone(),
         broker_rx,
@@ -191,12 +197,17 @@ async fn broker_loop(
     loop {
         let socket = match connect_broker(&url, ca_path.as_deref()).await {
             Ok((socket, _)) => socket,
-            Err(_) => {
+            Err(error) => {
+                // The single most useful line for triaging a dead broker link: the
+                // exact endpoint and why the dial/upgrade failed (a wrong path
+                // surfaces here as an HTTP error, not a 101). See issue #93.
+                tracing::warn!(broker = %url, %error, ?backoff, "broker connection failed; retrying");
                 tokio::time::sleep(backoff).await;
                 backoff = (backoff * 2).min(max_backoff);
                 continue;
             }
         };
+        tracing::info!(broker = %url, "broker link established");
         backoff = Duration::from_millis(250);
         let (mut sink, mut stream) = socket.split();
 
@@ -209,6 +220,9 @@ async fn broker_loop(
                 .map(|route| route.create_msg.clone())
                 .collect()
         };
+        if !pending.is_empty() {
+            tracing::debug!(count = pending.len(), "re-announcing pending requests");
+        }
         let mut link_alive = true;
         for create_msg in pending {
             if sink.send(Message::Text(create_msg)).await.is_err() {
@@ -238,6 +252,7 @@ async fn broker_loop(
             }
         }
 
+        tracing::warn!(broker = %url, "broker link dropped; reconnecting");
         tokio::time::sleep(backoff).await;
     }
 }

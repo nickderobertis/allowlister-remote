@@ -1,9 +1,21 @@
 #!/usr/bin/env node
-import { createReadStream, existsSync, statSync } from "node:fs";
+import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
 import { createServer } from "node:http";
 import { dirname, extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createGzip } from "node:zlib";
+
+const HELP = `allowlister-remote-web — static server for the remote-approval PWA
+
+Usage: allowlister-remote-web [options]
+
+Serves the bundled PWA; set your broker URL in the app (or open with
+?broker=wss://your-broker). Options:
+
+  --port <n>     port to listen on (default: $PORT or 8787)
+  --host <addr>  address to bind (default: $HOST or 0.0.0.0)
+  -h, --help     print this help and exit
+  -v, --version  print the version and exit`;
 
 const MIME = {
   ".html": "text/html",
@@ -123,8 +135,32 @@ function sendFile(req, res, filePath) {
   }
 }
 
+// The published version, read from this package's own manifest (stamped at
+// release time by `npm run release:stage-web`). Best-effort: a missing/unreadable
+// manifest reports "unknown" rather than crashing the --version probe.
+function packageVersion() {
+  try {
+    const manifest = JSON.parse(readFileSync(join(packageDir, "package.json"), "utf8"));
+    return manifest.version ?? "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+
 function main() {
-  const opts = parseArgs(process.argv.slice(2));
+  const argv = process.argv.slice(2);
+  // --help / --version must print and exit before starting the server, so probing
+  // the CLI never leaves a server running or fails on a bound port.
+  if (argv.includes("--help") || argv.includes("-h")) {
+    process.stdout.write(`${HELP}\n`);
+    return;
+  }
+  if (argv.includes("--version") || argv.includes("-v") || argv.includes("-V")) {
+    process.stdout.write(`${packageVersion()}\n`);
+    return;
+  }
+
+  const opts = parseArgs(argv);
 
   if (!existsSync(staticDir)) {
     process.stderr.write(`allowlister-remote-web: static assets missing at ${staticDir}\n`);

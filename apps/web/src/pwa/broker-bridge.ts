@@ -59,10 +59,36 @@ export function connectBroker(
   };
 
   container?.addEventListener("message", listener);
-  post({ type: "broker-connect", url });
+
+  // On the very first load the page renders before the freshly-registered worker
+  // has taken control, so `container.controller` is still null and the
+  // `broker-connect` post below would be silently dropped — the UI would sit on
+  // "Connecting to broker…" until a manual reload. The worker calls
+  // `clients.claim()` on activate, which fires `controllerchange` on the page once
+  // it controls it; defer the connect to that event when there is no controller
+  // yet, so the first load connects on its own. It is one-shot (a later worker
+  // update also fires `controllerchange`, and the worker already reconnects the
+  // socket itself, so re-posting then would be redundant).
+  const connect = () => post({ type: "broker-connect", url });
+  let onControllerChange: (() => void) | undefined;
+  if (container?.controller) {
+    connect();
+  } else if (container) {
+    onControllerChange = () => {
+      container.removeEventListener("controllerchange", onControllerChange as () => void);
+      onControllerChange = undefined;
+      connect();
+    };
+    container.addEventListener("controllerchange", onControllerChange);
+  }
 
   return {
     decide: (decision) => post({ type: "decision", ...decision }),
-    close: () => container?.removeEventListener("message", listener),
+    close: () => {
+      container?.removeEventListener("message", listener);
+      if (onControllerChange) {
+        container?.removeEventListener("controllerchange", onControllerChange);
+      }
+    },
   };
 }
