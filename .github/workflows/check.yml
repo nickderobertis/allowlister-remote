@@ -37,8 +37,8 @@ jobs:
         os: ${{ fromJSON(needs.setup.outputs.os) }}
     # The affected lanes (build + nx -t test/test-e2e) finish well inside ~15 min;
     # cap the job so a wedged test or runner fails fast and is retryable instead
-    # of sitting for the default 6h. Lowered to 20 while diagnosing the test-lane hang.
-    timeout-minutes: 20
+    # of sitting for the default 6h.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
         with:
@@ -89,15 +89,8 @@ jobs:
           fi
           echo "NX_BASE=$base" >> "$GITHUB_ENV"
           echo "NX_HEAD=${{ github.sha }}" >> "$GITHUB_ENV"
-      # TEMP diagnostic: the `test` lane passes on macOS, so the ~28 min hang is
-      # in a later `just check` lane. Run those post-test lanes serially
-      # (--parallel=1) with live streamed, name-prefixed output, so the hanging
-      # task is the last to start and never finish. shell: bash so Windows does
-      # not default to pwsh (where $NX_BASE/$NX_HEAD would not expand).
-      # Reverted once the culprit is fixed.
-      - name: Run affected check (TEMP diagnostic — isolate the hang)
-        shell: bash
-        run: npx nx affected -t fmt-check lint lint-compiler typecheck build test-e2e --base "$NX_BASE" --head "$NX_HEAD" --parallel=1 --output-style=stream
+      - name: Run affected check
+        run: just check
 
   # Aggregate context so branch protection can require a single "check" status
   # regardless of the matrix legs.
