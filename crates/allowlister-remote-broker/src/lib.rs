@@ -71,10 +71,42 @@ struct Inner {
 }
 
 /// The shared mediation state. Cloneable as `SharedBroker` (an `Arc`).
-#[derive(Default)]
 pub struct Broker {
     inner: Mutex<Inner>,
     next_conn: AtomicU64,
+    /// Keepalive ping interval, in milliseconds, read once here at construction
+    /// rather than per connection — so the value is fixed for the broker's life
+    /// and a test (or anything else) can inject it without a process-global env
+    /// mutation that would race connections opened concurrently.
+    ping_ms: u64,
+}
+
+/// Default keepalive ping interval when the environment does not override it.
+const DEFAULT_PING_MS: u64 = 20_000;
+
+impl Default for Broker {
+    /// Production construction: read the keepalive interval from
+    /// `ALLOWLISTER_REMOTE_BROKER_PING_MS` once, at startup.
+    fn default() -> Self {
+        let ping_ms = std::env::var("ALLOWLISTER_REMOTE_BROKER_PING_MS")
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(DEFAULT_PING_MS);
+        Self::with_ping_ms(ping_ms)
+    }
+}
+
+impl Broker {
+    /// Construct a broker with an explicit keepalive ping interval. Lets a test
+    /// drive a short, observable interval without mutating the process-global
+    /// environment, which would leak into the brokers other parallel tests run.
+    pub fn with_ping_ms(ping_ms: u64) -> Self {
+        Self {
+            inner: Mutex::default(),
+            next_conn: AtomicU64::new(0),
+            ping_ms,
+        }
+    }
 }
 
 pub type SharedBroker = Arc<Broker>;
@@ -138,10 +170,7 @@ async fn serve_connection(socket: WebSocket, broker: SharedBroker, role: Role) {
     // mpsc channel so state mutations never block on socket back-pressure. A
     // periodic Ping keeps idle connections alive under proxy/LB idle timeouts on
     // a day-long wait (clients auto-pong); a send failure tears the pump down.
-    let ping_ms = std::env::var("ALLOWLISTER_REMOTE_BROKER_PING_MS")
-        .ok()
-        .and_then(|value| value.parse().ok())
-        .unwrap_or(20_000);
+    let ping_ms = broker.ping_ms;
     let send_task = tokio::spawn(async move {
         let mut heartbeat = tokio::time::interval(std::time::Duration::from_millis(ping_ms));
         loop {
