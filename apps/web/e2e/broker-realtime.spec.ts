@@ -200,6 +200,31 @@ test("concurrent requests from one daemon resolve independently", async ({ page 
   }
 });
 
+test("a reload onto an already-open broker socket shows Connected, not a stuck Connecting", async ({
+  page,
+}) => {
+  // Regression guard. The service worker holds one socket shared across a
+  // browser's tabs and reloads, and it broadcast `broker-status: open` only at the
+  // instant that socket opened. A page that attached to an already-open socket (a
+  // reload, or a second tab) hit connectBroker's early return and was never
+  // re-told the status, so it sat forever on "Connecting to broker…" even though
+  // broker events kept arriving — the requests showed up while the banner lied.
+  // The other tests only assert that requests arrive (the broker-event relay,
+  // which works even with the bug), so this asserts the *status label* itself.
+  await subscribe(page);
+
+  // First load: the socket opens and the page goes online.
+  await expect(page.getByText("Connected to broker")).toBeVisible({ timeout: 20_000 });
+
+  // Reload onto the *already-open* shared socket — the late-subscriber path. The
+  // freshly loaded page resets to "Connecting to broker…" and must be re-told the
+  // socket is already open; with the regression it stays there indefinitely.
+  await page.reload();
+  await page.evaluate(() => navigator.serviceWorker.ready);
+
+  await expect(page.getByText("Connected to broker")).toBeVisible({ timeout: 20_000 });
+});
+
 test("a plugin that exits withdraws its card from the PWA", async ({ page }) => {
   // If the gated command is cancelled (the plugin process dies) before anyone
   // decides, the daemon withdraws the request and the broker tells every PWA to
