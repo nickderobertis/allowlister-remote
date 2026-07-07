@@ -59,7 +59,17 @@ dependencies = [
 name = "allowlister-remote-plugin"
 version = "0.0.0"
 dependencies = [
+ "allowlister-terminal-approval-plugin",
  "criterion",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "allowlister-terminal-approval-plugin"
+version = "0.1.0"
+source = "git+https://github.com/nickderobertis/allowlister-terminal-approval-plugin?rev=f5fcfe427933d40aebcf6b18b4447dd5885dd765#f5fcfe427933d40aebcf6b18b4447dd5885dd765"
+dependencies = [
  "serde",
  "serde_json",
 ]

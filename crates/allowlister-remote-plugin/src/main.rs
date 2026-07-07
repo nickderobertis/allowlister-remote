@@ -1,7 +1,4 @@
-use allowlister_remote_plugin::{
-    build_create_body, local_prompt, parse_local_input, request_summary, static_decision,
-    FlaggedFragment, LocalDecision,
-};
+use allowlister_remote_plugin::{build_create_body, request_summary, static_decision};
 
 // The plugin always reaches the broker through the host daemon, over a Unix
 // socket on Unix and a named pipe on Windows (see `daemon.rs`); there is no
@@ -10,11 +7,8 @@ mod daemon;
 use serde::Serialize;
 use serde_json::Value;
 use std::env;
-use std::fs::OpenOptions;
-use std::io::{self, BufRead, BufReader, Read, Write};
+use std::io::{self, Read};
 use std::process;
-use std::sync::mpsc::{self, Receiver};
-use std::thread;
 
 #[derive(Debug, Serialize)]
 struct PluginResponse<'a> {
@@ -41,49 +35,6 @@ fn write_response(verdict: &str, reason: impl Into<String>) -> ! {
         serde_json::to_string(&response).expect("plugin response serializes")
     );
     process::exit(0);
-}
-
-/// Start a local approval prompt on the controlling terminal, returning a
-/// channel that yields the operator's decision and a writer for status
-/// updates. When there is no terminal (CI, piped stdio, Windows console),
-/// both are `None` and the plugin waits on the remote decision alone.
-fn start_local_prompt(
-    command: &str,
-    cwd: &str,
-    flagged: &[FlaggedFragment],
-    tool_input: Option<&str>,
-) -> (Option<Receiver<LocalDecision>>, Option<impl Write>) {
-    let Ok(tty) = OpenOptions::new().read(true).write(true).open("/dev/tty") else {
-        return (None, None);
-    };
-    let (Ok(mut prompt_writer), Ok(status_writer)) = (tty.try_clone(), tty.try_clone()) else {
-        return (None, None);
-    };
-
-    let _ = writeln!(
-        prompt_writer,
-        "{}",
-        local_prompt(command, cwd, flagged, tool_input)
-    );
-
-    let (tx, rx) = mpsc::channel();
-    thread::spawn(move || {
-        let reader = BufReader::new(tty);
-        for line in reader.lines() {
-            let Ok(line) = line else { break };
-            match parse_local_input(&line) {
-                Some(decision) => {
-                    let _ = tx.send(decision);
-                    break;
-                }
-                None => {
-                    let _ = writeln!(prompt_writer, "Please type 'a' to allow or 'd' to deny: ");
-                }
-            }
-        }
-    });
-
-    (Some(rx), Some(status_writer))
 }
 
 /// Plugin version reported by `--version`. Release
