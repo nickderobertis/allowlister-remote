@@ -271,7 +271,10 @@ pub fn run_via_daemon(stream: LocalStream, create_body: Value, summary: &str, cw
             while let Ok(decision) = local_rx.recv() {
                 if tx_local
                     .send(Event::Local {
-                        verdict: decision.verdict,
+                        // `LocalDecision.verdict` is now a `Verdict` enum; fold it
+                        // to the `&'static str` this event stream carries (the same
+                        // representation the broker-relayed `Event::Remote` uses).
+                        verdict: decision.verdict.as_str(),
                         reason: decision.reason,
                     })
                     .is_err()
