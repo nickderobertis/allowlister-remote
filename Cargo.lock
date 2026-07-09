@@ -68,7 +68,7 @@ dependencies = [
 [[package]]
 name = "allowlister-terminal-approval-plugin"
 version = "0.1.0"
-source = "git+https://github.com/nickderobertis/allowlister-terminal-approval-plugin?rev=29c33b457f8aac917b2847444baa37b874a30fd2#29c33b457f8aac917b2847444baa37b874a30fd2"
+source = "git+https://github.com/nickderobertis/allowlister-terminal-approval-plugin?rev=c601f9bd138ceba4c0622483f559fba3a8242992#c601f9bd138ceba4c0622483f559fba3a8242992"
 dependencies = [
  "serde",
  "serde_json",
