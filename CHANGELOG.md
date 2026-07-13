@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.3](https://github.com/nickderobertis/allowlister-remote/compare/v0.15.2...v0.15.3) (2026-07-13)
+
+
+### Bug Fixes
+
+* **web:** use the shield/filter logo for the browser tab favicon ([#103](https://github.com/nickderobertis/allowlister-remote/issues/103)) ([04a386f](https://github.com/nickderobertis/allowlister-remote/commit/04a386f8f444325c3c6433fab5238d938ebc9f51))
+
 ## [0.15.2](https://github.com/nickderobertis/allowlister-remote/compare/v0.15.1...v0.15.2) (2026-06-24)
 
 
