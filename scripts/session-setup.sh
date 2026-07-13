@@ -65,3 +65,7 @@ printf '%s\n' \
   "and the Playwright browsers (several minutes on a fresh machine)." \
   "Verify anytime with 'just setup-check'."
 exit 0
+
+if [ -x scripts/setup-llmlint.sh ]; then
+  scripts/setup-llmlint.sh
+fi
