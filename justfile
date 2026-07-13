@@ -156,3 +156,12 @@ heap:
 lighthouse:
     npx nx run web:build
     node scripts/web-lighthouse.mjs
+
+lint-llm:
+    llmlint
+
+lint-llm-diff:
+    llmlint --diff --diff-base "origin/main"
+
+lint-llm-validate:
+    llmlint validate
