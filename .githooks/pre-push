@@ -124,20 +124,17 @@ fi
 #     /usr/local/share/ca-certificates and running update-ca-certificates both
 #     need root, and being guarded they would fail *silently* under this mapping,
 #     leaving the clients pointed at a bundle without the host's CAs.
-# Two adaptations vs the bare scaffold, both harmless where they do not apply:
-#   * the browser is installed rather than taken from the image: this repo pins
-#     @playwright/test 1.61 (chromium-1228) while the pinned image bundles 1.60's
-#     chromium-1223, so the committed baseline's bytes come from the installed
-#     browser. `--with-deps` is dropped — that half shells out to apt and needs
-#     root, and the image already ships the system libraries chromium needs.
-#     PLAYWRIGHT_BROWSERS_PATH is a persistent host cache you own, so the
-#     download is paid once rather than on every push.
-#   * the web build and the capture config are this repo's (mirrors visual-docs.yml).
+# There is no `playwright install` step: the image tag tracks the @playwright/test
+# version in package.json (1.61 -> chromium-1228), so the browser and its system
+# libraries come from the image. Installing instead would need either apt as root
+# (`--with-deps`) or a writable browser cache, and both are avoidable. Bump the tag
+# and package.json together — a skew means the capture downloads a browser or fails
+# to find one. This repo's one adaptation is the rest of the command line: the web
+# build and the capture config (both mirroring visual-docs.yml).
 host_user="$(id -u):$(id -g)"
 capture_scratch="$(mktemp -d)"
 trap 'rm -rf "$capture_scratch"' EXIT
-browser_cache="${XDG_CACHE_HOME:-$HOME/.cache}/ms-playwright"
-mkdir -p "$capture_scratch/home" "$capture_scratch/node_modules" "$browser_cache" node_modules
+mkdir -p "$capture_scratch/home" "$capture_scratch/node_modules" node_modules
 
 # Host CA material for a TLS-intercepting egress proxy (the managed remote dev
 # environment): mount it read-only and let the container command fold it into a
@@ -152,14 +149,13 @@ docker run --rm --platform="$DOCKER_PLATFORM" --ipc=host --shm-size=2g \
   --user "$host_user" \
   -v "$PWD:/work" -v "$capture_scratch:/scratch" \
   -v "$capture_scratch/node_modules:/work/node_modules" \
-  -v "$browser_cache:/browsers" \
-  -e HOME=/scratch/home -e PLAYWRIGHT_BROWSERS_PATH=/browsers -w /work \
+  -e HOME=/scratch/home -w /work \
   ${ca_args[@]+"${ca_args[@]}"} \
-  mcr.microsoft.com/playwright:v1.60.0-noble \
+  mcr.microsoft.com/playwright:v1.61.0-noble \
   bash -lc "cat /etc/ssl/certs/ca-certificates.crt /host-ca/*.crt >/scratch/ca-bundle.crt 2>/dev/null \
       || cp /etc/ssl/certs/ca-certificates.crt /scratch/ca-bundle.crt
     export NODE_EXTRA_CA_CERTS=/scratch/ca-bundle.crt SSL_CERT_FILE=/scratch/ca-bundle.crt
-    npm ci && npx playwright install chromium && npx next build apps/web && SHOTS_OUT=$CURRENT/$ARCH npx playwright test --config apps/web/playwright.capture.config.ts"
+    npm ci && npx next build apps/web && SHOTS_OUT=$CURRENT/$ARCH npx playwright test --config apps/web/playwright.capture.config.ts"
 # ------------------------------------------------------------------------------
 
 # --- 4. Classify the capture against the committed baseline manifest ---------
