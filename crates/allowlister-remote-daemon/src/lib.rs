@@ -264,6 +264,11 @@ type WsStream =
 /// is trusted in addition to the system store (for self-hosted/private-CA
 /// brokers); without one, `wss://` uses the system trust store and `ws://` is
 /// plain.
+///
+/// The error is boxed: `tungstenite::Error` is 136 bytes, so returning it inline
+/// puts a large `Err` variant in every `Result` this returns (clippy's
+/// `result_large_err`). The one caller only formats it, so the box costs nothing
+/// on the path that matters — the connect that succeeds.
 async fn connect_broker(
     url: &str,
     ca_path: Option<&str>,
@@ -272,7 +277,7 @@ async fn connect_broker(
         WsStream,
         tokio_tungstenite::tungstenite::handshake::client::Response,
     ),
-    tokio_tungstenite::tungstenite::Error,
+    Box<tokio_tungstenite::tungstenite::Error>,
 > {
     match ca_path {
         Some(path) if !path.is_empty() => {
@@ -280,6 +285,7 @@ async fn connect_broker(
         }
         _ => connect_async(url).await,
     }
+    .map_err(Box::new)
 }
 
 /// Build a rustls connector that trusts the given PEM CA in addition to the

@@ -98,6 +98,10 @@ if command -v docker >/dev/null 2>&1 && ! docker info >/dev/null 2>&1 \
    && [ "${CLAUDE_CODE_REMOTE:-}" = "true" ] && command -v dockerd >/dev/null 2>&1; then
   echo "pre-push: starting the docker daemon for the visual-capture guard..." >&2
   mkdir -p .dev
+  # shellcheck disable=SC2024 # The shell-side redirect is the point: SC2024's fix
+  # (`| sudo tee`) would leave .dev/dockerd.log root-owned inside this tree, the
+  # exact defect the capture block below exists to remove. Opened by the invoking
+  # shell, the log stays owned by — and deletable by — whoever ran the hook.
   sudo -n dockerd >.dev/dockerd.log 2>&1 &
   n=0; until docker info >/dev/null 2>&1 || [ "$n" -ge 20 ]; do n=$((n + 1)); sleep 1; done
 fi
@@ -109,20 +113,53 @@ if ! command -v docker >/dev/null 2>&1 || ! docker info >/dev/null 2>&1; then
 fi
 
 # ---- same image/flags/capture as visual-docs.yml (keeps local bytes == CI) ---
-# Two adaptations vs a bare `docker run`, both harmless where they do not apply:
-#   * Mount the host CA dir read-only and trust it inside the container, so npm/
-#     Playwright/apt work behind a TLS-intercepting egress proxy (the managed
-#     remote dev environment). A no-op on machines whose host has no extra CAs.
-#   * Mask node_modules with an anonymous volume so `npm ci` installs clean (as
-#     CI does on a fresh checkout) instead of churning the host's bind-mounted
-#     tree.
+# The container runs as YOU: it bind-mounts this tree, and as root it would leave
+# every file it writes here owned by root and unremovable without sudo. Four
+# things come with that mapping, none of them optional:
+#   * node_modules is masked by a host directory you created (an anonymous
+#     `-v /work/node_modules` volume is root-owned, so `npm ci` would hit EACCES),
+#     which still keeps the install inside the container. Its mountpoint has to
+#     exist here too, or Docker creates that one root-owned inside your tree.
+#   * HOME points at a host directory you own: your uid has no passwd entry.
+#   * the scratch holding both is removed however this hook exits, capture
+#     failures included.
+#   * the host's extra CAs reach the container's TLS clients through a bundle
+#     assembled in the scratch, not through the system trust store: copying into
+#     /usr/local/share/ca-certificates and running update-ca-certificates both
+#     need root, and being guarded they would fail *silently* under this mapping,
+#     leaving the clients pointed at a bundle without the host's CAs.
+# There is no `playwright install` step: the image tag tracks the @playwright/test
+# version in package.json (1.61 -> chromium-1228), so the browser and its system
+# libraries come from the image. Installing instead would need either apt as root
+# (`--with-deps`) or a writable browser cache, and both are avoidable. Bump the tag
+# and package.json together — a skew means the capture downloads a browser or fails
+# to find one. This repo's one adaptation is the rest of the command line: the web
+# build and the capture config (both mirroring visual-docs.yml).
+host_user="$(id -u):$(id -g)"
+capture_scratch="$(mktemp -d)"
+trap 'rm -rf "$capture_scratch"' EXIT
+mkdir -p "$capture_scratch/home" "$capture_scratch/node_modules" node_modules
+
+# Host CA material for a TLS-intercepting egress proxy (the managed remote dev
+# environment): mount it read-only and let the container command fold it into a
+# bundle under the scratch. Mounted only when it exists, so Docker never creates
+# it root-owned on the host. SCREENCOMP_HOST_CA_DIR overrides the source so the
+# plumbing can be exercised on a machine whose real CA dir is empty.
+ca_args=()
+host_ca_dir="${SCREENCOMP_HOST_CA_DIR:-/usr/local/share/ca-certificates}"
+[ -d "$host_ca_dir" ] && ca_args+=(-v "$host_ca_dir:/host-ca:ro")
+
 docker run --rm --platform="$DOCKER_PLATFORM" --ipc=host --shm-size=2g \
-  -v "$PWD:/work" -v /work/node_modules \
-  -v /usr/local/share/ca-certificates:/host-ca:ro -w /work \
-  mcr.microsoft.com/playwright:v1.60.0-noble \
-  bash -lc "cp /host-ca/*.crt /usr/local/share/ca-certificates/ 2>/dev/null && update-ca-certificates >/dev/null 2>&1 || true
-    export NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
-    npm ci && npx playwright install --with-deps chromium && npx next build apps/web && SHOTS_OUT=$CURRENT/$ARCH npx playwright test --config apps/web/playwright.capture.config.ts"
+  --user "$host_user" \
+  -v "$PWD:/work" -v "$capture_scratch:/scratch" \
+  -v "$capture_scratch/node_modules:/work/node_modules" \
+  -e HOME=/scratch/home -w /work \
+  ${ca_args[@]+"${ca_args[@]}"} \
+  mcr.microsoft.com/playwright:v1.61.0-noble \
+  bash -lc "cat /etc/ssl/certs/ca-certificates.crt /host-ca/*.crt >/scratch/ca-bundle.crt 2>/dev/null \
+      || cp /etc/ssl/certs/ca-certificates.crt /scratch/ca-bundle.crt
+    export NODE_EXTRA_CA_CERTS=/scratch/ca-bundle.crt SSL_CERT_FILE=/scratch/ca-bundle.crt
+    npm ci && npx next build apps/web && SHOTS_OUT=$CURRENT/$ARCH npx playwright test --config apps/web/playwright.capture.config.ts"
 # ------------------------------------------------------------------------------
 
 # --- 4. Classify the capture against the committed baseline manifest ---------
