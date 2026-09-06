@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.4](https://github.com/nickderobertis/allowlister-remote/compare/v0.15.3...v0.15.4) (2026-09-06)
+
+
+### Bug Fixes
+
+* **visual-docs:** run the capture container as the invoking user ([#107](https://github.com/nickderobertis/allowlister-remote/issues/107)) ([104076a](https://github.com/nickderobertis/allowlister-remote/commit/104076aa43a83d583e7e4fc4cd50eabc8f238d61))
+
 ## [0.15.3](https://github.com/nickderobertis/allowlister-remote/compare/v0.15.2...v0.15.3) (2026-07-13)
 
 
