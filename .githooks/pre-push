@@ -98,6 +98,10 @@ if command -v docker >/dev/null 2>&1 && ! docker info >/dev/null 2>&1 \
    && [ "${CLAUDE_CODE_REMOTE:-}" = "true" ] && command -v dockerd >/dev/null 2>&1; then
   echo "pre-push: starting the docker daemon for the visual-capture guard..." >&2
   mkdir -p .dev
+  # shellcheck disable=SC2024 # The shell-side redirect is the point: SC2024's fix
+  # (`| sudo tee`) would leave .dev/dockerd.log root-owned inside this tree, the
+  # exact defect the capture block below exists to remove. Opened by the invoking
+  # shell, the log stays owned by — and deletable by — whoever ran the hook.
   sudo -n dockerd >.dev/dockerd.log 2>&1 &
   n=0; until docker info >/dev/null 2>&1 || [ "$n" -ge 20 ]; do n=$((n + 1)); sleep 1; done
 fi
