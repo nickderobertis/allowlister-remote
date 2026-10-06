@@ -10,7 +10,8 @@
 //! another machine) instead of opening one per gated command.
 
 use allowlister_remote_plugin::{
-    flagged_fragments, interpret_decision, tool_input_json, RemoteDecision,
+    flagged_fragments, interpret_decision, start_local_prompt, tool_input_json, LocalPrompt,
+    RemoteDecision, REMOTE_LABELS,
 };
 use serde_json::{json, Value};
 use std::env;
@@ -254,15 +255,26 @@ pub fn run_via_daemon(stream: LocalStream, create_body: Value, summary: &str, cw
     // forwarded payload, so the fragments and tool input come straight off it.
     let flagged = flagged_fragments(&create_body);
     let tool_input = tool_input_json(&create_body);
-    let (local_rx, _status) =
-        crate::start_local_prompt(summary, cwd, &flagged, tool_input.as_deref());
+    let LocalPrompt {
+        decisions: local_rx,
+        status: _status,
+    } = start_local_prompt(
+        &REMOTE_LABELS,
+        summary,
+        cwd,
+        &flagged,
+        tool_input.as_deref(),
+    );
     if let Some(local_rx) = local_rx {
         let tx_local = tx.clone();
         thread::spawn(move || {
             while let Ok(decision) = local_rx.recv() {
                 if tx_local
                     .send(Event::Local {
-                        verdict: decision.verdict,
+                        // `LocalDecision.verdict` is now a `Verdict` enum; fold it
+                        // to the `&'static str` this event stream carries (the same
+                        // representation the broker-relayed `Event::Remote` uses).
+                        verdict: decision.verdict.as_str(),
                         reason: decision.reason,
                     })
                     .is_err()

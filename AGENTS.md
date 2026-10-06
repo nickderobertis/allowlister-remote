@@ -11,6 +11,14 @@ allowlister dynamic approval requests.
   per-host daemon over local IPC (a Unix socket or a Windows named pipe), the
   daemon holds one WebSocket to the broker, and the PWA connects to the broker
   over a WebSocket (via its service worker). There is no HTTP polling fallback.
+- **The local terminal prompt is a shared crate.** The plugin's `/dev/tty` prompt
+  (fragment rendering, payload helpers, prompt runner) is the standalone
+  [`allowlister-terminal-approval-plugin`](https://github.com/nickderobertis/allowlister-terminal-approval-plugin)
+  crate (`allowlister_terminal_approval`), re-exported by the plugin crate and
+  raced against the broker decision with remote's own `REMOTE_LABELS`. Edit the
+  shared prompt there; `crates/allowlister-remote-plugin/tests/terminal_prompt.rs`
+  pins remote's wording. Sourced by git `rev` until the crate's first crates.io
+  release, then a plain `= "0.1"` dep.
 - **The PWA has no server of its own.** It builds to a fully static bundle
   (`output: "export"` → `apps/web/out`); the broker is the only backend. The
   broker URL is a client-side setting the browser holds (localStorage, seeded by a

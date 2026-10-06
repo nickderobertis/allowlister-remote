@@ -11,7 +11,7 @@
 
 use std::path::PathBuf;
 
-use allowlister_remote_plugin::{flagged_fragments, local_prompt, tool_input_json};
+use allowlister_remote_plugin::{flagged_fragments, local_prompt, tool_input_json, REMOTE_LABELS};
 use serde_json::{json, Value};
 
 #[test]
@@ -46,7 +46,13 @@ fn terminal_fixture_matches_the_real_prompt() {
         // re-add it before comparing against the live function's output.
         let expected = format!("\n{recorded}");
         assert_eq!(
-            local_prompt(command, cwd, &flagged, tool_input.as_deref()),
+            local_prompt(
+                &REMOTE_LABELS,
+                command,
+                cwd,
+                &flagged,
+                tool_input.as_deref()
+            ),
             expected,
             "fixture '{name}' is stale; re-run scripts/record-terminal-prompts.py",
         );
