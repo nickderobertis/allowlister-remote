@@ -85,7 +85,7 @@ describe("check.yml gate routing", () => {
     assert.equal(gate.env.TIER, expr("needs.setup.outputs.tier"));
     const dir = mkdtempSync(join(tmpdir(), "just-stub-"));
     try {
-      // A stub `just` records the recipe the step invokes.
+      // Stub `just` so the step runs without the gate: only its recipe choice is under test.
       const stub = join(dir, "just");
       writeFileSync(stub, `#!/usr/bin/env bash\necho "$*" > "${join(dir, "args")}"\n`);
       chmodSync(stub, 0o755);
