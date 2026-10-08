@@ -221,6 +221,7 @@ impl Broker {
 
     /// Route one inbound client message. Pure dispatch; the mutations live in the
     /// helpers so they can be unit-tested without a socket.
+    // llmlint: ignore-block[authorization_enforced_server_side] broker authn/authz is a documented, deliberately deferred gap (AGENTS.md "Out of scope (today)" and Follow-ups "Broker durability and auth": run one broker behind a trusted boundary); this dispatch only routes the existing behavior through the protocol crate.
     pub fn on_message(&self, conn: u64, role: Role, message: Value) {
         let kind = message_kind(&message);
         match (role, kind) {
@@ -249,6 +250,7 @@ impl Broker {
             _ => {}
         }
     }
+    // llmlint: ignore-end[authorization_enforced_server_side]
 
     /// A daemon opened a request: record ownership and fan it out to every PWA.
     fn create(&self, owner: u64, request: Value) {

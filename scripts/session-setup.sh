@@ -35,10 +35,15 @@ _llmlint_handoff() {
   fi
   # shellcheck disable=SC2016 # $1 expands in the child bash, which receives it as an argument.
   "$launcher" bash -c '
-    exec 9>"$1/.dev/setup-llmlint.lock"
-    if command -v flock >/dev/null 2>&1; then flock -n 9 || exit 0; fi
+    lock="$1/.dev/setup-llmlint.lock"
+    if { exec 9>"$lock"; } 2>/dev/null; then
+      if command -v flock >/dev/null 2>&1; then flock -n 9 || exit 0; fi
+    else
+      echo "session-setup: cannot open $lock; running without the concurrency lock" >&2
+    fi
     if command -v just >/dev/null 2>&1 && [ -f "$1/justfile" ]; then
-      exec just --justfile "$1/justfile" --working-directory "$1" setup-llmlint
+      just --justfile "$1/justfile" --working-directory "$1" setup-llmlint && exit 0
+      echo "session-setup: just setup-llmlint failed; running the script directly" >&2
     fi
     exec bash "$1/scripts/setup-llmlint.sh"' \
     _ "$root" >"$root/.dev/setup-llmlint.log" 2>&1 </dev/null &

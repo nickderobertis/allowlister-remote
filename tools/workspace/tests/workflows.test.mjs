@@ -245,3 +245,14 @@ describe("notignored.yml", () => {
     assert.ok(!contexts.includes(job.name ?? id));
   });
 });
+
+describe("rust-toolchain.toml", () => {
+  it("installs exactly the targets publish.yml builds release binaries for", () => {
+    const toolchain = readFileSync(join(root, "rust-toolchain.toml"), "utf8");
+    const line = toolchain.match(/^targets\s*=\s*\[([^\]]*)\]/m);
+    assert.ok(line, "rust-toolchain.toml declares no targets");
+    const pinned = [...line[1].matchAll(/"([^"]+)"/g)].map((match) => match[1]).sort();
+    const matrix = workflow("publish.yml").jobs["build-binary"].strategy.matrix.include;
+    assert.deepEqual(pinned, matrix.map((leg) => leg.target).sort());
+  });
+});

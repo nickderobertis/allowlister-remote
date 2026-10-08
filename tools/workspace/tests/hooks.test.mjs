@@ -230,6 +230,54 @@ describe("SessionStart hook hands off to setup-llmlint.sh", () => {
     );
     assert.match(run.stderr, /llmlint not installed/);
   });
+
+  it("finds the repository from its own path when CLAUDE_PROJECT_DIR is unset", () => {
+    const { dir, marker } = sessionRepo("exit 0");
+    const run = spawnSync("bash", [join(dir, "scripts/session-setup.sh")], {
+      cwd: tmpdir(),
+      encoding: "utf8",
+      env: { PATH: process.env.PATH, HOME: join(dir, "home") },
+    });
+    assert.equal(run.status, 0, run.stderr);
+    assert.ok(waitFor(marker));
+  });
+
+  it("falls back to the script when `just setup-llmlint` fails", () => {
+    const { dir, marker } = sessionRepo("exit 0");
+    writeFileSync(join(dir, "justfile"), "setup-llmlint:\n    exit 3\n");
+    assert.equal(runSessionHook(dir, {}).status, 0);
+    assert.ok(waitFor(marker));
+    assert.match(
+      readFileSync(join(dir, ".dev/setup-llmlint.log"), "utf8"),
+      /just setup-llmlint failed/,
+    );
+  });
+
+  it("runs without the lock when the lock file cannot be opened", {
+    skip: process.getuid?.() === 0,
+  }, () => {
+    const { dir, marker } = sessionRepo("exit 0");
+    mkdirSync(join(dir, ".dev"));
+    writeFileSync(join(dir, ".dev/setup-llmlint.lock"), "");
+    chmodSync(join(dir, ".dev/setup-llmlint.lock"), 0o000);
+    assert.equal(runSessionHook(dir, {}).status, 0);
+    assert.ok(waitFor(marker));
+    assert.match(
+      readFileSync(join(dir, ".dev/setup-llmlint.log"), "utf8"),
+      /running without the concurrency lock/,
+    );
+  });
+
+  it("still exits 0 when the launcher itself fails, leaving its error in the log", () => {
+    const { dir, marker } = sessionRepo("exit 0");
+    const bin = curatedBin(dir, [...CORE, "flock"]);
+    writeExecutable(join(bin, "setsid"), 'echo "setsid: cannot start" >&2\nexit 1');
+    assert.equal(runSessionHook(dir, {}, bin).status, 0);
+    assert.ok(waitFor(join(dir, ".dev/setup-llmlint.log")));
+    spawnSync("sleep", ["0.5"]);
+    assert.match(readFileSync(join(dir, ".dev/setup-llmlint.log"), "utf8"), /setsid: cannot start/);
+    assert.ok(!existsSync(marker));
+  });
 });
 
 describe("pre-push hook runs llmlint validate", () => {

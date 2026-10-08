@@ -23,7 +23,8 @@
       "{workspaceRoot}/scripts/setup-llmlint.sh",
       "{workspaceRoot}/.githooks/**",
       "{workspaceRoot}/llmlint.yml",
-      "{workspaceRoot}/oneharness.toml"
+      "{workspaceRoot}/oneharness.toml",
+      "{workspaceRoot}/rust-toolchain.toml"
     ]
   },
   "targets": {

@@ -28,7 +28,6 @@ const asFrame = (value: unknown): Frame | undefined =>
     ? Object.fromEntries(Object.entries(value))
     : undefined;
 
-// Parse the fixture and check its shape before any check trusts it.
 function loadFixture(): WireFixture {
   const parsed: unknown = JSON.parse(readFileSync(FIXTURE_PATH, "utf8"));
   const doc = asFrame(parsed);

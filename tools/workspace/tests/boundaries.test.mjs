@@ -107,13 +107,18 @@ describe("check-boundaries.mjs CLI", () => {
     const dir = mkdtempSync(join(tmpdir(), "boundaries-"));
     try {
       const file = join(dir, "graph.json");
-      writeFileSync(file, JSON.stringify({ graph: { nodes: {} } }));
+      const ghost = graph([]);
+      ghost.dependencies.ghost = [{ source: "ghost", target: "plugin", type: "implicit" }];
+      writeFileSync(file, JSON.stringify({ graph: ghost }));
       mkdirSync(join(dir, "crates"));
       const result = spawnSync("node", [script, "--graph", file, "--workspace", dir], {
         encoding: "utf8",
       });
       assert.notEqual(result.status, 0);
-      assert.match(result.stderr, /not an nx project graph \(no `dependencies` object\)/);
+      assert.match(
+        result.stderr,
+        /not an nx project graph \(dependencies listed for unknown project ghost\)/,
+      );
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

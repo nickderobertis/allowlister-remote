@@ -49,6 +49,10 @@ function graphShapeError(graph) {
   if (badNode) return `${badNode[0]} has no tags array`;
   const missing = Object.keys(graph.nodes).find((name) => !(name in graph.dependencies));
   if (missing) return `no dependency list for ${missing}`;
+  const unknown = Object.keys(graph.dependencies).find(
+    (name) => !(name in graph.nodes) && !name.startsWith("npm:"),
+  );
+  if (unknown) return `dependencies listed for unknown project ${unknown}`;
   const badDeps = Object.entries(graph.dependencies).find(
     ([, deps]) => !Array.isArray(deps) || deps.some((dep) => typeof dep?.target !== "string"),
   );
