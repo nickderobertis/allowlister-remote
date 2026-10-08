@@ -13,6 +13,30 @@
 #     (detached, still non-blocking) instead of being advised.
 set -eu
 
+# Hand off to the llmlint-tier installer (scripts/setup-llmlint.sh) on EVERY exit
+# path — the ready, remote, opt-in, advisory and CI/escape-hatch exits alike — by
+# running it from an EXIT trap instead of after the last `exit`. It is DETACHED
+# (setsid/nohup, output to .dev/setup-llmlint.log) so the hook returns at once and
+# a slow `uv tool install`, a failure inside it, or a missing `uv` can never block
+# or fail session start; setup-llmlint.sh is idempotent and always exits 0 itself.
+# A flock (where available) keeps two concurrent sessions from installing twice.
+# shellcheck disable=SC2329 # invoked from the EXIT trap below, which shellcheck does not trace.
+_llmlint_handoff() {
+  local root script launcher
+  root="${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+  script="$root/scripts/setup-llmlint.sh"
+  [ -f "$script" ] || return 0
+  mkdir -p "$root/.dev" 2>/dev/null || return 0
+  launcher="nohup"
+  command -v setsid >/dev/null 2>&1 && launcher="setsid"
+  command -v "$launcher" >/dev/null 2>&1 || return 0
+  # shellcheck disable=SC2016 # $1/$2 expand in the child bash, which receives them as arguments.
+  "$launcher" bash -c 'exec 9>"$1/.dev/setup-llmlint.lock"; if command -v flock >/dev/null 2>&1; then flock -n 9 || exit 0; fi; exec bash "$2"' \
+    _ "$root" "$script" >"$root/.dev/setup-llmlint.log" 2>&1 </dev/null &
+  return 0
+}
+trap '_llmlint_handoff || true' EXIT
+
 # Skip in this repo's own GitHub Actions CI (jobs provision explicitly). Escape
 # hatch for any other automated context: ALLOWLISTER_SKIP_SETUP.
 [ -n "${GITHUB_ACTIONS:-}" ] && exit 0
@@ -49,6 +73,7 @@ if [ -n "${ALLOWLISTER_AUTO_SETUP:-}" ]; then
   mkdir -p .dev
   launcher="nohup"
   command -v setsid >/dev/null 2>&1 && launcher="setsid"
+  # shellcheck disable=SC2016 # $1/$2 expand in the child bash, which receives them as arguments.
   "$launcher" bash -c 'exec 9>.dev/setup.lock; flock -n 9 || exit 0; exec bash scripts/setup.sh' \
     >.dev/setup.log 2>&1 </dev/null &
   printf '%s\n' \
@@ -65,7 +90,3 @@ printf '%s\n' \
   "and the Playwright browsers (several minutes on a fresh machine)." \
   "Verify anytime with 'just setup-check'."
 exit 0
-
-if [ -x scripts/setup-llmlint.sh ]; then
-  scripts/setup-llmlint.sh
-fi

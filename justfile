@@ -157,11 +157,27 @@ lighthouse:
     npx nx run web:build
     node scripts/web-lighthouse.mjs
 
-lint-llm:
-    llmlint
+# Install/refresh the llmlint toolchain (oneharness + llmlint). Idempotent. The
+# SessionStart hook (scripts/session-setup.sh) hands off to it automatically; this
+# is the manual entry point for a plain terminal.
+setup-llmlint:
+    bash scripts/setup-llmlint.sh
 
-lint-llm-diff:
-    llmlint --diff --diff-base "origin/main"
+# LLM-judge lint (llmlint) over the configured set, or the paths passed. Kept out
+# of `check`: it is non-deterministic and needs an authenticated harness.
+lint-llm *paths:
+    @command -v llmlint >/dev/null 2>&1 || { echo "llmlint not installed — run 'just setup-llmlint'"; exit 1; }
+    llmlint {{paths}}
 
-lint-llm-validate:
-    llmlint validate
+# llmlint scoped to the lines this branch changed since it forked from BASE
+# (three-dot/merge-base semantics). This is the blocking `llmlint` PR check.
+lint-llm-diff base="origin/main" *args:
+    @command -v llmlint >/dev/null 2>&1 || { echo "llmlint not installed — run 'just setup-llmlint'"; exit 1; }
+    llmlint --diff --diff-base "{{base}}" {{args}}
+
+# Deterministic llmlint gate — no model call, no credential: config structure,
+# `llmlint: ignore` directives name real rules, edited versioned fragments bumped
+# their `version:`. CI runs it with `--diff-base origin/main` before the model step.
+lint-llm-validate *args:
+    @command -v llmlint >/dev/null 2>&1 || { echo "llmlint not installed — run 'just setup-llmlint'"; exit 1; }
+    llmlint validate {{args}}
