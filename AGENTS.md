@@ -320,9 +320,8 @@ Use `just`; do not hand-roll equivalent commands.
   `release-please--branches--main*` to it, and its failure fails the required `check` context, so
   auto-merge cannot cut a release past a red sweep. Every other PR and every push to `main` runs
   the affected tier.
-- **llmlint tier.** The `llmlint` PR check is separate from `check` and needs the repository
-  secret `OPENAI_API_KEY` (codex's credential, declared in `gh-secrets.json`); without it the job
-  fails fast naming the secret — it never passes unjudged.
+- **llmlint tier.** The secret it needs is `OPENAI_API_KEY` (codex, the primary harness). Never
+  add a skip-when-absent path to that job: an unjudged green reports unlinted code as clean.
 - GitHub should stay squash-only with auto-merge, branch deletion, required `check`,
   `install-smoke`, `pr-title`, and `Visual docs / visual-docs` checks, linear
   history, conversation resolution, and admin override.
