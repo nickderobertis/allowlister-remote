@@ -52,6 +52,38 @@ pub mod kind {
     pub const RESOLVED: &str = "resolved";
 }
 
+/// A human decision on a pending request. Every decision envelope carries one;
+/// any other `verdict` string is not a decision.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Verdict {
+    Allow,
+    Deny,
+}
+
+impl Verdict {
+    /// The wire spelling.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Verdict::Allow => "allow",
+            Verdict::Deny => "deny",
+        }
+    }
+
+    /// Parse the wire spelling; anything but `allow`/`deny` is `None`.
+    pub fn parse(text: &str) -> Option<Self> {
+        match text {
+            "allow" => Some(Verdict::Allow),
+            "deny" => Some(Verdict::Deny),
+            _ => None,
+        }
+    }
+}
+
+/// The verdict a decision frame carries, if it is a valid `allow`/`deny`.
+pub fn decision_verdict(message: &Value) -> Option<Verdict> {
+    str_field(message, VERDICT).and_then(Verdict::parse)
+}
+
 /// The dispatch key of a frame: its `type`, or `""` when absent.
 pub fn message_kind(message: &Value) -> &str {
     message.get(TYPE).and_then(Value::as_str).unwrap_or("")
@@ -68,8 +100,8 @@ pub fn plugin_create(payload: &Value) -> Value {
 }
 
 /// plugin → daemon: a decision taken at the local terminal.
-pub fn local_decision(verdict: &str, reason: &str) -> Value {
-    json!({ TYPE: kind::DECISION, VERDICT: verdict, REASON: reason })
+pub fn local_decision(verdict: Verdict, reason: &str) -> Value {
+    json!({ TYPE: kind::DECISION, VERDICT: verdict.as_str(), REASON: reason })
 }
 
 /// daemon → plugin: the local decision was relayed upstream.
@@ -77,6 +109,7 @@ pub fn ack() -> Value {
     json!({ TYPE: kind::ACK })
 }
 
+// llmlint: ignore-block[invalid_states_unrepresentable] request ids are opaque daemon-assigned strings (pid-clock-counter) whose only wire invariant is being a JSON string, and the payload is allowlister's protocol-v3 body forwarded verbatim by contract — typing either here would make the broker reinterpret data it must relay unchanged; verdicts, the one closed set, are the `Verdict` enum.
 /// The forwarded request: the plugin's `payload` object with the daemon-assigned
 /// `id` stamped in (a non-object payload is wrapped as `{payload, id}`).
 pub fn request_with_id(payload: Option<&Value>, id: &str) -> Value {
@@ -98,8 +131,8 @@ pub fn broker_create(request: &Value) -> Value {
 }
 
 /// daemon ↔ broker ↔ PWA: a decision addressed to a pending request.
-pub fn decision(request_id: &str, verdict: &str, reason: &str) -> Value {
-    json!({ TYPE: kind::DECISION, REQUEST_ID: request_id, VERDICT: verdict, REASON: reason })
+pub fn decision(request_id: &str, verdict: Verdict, reason: &str) -> Value {
+    json!({ TYPE: kind::DECISION, REQUEST_ID: request_id, VERDICT: verdict.as_str(), REASON: reason })
 }
 
 /// daemon → broker: the plugin exited before a decision; cancel the request.
@@ -127,6 +160,8 @@ pub fn resolved(request_id: &str) -> Value {
     json!({ TYPE: kind::RESOLVED, REQUEST_ID: request_id })
 }
 
+// llmlint: ignore-end[invalid_states_unrepresentable]
+
 /// The committed protocol-v3 fixture: every envelope's exact wire form.
 pub const WIRE_FIXTURE: &str = include_str!("../wire/protocol-v3.json");
 
@@ -144,27 +179,27 @@ pub fn wire_drift(fixture: &Value) -> Vec<String> {
         ("plugin_to_daemon.create", plugin_create(&payload)),
         (
             "plugin_to_daemon.decision",
-            local_decision("deny", "denied at the local terminal"),
+            local_decision(Verdict::Deny, "denied at the local terminal"),
         ),
         (
             "daemon_to_plugin.decision",
-            decision(id, "allow", "approved from the web"),
+            decision(id, Verdict::Allow, "approved from the web"),
         ),
         ("daemon_to_plugin.ack", ack()),
         ("daemon_to_broker.create", broker_create(&request)),
         (
             "daemon_to_broker.decision",
-            decision(id, "deny", "denied at the local terminal"),
+            decision(id, Verdict::Deny, "denied at the local terminal"),
         ),
         ("daemon_to_broker.withdraw", withdraw(id)),
         (
             "broker_to_daemon.decision",
-            decision(id, "allow", "approved from the web"),
+            decision(id, Verdict::Allow, "approved from the web"),
         ),
         ("pwa_to_broker.subscribe", subscribe()),
         (
             "pwa_to_broker.decision",
-            decision(id, "allow", "approved from the web"),
+            decision(id, Verdict::Allow, "approved from the web"),
         ),
         ("broker_to_pwa.snapshot", snapshot(&[&request])),
         ("broker_to_pwa.added", added(&request)),
@@ -208,6 +243,19 @@ mod tests {
         assert_eq!(
             request_with_id(None, "7"),
             json!({"payload": null, "id": "7"})
+        );
+    }
+
+    #[test]
+    fn only_allow_and_deny_are_verdicts() {
+        assert_eq!(Verdict::parse("allow"), Some(Verdict::Allow));
+        assert_eq!(Verdict::parse("deny"), Some(Verdict::Deny));
+        assert_eq!(Verdict::parse("Allow"), None);
+        assert_eq!(decision_verdict(&json!({"verdict": "maybe"})), None);
+        assert_eq!(decision_verdict(&json!({})), None);
+        assert_eq!(
+            decision_verdict(&decision("a", Verdict::Deny, "")),
+            Some(Verdict::Deny)
         );
     }
 

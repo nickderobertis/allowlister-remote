@@ -173,6 +173,44 @@ async fn web_decision_routes_back_to_owning_daemon_and_dismisses_all_pwas() {
     drop(broker);
 }
 
+/// A decision whose verdict is not allow/deny decides nothing: the request stays
+/// pending and a later valid decision still routes to its daemon.
+#[tokio::test]
+async fn a_decision_without_a_valid_verdict_is_ignored() {
+    let broker = start_broker();
+    let mut daemon = connect(&broker.url, "/ws/daemon").await;
+    let mut pwa = connect(&broker.url, "/ws/pwa").await;
+    send(&mut pwa, json!({"type":"subscribe"})).await;
+    assert_eq!(recv(&mut pwa).await["type"], "snapshot");
+    send(
+        &mut daemon,
+        json!({"type":"create","request":{"id":"rv","subject":"shell","command":"ls"}}),
+    )
+    .await;
+    assert_eq!(recv(&mut pwa).await["type"], "added");
+
+    for verdict in [json!("maybe"), json!(null)] {
+        send(
+            &mut pwa,
+            json!({"type":"decision","requestId":"rv","verdict":verdict,"reason":"?"}),
+        )
+        .await;
+    }
+    send(
+        &mut pwa,
+        json!({"type":"decision","requestId":"rv","verdict":"deny","reason":"no"}),
+    )
+    .await;
+    let routed = recv(&mut daemon).await;
+    assert_eq!(routed["verdict"], "deny");
+    assert_eq!(routed["reason"], "no");
+    assert_eq!(
+        recv(&mut pwa).await,
+        json!({"type":"resolved","requestId":"rv"})
+    );
+    drop(broker);
+}
+
 #[tokio::test]
 async fn local_terminal_decision_dismisses_web_without_echo_to_daemon() {
     let broker = start_broker();

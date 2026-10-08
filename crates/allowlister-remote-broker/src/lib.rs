@@ -130,7 +130,7 @@ pub fn resolved_message(id: &str) -> String {
 }
 
 /// Wire envelope routing a web decision back to the owning daemon. Pure.
-pub fn decision_message(id: &str, verdict: &str, reason: &str) -> String {
+pub fn decision_message(id: &str, verdict: protocol::Verdict, reason: &str) -> String {
     protocol::decision(id, verdict, reason).to_string()
 }
 
@@ -230,10 +230,10 @@ impl Broker {
                 }
             }
             (_, protocol::kind::DECISION) => {
-                if let Some(id) = protocol::str_field(&message, protocol::REQUEST_ID) {
-                    let verdict = protocol::str_field(&message, protocol::VERDICT)
-                        .unwrap_or("")
-                        .to_string();
+                let id = protocol::str_field(&message, protocol::REQUEST_ID);
+                // A decision without an id or an allow/deny verdict decides nothing:
+                // ignore it and leave the request pending.
+                if let (Some(id), Some(verdict)) = (id, protocol::decision_verdict(&message)) {
                     let reason = protocol::str_field(&message, protocol::REASON)
                         .unwrap_or("")
                         .to_string();
@@ -274,14 +274,14 @@ impl Broker {
     /// are no-ops because the request is already gone. A web decision is routed
     /// to the owning daemon; a daemon-originated decision (local terminal) is
     /// not echoed back to its source. Either way, every PWA is told to dismiss.
-    fn resolve(&self, id: &str, decision: Option<(String, String)>, from_daemon: bool) {
+    fn resolve(&self, id: &str, decision: Option<(protocol::Verdict, String)>, from_daemon: bool) {
         let mut inner = self.inner.lock().unwrap();
         let Some(pending) = inner.requests.remove(id) else {
             return;
         };
         if let (Some((verdict, reason)), false) = (&decision, from_daemon) {
             if let Some(tx) = inner.daemons.get(&pending.owner) {
-                let _ = tx.send(decision_message(id, verdict, reason));
+                let _ = tx.send(decision_message(id, *verdict, reason));
             }
         }
         let resolved = resolved_message(id);

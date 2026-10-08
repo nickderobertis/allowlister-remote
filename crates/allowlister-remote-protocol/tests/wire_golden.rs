@@ -1,6 +1,8 @@
 //! The protocol-v3 wire golden. `wire/protocol-v3.json` was captured from the
 //! tree before this crate existed (the plugin binary's real `create` line and the
-//! daemon's and broker's envelope functions, byte for byte), so it is a fixed
+//! daemon's and broker's envelope functions, byte for byte). It stores each frame
+//! pretty-printed, so the check re-serializes it the way serde_json writes the
+//! wire (compact, keys sorted) and compares that text with each builder's. It is a fixed
 //! definition of the existing wire format: any field or envelope change fails
 //! here even when every consumer adopts it consistently. Changing the protocol
 //! means changing this fixture deliberately, together with the web app's
@@ -14,7 +16,7 @@ fn fixture() -> Value {
 }
 
 #[test]
-fn every_builder_reproduces_the_committed_wire_bytes() {
+fn every_builder_reproduces_the_fixtures_wire_text() {
     assert_eq!(wire_drift(&fixture()), Vec::<String>::new());
 }
 

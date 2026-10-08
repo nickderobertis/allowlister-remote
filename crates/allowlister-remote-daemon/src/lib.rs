@@ -397,7 +397,7 @@ where
                     Ok(Some(raw)) => {
                         if let Some((verdict, reason)) = local_decision(&raw) {
                             let _ = broker_tx
-                                .send(protocol::decision(&id, &verdict, &reason).to_string());
+                                .send(protocol::decision(&id, verdict, &reason).to_string());
                             let _ = write_half
                                 .write_all(format!("{}\n", protocol::ack()).as_bytes())
                                 .await;
@@ -423,12 +423,12 @@ where
 /// reason)` pair, or `None` if it is not a well-formed `decision`. Pure: the
 /// per-line work the daemon does on a local-terminal decision before forwarding
 /// it upstream.
-pub fn local_decision(raw: &str) -> Option<(String, String)> {
+pub fn local_decision(raw: &str) -> Option<(protocol::Verdict, String)> {
     let value: Value = serde_json::from_str(raw).ok()?;
     if protocol::message_kind(&value) != protocol::kind::DECISION {
         return None;
     }
-    let verdict = protocol::str_field(&value, protocol::VERDICT)?.to_string();
+    let verdict = protocol::decision_verdict(&value)?;
     let reason = protocol::str_field(&value, protocol::REASON)
         .unwrap_or("")
         .to_string();
@@ -450,7 +450,7 @@ fn new_request_id() -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::daemon_ws_url;
+    use super::{daemon_ws_url, local_decision, protocol};
 
     #[test]
     fn bare_base_gains_the_ws_daemon_path() {
@@ -486,6 +486,19 @@ mod tests {
             daemon_ws_url("ws://127.0.0.1:4180/ws/daemon/"),
             "ws://127.0.0.1:4180/ws/daemon"
         );
+    }
+
+    #[test]
+    fn local_decision_relays_only_allow_or_deny() {
+        assert_eq!(
+            local_decision(r#"{"type":"decision","verdict":"deny"}"#),
+            Some((protocol::Verdict::Deny, String::new()))
+        );
+        assert_eq!(
+            local_decision(r#"{"type":"decision","verdict":"maybe","reason":"x"}"#),
+            None
+        );
+        assert_eq!(local_decision(r#"{"type":"ack"}"#), None);
     }
 
     #[test]

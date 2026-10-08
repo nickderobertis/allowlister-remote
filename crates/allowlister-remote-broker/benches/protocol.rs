@@ -61,7 +61,7 @@ fn bench_resolution_messages(c: &mut Criterion) {
         b.iter(|| {
             decision_message(
                 black_box("req_1"),
-                black_box("allow"),
+                black_box(allowlister_remote_protocol::Verdict::Allow),
                 black_box("approved in the web app"),
             )
         });

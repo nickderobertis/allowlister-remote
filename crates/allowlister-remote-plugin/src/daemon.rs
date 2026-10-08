@@ -297,7 +297,10 @@ pub fn run_via_daemon(stream: LocalStream, create_body: Value, summary: &str, cw
         match rx.recv() {
             Ok(Event::Remote { verdict, reason }) => crate::write_response(verdict, reason),
             Ok(Event::Local { verdict, reason }) => {
-                let _ = writeln!(writer, "{}", protocol::local_decision(verdict, &reason));
+                // parse_local_input only yields allow/deny, so this always relays.
+                if let Some(local) = protocol::Verdict::parse(verdict) {
+                    let _ = writeln!(writer, "{}", protocol::local_decision(local, &reason));
+                }
                 let _ = writer.flush();
                 // Wait briefly for the daemon's ack so the broker has dismissed the
                 // web prompt before we exit, then settle with the local verdict.
