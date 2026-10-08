@@ -131,18 +131,11 @@ the mouse follows on hover; the focused card is ringed and marked
 
 ## Performance suite
 
-- `just bench-web` / `just bundle-size` / `just render-cost` / `just heap` / `just lighthouse` run
-  the PWA's parallel performance suite: Vitest micro-benchmarks of the pure decision/summarization
-  surface (`apps/web/src/perf/*.bench.ts`), a deterministic gzip bundle-size report
-  (`scripts/web-bundle-size.mjs`), a deterministic render-cost report
-  (`scripts/web-render-cost.mjs`), a deterministic heap-footprint report
-  (`scripts/web-heap.mjs`), and a Lighthouse runtime audit
-  (`scripts/web-lighthouse.mjs`). The same `Performance` workflow `web` job runs all of them
-  on PRs that affect web and posts its own sticky comment plus job summary; like the plugin
-  suite it is informational, never a required check. Bundle size, render cost, and heap footprint
-  are the deterministic, trustworthy deltas (the web counterpart of the plugin's cachegrind
-  instruction counts and allocation tallies); the Vitest and Lighthouse numbers are absolute and
-  noise-prone, so treat small deltas with caution.
+- The suite is informational, never a required check: the `Performance` workflow's `web` job
+  runs it on PRs that affect web and posts a sticky comment plus job summary. Bundle size,
+  render cost and heap are the deterministic deltas (the web counterpart of the plugin's
+  instruction counts and allocation tallies); Vitest and Lighthouse numbers are absolute and
+  noisy, so distrust small deltas.
 - **Heap** (`just heap`, `src/perf/heap.perf.ts` under its own `vitest.heap.config.ts`) is
   the memory analogue of the Rust allocation reports. JS has no allocation hook, so it
   weighs the retained object graph structurally, never `process.memoryUsage()`, which keeps
@@ -153,10 +146,10 @@ the mouse follows on hover; the focused card is ringed and marked
   render calls (`flaggedFragments`/`triggeredRules`/`requestHeadline`/
   `toolParamSummary`); keep React, the DOM, and the network out of any timed loop.
   `*.bench.ts` is excluded from the `*.test.ts` run and coverage.
-- Bundle size reads the client JS/CSS under `.next/static` by stable category:
+- Bundle size (`just bundle-size`) reads the client JS/CSS under `.next/static` by stable category:
   Turbopack content-hashes the filenames, so only category totals are comparable
   across builds.
-- Lighthouse needs Chrome on PATH (or `CHROME_PATH`).
+- Lighthouse (`just lighthouse`) needs Chrome on PATH (or `CHROME_PATH`).
 
 ## Linting
 

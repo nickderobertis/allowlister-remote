@@ -7,16 +7,12 @@ Playwright, run with `just test-e2e`.
   re-runs it without re-running `web`'s targets; `test-e2e` builds `web` and the three crates
   first. It and the capture serve the built `out/` bundle with `scripts/serve-web.mjs` and seed
   the broker URL client-side (localStorage) before navigating.
-- E2E must exercise the real browser approval flow in both desktop and mobile
-  viewports through the actual allowlister plugin process, the host daemon, and
-  the broker over a WebSocket — remote allow/deny decisions (from both the inbox
-  and the expanded detail view, for shell and tool calls) and static allow/deny
-  no-wait paths. It must pass in both the `chromium-desktop` and `mobile-chrome`
-  projects, and the keyboard affordances must not appear or block interaction in the
-  mobile viewport.
-- `specs/broker-realtime.spec.ts` spawns the real broker, daemon, and plugin binaries and drives
-  the full broker WebSocket path (allow/deny from the inbox and detail view, shell and tool
-  calls); `pwa.spec.ts` and `theme.spec.ts` cover the offline shell and theming.
+- E2E must drive the real browser approval flow through the actual plugin process, host
+  daemon and broker over a WebSocket: remote allow/deny from the inbox and the detail view,
+  for shell and tool calls (`specs/broker-realtime.spec.ts`), and the static allow/deny
+  no-wait paths; `pwa.spec.ts` and `theme.spec.ts` cover the offline shell and theming. Every
+  spec must pass in both `chromium-desktop` and `mobile-chrome`, and the keyboard affordances
+  must not appear or block interaction in the mobile viewport.
 - `specs/broker-harness.ts` spawns the binaries and honours the
   `ALLOWLISTER_REMOTE_*_BIN` overrides. The visual-docs capture is not here: it stays
   `web:capture`.
