@@ -48,7 +48,7 @@ _llmlint_handoff() {
         flock -n 9; status=$?
         # 1 is another session holding the lock; anything else is flock failing.
         [ "$status" -eq 1 ] && exit 0
-        [ "$status" -eq 0 ] || echo "session-setup: flock failed (exit $status); running without the concurrency lock" >&2
+        [ "$status" -eq 0 ] || echo "session-setup: flock failed (exit $status); running without the concurrency lock — reinstall util-linux flock (check: flock --version) to restore it" >&2
       fi
     else
       echo "session-setup: cannot open $lock; running without the concurrency lock (make it writable by you, or delete it)" >&2

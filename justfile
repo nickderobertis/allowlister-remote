@@ -207,7 +207,7 @@ lint-llm *paths:
 [positional-arguments]
 lint-llm-diff base="origin/main" *args:
     @command -v llmlint >/dev/null 2>&1 || { echo "llmlint not installed — run 'just setup-llmlint'"; exit 1; }
-    @[[ "$1" =~ ^[A-Za-z0-9._/-]+$ ]] || { echo "base must be a plain git ref or SHA; got: $1" >&2; exit 2; }
+    @[[ "$1" =~ ^[A-Za-z0-9._/~^-]+$ ]] || { echo "base must be a plain git ref or SHA (letters, digits, . _ / ~ ^ -); got: $1" >&2; exit 2; }
     llmlint --diff --diff-base "$1" "${@:2}"
 
 # Deterministic llmlint gate — no model call, no credential: config structure,
