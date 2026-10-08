@@ -1,0 +1,58 @@
+{
+  "name": "rust-workspace",
+  "projectType": "library",
+  "root": "tools/rust-workspace",
+  "sourceRoot": "tools/rust-workspace",
+  "tags": ["scope:workspace", "type:tooling", "lang:rust"],
+  "namedInputs": {
+    "default": [
+      "{projectRoot}/**/*",
+      "sharedGlobals",
+      "rust",
+      "{workspaceRoot}/crates/**/*",
+      "{workspaceRoot}/deny.toml"
+    ]
+  },
+  "targets": {
+    "coverage-clean": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo llvm-cov clean --workspace",
+        "cwd": "."
+      },
+      "inputs": [],
+      "cache": false
+    },
+    "coverage": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo llvm-cov report --fail-under-lines 78",
+        "cwd": "."
+      },
+      "dependsOn": [
+        {
+          "target": "test",
+          "projects": [
+            "allowlister-remote-broker",
+            "allowlister-remote-daemon",
+            "allowlister-remote-plugin",
+            "allowlister-remote-protocol",
+            "allowlister-remote-e2e"
+          ]
+        }
+      ],
+      "inputs": ["default"],
+      "cache": false
+    },
+    "supply-chain": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": ["cargo deny check", "cargo machete"],
+        "cwd": ".",
+        "parallel": false
+      },
+      "inputs": ["rust", "{workspaceRoot}/deny.toml", "{workspaceRoot}/crates/*/Cargo.toml"],
+      "cache": false
+    }
+  }
+}

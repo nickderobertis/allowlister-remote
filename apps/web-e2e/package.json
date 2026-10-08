@@ -1,0 +1,11 @@
+{
+  "name": "@allowlister-remote/web-e2e",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "devDependencies": {
+    "@playwright/test": "^1.61.0",
+    "@types/node": "^24.12.3",
+    "typescript": "~6.0.2"
+  }
+}

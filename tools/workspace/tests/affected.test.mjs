@@ -40,7 +40,12 @@ function assertSelection(file, { includes = [], excludes = [] }) {
 describe("affected selection", () => {
   it("a change confined to one crate selects it and its dependents, never web", () => {
     assertSelection("crates/allowlister-remote-plugin/src/lib.rs", {
-      includes: ["allowlister-remote-plugin", "allowlister-remote-e2e", "web-e2e", "workspace"],
+      includes: [
+        "allowlister-remote-plugin",
+        "allowlister-remote-e2e",
+        "web-e2e",
+        "rust-workspace",
+      ],
       excludes: [
         "web",
         "allowlister-remote-broker",
@@ -79,7 +84,17 @@ describe("affected selection", () => {
       includes: ["allowlister-remote-plugin"],
       excludes: ["web", "allowlister-remote-broker", "allowlister-remote-plugin-npm"],
     });
+    assertSelection("scripts/stage-npm-package.mjs", {
+      includes: ["workspace"],
+      excludes: ["web", "web-e2e", ...RUST],
+    });
     assert.deepEqual([...affected("justfile")], ["workspace"]);
+  });
+
+  it("a workflow or hook edit never selects the Rust coverage aggregate", () => {
+    for (const file of [".github/workflows/check.yml", "scripts/session-setup.sh", "justfile"]) {
+      assertSelection(file, { excludes: ["rust-workspace", ...RUST] });
+    }
   });
 });
 
@@ -109,13 +124,16 @@ describe("task ordering", () => {
   });
 
   it("coverage merges every crate's test run, each after a profile clean", () => {
-    const graph = taskGraph("workspace:coverage");
+    const graph = taskGraph("rust-workspace:coverage");
     assert.deepEqual(
-      new Set(graph.dependencies["workspace:coverage"]),
+      new Set(graph.dependencies["rust-workspace:coverage"]),
       new Set(RUST.map((crate) => `${crate}:test`)),
     );
     for (const crate of RUST) {
-      assert.ok(graph.dependencies[`${crate}:test`].includes("workspace:coverage-clean"), crate);
+      assert.ok(
+        graph.dependencies[`${crate}:test`].includes("rust-workspace:coverage-clean"),
+        crate,
+      );
     }
   });
 });

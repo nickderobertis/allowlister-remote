@@ -5,7 +5,16 @@
   "sourceRoot": "tools/workspace",
   "tags": ["scope:workspace", "type:tooling", "lang:javascript"],
   "namedInputs": {
-    "default": ["{projectRoot}/**/*", "sharedGlobals", "node", "biome"],
+    "default": [
+      "{projectRoot}/**/*",
+      "sharedGlobals",
+      "node",
+      "biome",
+      "{workspaceRoot}/scripts/**/*",
+      "{workspaceRoot}/.release-please-manifest.json",
+      "{workspaceRoot}/release-please-config.json",
+      "{workspaceRoot}/gh-secrets.json"
+    ],
     "graph": ["{workspaceRoot}/**/project.json", "{workspaceRoot}/crates/*/Cargo.toml"],
     "repoConfig": [
       "{workspaceRoot}/.github/workflows/**",
@@ -21,21 +30,24 @@
     "format": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "npx biome check --write tools/workspace",
+        "command": "npx biome check --write tools/workspace scripts package.json package-lock.json nx.json biome.jsonc .release-please-manifest.json release-please-config.json gh-secrets.json",
         "cwd": "."
       }
     },
     "fmt-check": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "npx biome check --formatter-enabled=true --linter-enabled=false tools/workspace",
+        "command": "npx biome check --formatter-enabled=true --linter-enabled=false tools/workspace scripts package.json package-lock.json nx.json biome.jsonc .release-please-manifest.json release-please-config.json gh-secrets.json",
         "cwd": "."
       }
     },
     "lint": {
       "executor": "nx:run-commands",
       "options": {
-        "commands": ["npx biome lint tools/workspace", "node tools/workspace/check-boundaries.mjs"],
+        "commands": [
+          "npx biome lint tools/workspace scripts",
+          "node tools/workspace/check-boundaries.mjs"
+        ],
         "cwd": ".",
         "parallel": false
       },
@@ -51,45 +63,12 @@
       "inputs": ["default", "graph", "repoConfig"],
       "cache": false
     },
-    "coverage-clean": {
+    "typecheck": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "cargo llvm-cov clean --profraw-only --workspace",
+        "command": "node --check tools/workspace/check-boundaries.mjs",
         "cwd": "."
-      },
-      "cache": false,
-      "inputs": []
-    },
-    "coverage": {
-      "executor": "nx:run-commands",
-      "options": {
-        "command": "cargo llvm-cov report --fail-under-lines 78",
-        "cwd": "."
-      },
-      "dependsOn": [
-        {
-          "target": "test",
-          "projects": [
-            "allowlister-remote-broker",
-            "allowlister-remote-daemon",
-            "allowlister-remote-plugin",
-            "allowlister-remote-protocol",
-            "allowlister-remote-e2e"
-          ]
-        }
-      ],
-      "inputs": ["rust", "{workspaceRoot}/crates/**/*"],
-      "cache": false
-    },
-    "supply-chain": {
-      "executor": "nx:run-commands",
-      "options": {
-        "commands": ["cargo deny check", "cargo machete"],
-        "cwd": ".",
-        "parallel": false
-      },
-      "inputs": ["rust", "{workspaceRoot}/deny.toml", "{workspaceRoot}/crates/*/Cargo.toml"],
-      "cache": false
+      }
     }
   }
 }

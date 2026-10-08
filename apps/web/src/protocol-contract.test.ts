@@ -41,11 +41,17 @@ const PAYLOAD_TO_REQUEST: Record<string, (request: Frame) => unknown> = {
 
 const same = (a: unknown, b: unknown) => isDeepStrictEqual(a, b);
 
+// Narrow a fixture value to a JSON object at runtime rather than asserting it.
+const asFrame = (value: unknown): Frame | undefined =>
+  value !== null && typeof value === "object" && !Array.isArray(value)
+    ? Object.fromEntries(Object.entries(value))
+    : undefined;
+
 function normalizerDrift(fixture: WireFixture): string[] {
   const drift: string[] = [];
-  const request = fixture.frames["broker_to_pwa.added"]?.request as Frame | undefined;
+  const request = asFrame(fixture.frames["broker_to_pwa.added"]?.request);
   if (!request) return ["broker_to_pwa.added: no request"];
-  const normalized = normalizeBrokerRequest(request) as unknown as Frame;
+  const normalized: Frame = { ...normalizeBrokerRequest(request) };
   if (normalized.id !== request.id) drift.push(`request.id: ${String(normalized.id)}`);
   for (const [field, value] of Object.entries(fixture.payload)) {
     const read = PAYLOAD_TO_REQUEST[field];
@@ -62,6 +68,8 @@ function bridgeDrift(fixture: WireFixture): { drift: string[]; posted: unknown[]
   const drift: string[] = [];
   const posted: unknown[] = [];
   let listener: ((event: MessageEvent) => void) | undefined;
+  // connectBroker touches only these three members of the container, so this
+  // partial stands in for the browser's ServiceWorkerContainer.
   const container = {
     controller: { postMessage: (message: unknown) => posted.push(message) },
     addEventListener: (_type: string, handler: (event: MessageEvent) => void) => {
@@ -87,7 +95,9 @@ function bridgeDrift(fixture: WireFixture): { drift: string[]; posted: unknown[]
   );
   const frames = fixture.frames;
   for (const name of ["broker_to_pwa.snapshot", "broker_to_pwa.added", "broker_to_pwa.resolved"]) {
-    listener?.({ data: { type: "broker-event", event: frames[name] } } as MessageEvent);
+    listener?.(
+      new MessageEvent("message", { data: { type: "broker-event", event: frames[name] } }),
+    );
   }
   const expectations: [string, unknown, unknown][] = [
     ["broker_to_pwa.snapshot", seen.snapshot, fixture.frames["broker_to_pwa.snapshot"]?.requests],
@@ -116,6 +126,7 @@ async function serviceWorkerDrift(
   const listeners: Record<string, SwListener> = {};
   const relayed: unknown[] = [];
   const notifications: { data?: { requestId?: string } }[] = [];
+  const closedTags: unknown[] = [];
   const sockets: { sent: string[]; emit: (type: string, event: { data?: string }) => void }[] = [];
   class WireSocket {
     readyState = 0;
@@ -147,7 +158,10 @@ async function serviceWorkerDrift(
       showNotification: async (_title: string, options: { data?: { requestId?: string } }) => {
         notifications.push(options);
       },
-      getNotifications: async () => [],
+      getNotifications: async ({ tag }: { tag?: string } = {}) => {
+        closedTags.push(tag);
+        return [];
+      },
     },
   };
   vm.runInNewContext(swSource, { self, WebSocket: WireSocket, setTimeout: () => 0, console });
@@ -167,14 +181,24 @@ async function serviceWorkerDrift(
   if (!decision || !same(JSON.parse(decision), frames["pwa_to_broker.decision"])) {
     drift.push(`pwa_to_broker.decision: worker sent ${decision}`);
   }
-  socket.emit("message", { data: JSON.stringify(frames["broker_to_pwa.added"]) });
-  // Let the worker's async notification hand-off settle before it is read.
+  const inbound = ["broker_to_pwa.snapshot", "broker_to_pwa.added", "broker_to_pwa.resolved"];
+  for (const name of inbound) socket.emit("message", { data: JSON.stringify(frames[name]) });
+  // Let the worker's async client relay and notification calls settle.
   await new Promise((done) => setTimeout(done, 0));
-  return drift.concat(
-    notifications.some((n) => n.data?.requestId === fixture.requestId)
-      ? []
-      : ["broker_to_pwa.added: worker raised no notification for the request id"],
-  );
+  for (const name of inbound) {
+    // The worker's objects come from the vm realm; compare them as JSON.
+    const expected = { type: "broker-event", event: frames[name] };
+    if (!relayed.some((message) => same(JSON.parse(JSON.stringify(message)), expected))) {
+      drift.push(`${name}: worker did not relay the frame verbatim`);
+    }
+  }
+  if (!notifications.some((n) => n.data?.requestId === fixture.requestId)) {
+    drift.push("broker_to_pwa.added: worker raised no notification for the request id");
+  }
+  if (!closedTags.includes(fixture.requestId)) {
+    drift.push("broker_to_pwa.resolved: worker did not close the request's notification");
+  }
+  return drift;
 }
 
 async function webDrift(fixture: WireFixture): Promise<string[]> {
@@ -184,7 +208,7 @@ async function webDrift(fixture: WireFixture): Promise<string[]> {
 }
 
 describe("protocol-v3 wire contract (web restatements)", () => {
-  it("every web restatement agrees with the protocol crate's fixture", async () => {
+  it("the bridge, normalizer and service worker agree with every PWA-facing fixture frame", async () => {
     expect(await webDrift(loadFixture())).toEqual([]);
   });
 
@@ -198,11 +222,10 @@ describe("protocol-v3 wire contract (web restatements)", () => {
     rename(divergent.frames["broker_to_pwa.resolved"], "requestId", "request_id");
     rename(divergent.frames["pwa_to_broker.decision"], "requestId", "request_id");
     rename(divergent.payload, "session_id", "harness_session");
-    rename(
-      divergent.frames["broker_to_pwa.added"]?.request as Frame,
-      "session_id",
-      "harness_session",
-    );
+    const added = divergent.frames["broker_to_pwa.added"];
+    const addedRequest = asFrame(added?.request);
+    rename(addedRequest, "session_id", "harness_session");
+    if (added) added.request = addedRequest;
 
     const drift = await webDrift(divergent);
     expect(drift).toEqual(

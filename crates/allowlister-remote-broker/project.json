@@ -57,7 +57,7 @@
         {
           "target": "coverage-clean",
           "projects": [
-            "workspace"
+            "rust-workspace"
           ]
         }
       ],

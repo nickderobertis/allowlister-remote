@@ -13,26 +13,31 @@
 #     (detached, still non-blocking) instead of being advised.
 set -eu
 
-# Hand off to the llmlint-tier installer (scripts/setup-llmlint.sh) on EVERY exit
-# path — the ready, remote, opt-in, advisory and CI/escape-hatch exits alike — by
-# running it from an EXIT trap instead of after the last `exit`. It is DETACHED
-# (setsid/nohup, output to .dev/setup-llmlint.log) so the hook returns at once and
-# a slow `uv tool install`, a failure inside it, or a missing `uv` can never block
-# or fail session start; setup-llmlint.sh is idempotent and always exits 0 itself.
-# A flock (where available) keeps two concurrent sessions from installing twice.
+# Every exit path below hands off to `just setup-llmlint` (the script directly
+# while `just` is not installed yet) through this EXIT trap. The hand-off is
+# detached and best-effort: it never delays or fails session start.
 # shellcheck disable=SC2329 # invoked from the EXIT trap below, which shellcheck does not trace.
 _llmlint_handoff() {
-  local root script launcher
+  local root launcher
   root="${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
-  script="$root/scripts/setup-llmlint.sh"
-  [ -f "$script" ] || return 0
+  [ -f "$root/scripts/setup-llmlint.sh" ] || return 0
   mkdir -p "$root/.dev" 2>/dev/null || return 0
-  launcher="nohup"
-  command -v setsid >/dev/null 2>&1 && launcher="setsid"
-  command -v "$launcher" >/dev/null 2>&1 || return 0
-  # shellcheck disable=SC2016 # $1/$2 expand in the child bash, which receives them as arguments.
-  "$launcher" bash -c 'exec 9>"$1/.dev/setup-llmlint.lock"; if command -v flock >/dev/null 2>&1; then flock -n 9 || exit 0; fi; exec bash "$2"' \
-    _ "$root" "$script" >"$root/.dev/setup-llmlint.log" 2>&1 </dev/null &
+  if command -v setsid >/dev/null 2>&1; then
+    launcher="setsid"
+  elif command -v nohup >/dev/null 2>&1; then
+    launcher="nohup"
+  else
+    return 0
+  fi
+  # shellcheck disable=SC2016 # $1 expands in the child bash, which receives it as an argument.
+  "$launcher" bash -c '
+    exec 9>"$1/.dev/setup-llmlint.lock"
+    if command -v flock >/dev/null 2>&1; then flock -n 9 || exit 0; fi
+    if command -v just >/dev/null 2>&1 && [ -f "$1/justfile" ]; then
+      exec just --justfile "$1/justfile" --working-directory "$1" setup-llmlint
+    fi
+    exec bash "$1/scripts/setup-llmlint.sh"' \
+    _ "$root" >"$root/.dev/setup-llmlint.log" 2>&1 </dev/null &
   return 0
 }
 trap '_llmlint_handoff || true' EXIT

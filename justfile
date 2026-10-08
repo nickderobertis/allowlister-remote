@@ -56,8 +56,10 @@ test tier="affected":
 build:
     {{ _affected }} -t build
 
-test-e2e:
-    {{ _affected }} -t test-e2e
+# The browser e2e (web-e2e) and the Rust e2e crate; `just test-e2e all` runs them
+# whatever changed.
+test-e2e tier="affected":
+    {{ if tier == "all" { "npx nx run-many" } else if tier == "affected" { _affected } else { error("unknown tier '" + tier + "' — use 'affected' (the default) or 'all'") } }} -t test-e2e
 
 dev:
     npx nx run web:dev

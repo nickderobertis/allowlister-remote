@@ -40,7 +40,6 @@ function step(job, predicate) {
   return found;
 }
 
-// Run the setup job's `pick` step for one synthetic event; return its outputs.
 function pickTier(env) {
   const dir = mkdtempSync(join(tmpdir(), "gh-output-"));
   try {

@@ -22,7 +22,7 @@ a push server with VAPID) is a separate, not-yet-built follow-up; see the
 Run the e2e (Chromium only — see below):
 
 ```
-npx nx test-e2e web-e2e                              # full suite
+just test-e2e all                                    # full suite
 cd apps/web-e2e && npx playwright test notifications.spec.ts --project chromium-desktop
 ```
 

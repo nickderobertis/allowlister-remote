@@ -27,7 +27,6 @@ jobs:
       # (codex, claude-code); OPENAI_API_KEY is its credential.
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
     steps:
-      # Fail fast, before installing anything, with a message naming the secret.
       - name: Require the llmlint harness credential
         run: |
           if [ -z "${OPENAI_API_KEY:-}" ]; then
@@ -50,7 +49,7 @@ jobs:
         run: uv tool install rust-just
       - name: Install oneharness + llmlint
         run: |
-          scripts/setup-llmlint.sh
+          just setup-llmlint
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       # setup-llmlint.sh installs llmlint + oneharness only, not a harness: install
       # the one oneharness.toml's fallback chain names first and log it in.

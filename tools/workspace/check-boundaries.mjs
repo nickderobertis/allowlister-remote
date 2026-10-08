@@ -16,7 +16,7 @@
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const LEAF_TYPES = ["type:e2e", "type:test"];
@@ -34,8 +34,33 @@ function parseArgs(argv) {
   return args;
 }
 
+// The slice of `nx graph --file` output this check reads, validated before use so
+// a changed or truncated graph fails loudly instead of passing with no edges.
+function graphShapeError(graph) {
+  if (!graph || typeof graph !== "object") return "no `graph` object";
+  if (!graph.nodes || typeof graph.nodes !== "object") return "no `nodes` object";
+  if (!graph.dependencies || typeof graph.dependencies !== "object")
+    return "no `dependencies` object";
+  if (Object.keys(graph.nodes).length === 0) return "no projects";
+  const badTags = Object.entries(graph.nodes).find(([, node]) => {
+    const tags = node?.data?.tags ?? [];
+    return !Array.isArray(tags) || tags.some((tag) => typeof tag !== "string");
+  });
+  if (badTags) return `${badTags[0]} tags`;
+  const badDeps = Object.entries(graph.dependencies).find(
+    ([, deps]) => !Array.isArray(deps) || deps.some((dep) => typeof dep?.target !== "string"),
+  );
+  return badDeps ? `${badDeps[0]} dependencies` : undefined;
+}
+
+function validateGraph(graph, source) {
+  const error = graphShapeError(graph);
+  if (error) throw new Error(`${source}: not an nx project graph (${error})`);
+  return graph;
+}
+
 function loadGraph(file, workspace) {
-  if (file) return JSON.parse(readFileSync(file, "utf8")).graph;
+  if (file) return validateGraph(JSON.parse(readFileSync(file, "utf8")).graph, file);
   const dir = mkdtempSync(join(tmpdir(), "nx-graph-"));
   try {
     const out = join(dir, "graph.json");
@@ -45,15 +70,22 @@ function loadGraph(file, workspace) {
       shell: process.platform === "win32",
     });
     if (run.status !== 0) throw new Error(`nx graph failed:\n${run.stdout}${run.stderr}`);
-    return JSON.parse(readFileSync(out, "utf8")).graph;
+    return validateGraph(JSON.parse(readFileSync(out, "utf8")).graph, "nx graph");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 }
 
-// `name = { path = "../other" }` lines in a crate manifest, as directory names.
-function cargoPathDeps(manifest) {
-  return [...manifest.matchAll(/path\s*=\s*"\.\.\/([^"]+)"/g)].map((match) => match[1]);
+// Every `path = "..."` / `path = '...'` in a crate manifest — inline tables and
+// `[dependencies.<name>]` sub-tables alike — resolved against the crate and kept
+// when it names a sibling crate directory.
+export function cargoPathDeps(manifest, crateDir, cratesDir) {
+  const deps = [];
+  for (const match of manifest.matchAll(/^[^#\n]*\bpath\s*=\s*(["'])([^"'\n]+)\1/gm)) {
+    const target = resolve(crateDir, match[2]);
+    if (dirname(target) === cratesDir) deps.push(basename(target));
+  }
+  return deps;
 }
 
 function tagViolations(graph, source, target) {
@@ -92,13 +124,15 @@ function readCrates(workspace) {
   const crates = {};
   for (const entry of readdirSync(cratesDir, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
+    const crateDir = join(cratesDir, entry.name);
+    let manifest;
     try {
-      crates[entry.name] = cargoPathDeps(
-        readFileSync(join(cratesDir, entry.name, "Cargo.toml"), "utf8"),
-      );
-    } catch {
-      // not a crate directory
+      manifest = readFileSync(join(crateDir, "Cargo.toml"), "utf8");
+    } catch (error) {
+      if (error?.code === "ENOENT") continue; // not a crate directory
+      throw error;
     }
+    crates[entry.name] = cargoPathDeps(manifest, crateDir, cratesDir);
   }
   return crates;
 }

@@ -51,6 +51,21 @@ function pathWithout(hidden) {
     .filter((dir) => dir && !hidden.some((tool) => existsSync(join(dir, tool))));
 }
 
+// A directory of symlinks to just the named tools, for a PATH that lacks the rest.
+function curatedBin(dir, tools) {
+  const bin = join(dir, "bin");
+  mkdirSync(bin, { recursive: true });
+  for (const tool of tools) {
+    const found = spawnSync("bash", ["-c", `command -v ${tool}`], {
+      encoding: "utf8",
+    }).stdout.trim();
+    if (found) symlinkSync(found, join(bin, tool));
+  }
+  return bin;
+}
+
+const CORE = ["bash", "mkdir", "dirname", "cat", "touch", "sleep", "sha256sum", "awk", "env"];
+
 // A copy of the session hook beside a stand-in setup.sh and setup-llmlint.sh.
 function sessionRepo(llmlintBody, setupExit = 0) {
   const dir = scratch();
@@ -141,25 +156,7 @@ describe("SessionStart hook hands off to setup-llmlint.sh", () => {
     const { dir } = sessionRepo("");
     copyFileSync(join(root, "scripts/setup-llmlint.sh"), join(dir, "scripts/setup-llmlint.sh"));
     // Only the coreutils the hook needs — no uv, llmlint, node, cargo or just.
-    const bin = join(dir, "bin");
-    mkdirSync(bin);
-    for (const tool of [
-      "bash",
-      "mkdir",
-      "dirname",
-      "cat",
-      "setsid",
-      "nohup",
-      "flock",
-      "sha256sum",
-      "awk",
-      "env",
-    ]) {
-      const found = spawnSync("bash", ["-c", `command -v ${tool}`], {
-        encoding: "utf8",
-      }).stdout.trim();
-      if (found) symlinkSync(found, join(bin, tool));
-    }
+    const bin = curatedBin(dir, [...CORE, "setsid", "nohup", "flock"]);
     const run = runSessionHook(dir, {}, bin);
     assert.equal(run.status, 0, run.stderr);
     const log = join(dir, ".dev/setup-llmlint.log");
@@ -169,6 +166,66 @@ describe("SessionStart hook hands off to setup-llmlint.sh", () => {
       spawnSync("sleep", ["0.1"]);
     }
     assert.match(readFileSync(log, "utf8"), /uv not found; cannot install llmlint/);
+  });
+
+  it("goes through `just setup-llmlint` when just and the justfile are present", () => {
+    const { dir, marker } = sessionRepo("exit 0");
+    writeFileSync(join(dir, "justfile"), `setup-llmlint:\n    touch "${dir}/just-ran"\n`);
+    const run = runSessionHook(dir, {});
+    assert.equal(run.status, 0, run.stderr);
+    assert.ok(waitFor(join(dir, "just-ran")), "the just recipe never ran");
+    assert.ok(!existsSync(marker), "the script ran directly despite just");
+  });
+
+  it("falls back to nohup without setsid, and runs without flock", () => {
+    const { dir, marker } = sessionRepo("exit 0");
+    const run = runSessionHook(dir, {}, curatedBin(dir, [...CORE, "nohup"]));
+    assert.equal(run.status, 0, run.stderr);
+    assert.ok(waitFor(marker));
+  });
+
+  it("skips the hand-off, still exiting 0, when no launcher is available", () => {
+    const { dir, marker } = sessionRepo("exit 0");
+    const run = runSessionHook(dir, {}, curatedBin(dir, CORE));
+    assert.equal(run.status, 0, run.stderr);
+    assert.ok(!waitFor(marker, 1_000));
+  });
+
+  it("exits 0 when the installer is absent or .dev cannot be created", () => {
+    const absent = sessionRepo("exit 0");
+    rmSync(join(absent.dir, "scripts/setup-llmlint.sh"));
+    assert.equal(runSessionHook(absent.dir, {}).status, 0);
+    const blocked = sessionRepo("exit 0");
+    writeFileSync(join(blocked.dir, ".dev"), "a file, not a directory");
+    assert.equal(runSessionHook(blocked.dir, {}).status, 0);
+    assert.ok(!waitFor(blocked.marker, 1_000));
+  });
+
+  it("runs one install when two sessions start at once (flock)", () => {
+    const { dir } = sessionRepo('echo run >> "$(dirname "$0")/../runs"\nsleep 2');
+    assert.equal(runSessionHook(dir, {}).status, 0);
+    assert.equal(runSessionHook(dir, {}).status, 0);
+    assert.ok(waitFor(join(dir, "runs")));
+    spawnSync("sleep", ["2.5"]);
+    assert.equal(readFileSync(join(dir, "runs"), "utf8"), "run\n");
+  });
+
+  it("installs llmlint-cli at the 0.3.23 floor through uv", () => {
+    const dir = scratch();
+    mkdirSync(join(dir, "home"));
+    const bin = curatedBin(dir, CORE);
+    // A stand-in uv records the install it is asked for.
+    writeExecutable(join(bin, "uv"), `echo "$*" >> "${dir}/uv-args"`);
+    const run = spawnSync("bash", [join(root, "scripts/setup-llmlint.sh")], {
+      encoding: "utf8",
+      env: { PATH: bin, HOME: join(dir, "home") },
+    });
+    assert.equal(run.status, 0, run.stderr);
+    assert.equal(
+      readFileSync(join(dir, "uv-args"), "utf8"),
+      "tool install --upgrade llmlint-cli>=0.3.23\n",
+    );
+    assert.match(run.stderr, /llmlint not installed/);
   });
 });
 

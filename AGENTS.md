@@ -70,8 +70,9 @@ Use `just`; do not hand-roll equivalent commands.
   an explicit `NX_BASE`/`NX_HEAD`). `just check all` is the **broader tier**: the
   same targets over every project (`nx run-many`).
 - `just test` runs every affected project's tests plus the Rust coverage aggregate.
-- `just test-e2e` runs the `web-e2e` project: Playwright against the built PWA driving
-  the real broker, daemon, and plugin binaries in desktop and mobile Chromium.
+- `just test-e2e` runs the affected e2e projects (`just test-e2e all` runs every one): the
+  `web-e2e` Playwright suite against the built PWA driving the real broker, daemon, and plugin
+  binaries in desktop and mobile Chromium.
 - Rust targets need `cargo-llvm-cov`, `cargo-deny`, and `cargo-machete` on PATH (CI
   installs them with `taiki-e/install-action`); the toolchain itself comes from
   `rust-toolchain.toml`.
@@ -165,19 +166,22 @@ Use `just`; do not hand-roll equivalent commands.
   bridge (the PWA's only request source, driven through a mocked bridge with raw
   protocol-v3 payloads), and offline behavior. Coverage gates enforce 95% lines/statements, 90% functions, and 80% branches. Line coverage keeps the create-repo default bar while branch coverage stays focused on meaningful UI paths.
 - The production build must include the PWA manifest and service worker.
+<!-- llmlint: ignore-block[agents_md_durable_and_terse] the create-repo skill allows a coverage floor below 95% only with its documented reason in AGENTS.md, and the approval of this floor required recording the measurement and per-file figures that justify it here, beside the floor. -->
 - **Rust coverage floor: 78% lines, below the skill's 95% default (manager-approved).**
-  Every crate's `test` runs under `cargo llvm-cov --no-report`; `workspace:coverage`
+  Every crate's `test` runs under `cargo llvm-cov --no-report`; `rust-workspace:coverage`
   enforces `--fail-under-lines 78` over the union. Measured on this tree (cargo-llvm-cov
-  0.8.7, every crate's tests): 78.89% (1156 lines, 244 missed) — broker `lib.rs` 90.75%,
-  broker `main.rs` 0%, daemon `lib.rs` 82.57%, daemon `main.rs` 0%, plugin `daemon.rs`
-  58.28%, plugin `lib.rs` 99.64%, plugin `main.rs` 77.66%, protocol 98.33%. Why it is
+  0.8.7, every crate's tests): 79.45% (1192 lines, 245 missed) — broker `lib.rs` 90.64%,
+  broker `main.rs` 0%, daemon `lib.rs` 83.53%, daemon `main.rs` 0%, plugin `daemon.rs`
+  57.52%, plugin `lib.rs` 99.65%, plugin `main.rs` 77.66%, protocol 98.60%. Why it is
   low: the broker and daemon binaries run only under tests that SIGKILL them, so their
   profiles never flush, and the plugin's interactive `/dev/tty` and named-pipe paths have
   no test. Raising it to 95% (graceful shutdown so profiles flush, plus those tests) is
   an open follow-up; never lower it further.
+<!-- llmlint: ignore-end[agents_md_durable_and_terse] -->
 - **Supply chain.** `deny.toml` (advisories, a license allow-list, bans, sources) is
   enforced by `cargo deny check`, with `cargo machete` for unused dependencies
-  (`workspace:supply-chain`). Every ignored advisory carries its reason there.
+  (`rust-workspace:supply-chain`). Every ignored advisory and duplicate-version skip carries its
+  reason there.
 - The Rust performance suites are informational, not a gate, and each benches its
   binary's pure, network-free surface so the numbers track what that binary
   actually runs between its inputs and outputs. The **plugin** benches its decision
@@ -227,7 +231,9 @@ Use `just`; do not hand-roll equivalent commands.
 
 - `apps/web` is the static Next.js PWA project (`output: "export"`, no server of its own) and owns
   the UI and service-worker unit tests and the visual-docs capture (`web:capture`). It has no
-  edge to any crate.
+  edge to any crate. It is its own npm workspace package (`apps/web/package.json` declares every
+  dependency the app uses); the root `package.json` keeps only repo tooling (Nx, Biome, knip,
+  the root scripts' Lighthouse deps, `yaml`), and `web-e2e` declares its own.
 - `apps/web-e2e` (`type:e2e`) is the browser e2e suite, its own project so a crate change
   re-runs it without re-running `web`'s targets; `test-e2e` builds `web` and the three crates
   first. It and the capture serve the built `out/` bundle with `scripts/serve-web.mjs` and seed
@@ -237,8 +243,10 @@ Use `just`; do not hand-roll equivalent commands.
   `wire/protocol-v3.json` (captured from the pre-contract tree) pins the bytes. Drift checks:
   `tests/wire_golden.rs` (Rust) and `apps/web/src/protocol-contract.test.ts` (the web app's
   restatements). It depends on no consumer.
-- `tools/workspace` (`type:tooling`) holds the repo-level checks: the tag-based boundary
-  check, the workflow/graph/hook tests, Rust `coverage`, and `supply-chain`.
+- `tools/workspace` (`type:tooling`) holds the repo-level JavaScript checks (the tag-based
+  boundary check; the workflow, graph and hook tests) and owns the root `scripts/` and config
+  files. `tools/rust-workspace` holds the workspace-wide Rust checks (`coverage`,
+  `supply-chain`), kept apart so a workflow or hook edit never re-runs every crate's tests.
 - `crates/allowlister-remote-plugin` is the Rust allowlister dynamic plugin client. It is
   network-free: it hands each request to the daemon over local IPC and never opens a socket
   to the broker itself.
@@ -290,7 +298,7 @@ Use `just`; do not hand-roll equivalent commands.
 - **A root file reaches exactly the projects that read it.** `sharedGlobals` is `nx.json` alone;
   each project lists the workspace files its targets read (`rust`/`node`/`biome` named inputs,
   plus e.g. `scripts/serve-web.mjs` for `web` and `web-e2e`, `bench.yml` for the bench targets,
-  every workflow for `workspace`). When a target starts reading a new root file, add it to that
+  every workflow and root script for `workspace`). When a target starts reading a new root file, add it to that
   project's inputs, or a change to it will skip the check. `tools/workspace/tests/affected.test.mjs`
   pins representative selections.
 - **Boundaries are enforced from tags** (`workspace:lint`): nothing depends on a `type:e2e` or

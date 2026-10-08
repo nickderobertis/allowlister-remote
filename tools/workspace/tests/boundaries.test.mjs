@@ -3,11 +3,11 @@
 // not declare, and passes the repository's real graph.
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, it } from "node:test";
-import { boundaryViolations } from "../check-boundaries.mjs";
+import { boundaryViolations, cargoPathDeps } from "../check-boundaries.mjs";
 
 const script = resolve(import.meta.dirname, "../check-boundaries.mjs");
 
@@ -63,6 +63,22 @@ describe("boundaryViolations", () => {
   });
 });
 
+describe("cargoPathDeps", () => {
+  it("reads inline tables, sub-tables and either quote, keeping only sibling crates", () => {
+    const manifest = [
+      "[dependencies]",
+      'a = { path = "../a" }',
+      "b = { path = '../b', version = \"1\" }",
+      '# c = { path = "../c" }',
+      "[dev-dependencies.d]",
+      'path = "../../crates/d"',
+      "[dependencies.vendored]",
+      'path = "vendor/x"',
+    ].join("\n");
+    assert.deepEqual(cargoPathDeps(manifest, "/r/crates/me", "/r/crates"), ["a", "b", "d"]);
+  });
+});
+
 describe("check-boundaries.mjs CLI", () => {
   function run(edges, crates) {
     const dir = mkdtempSync(join(tmpdir(), "boundaries-"));
@@ -85,6 +101,43 @@ describe("check-boundaries.mjs CLI", () => {
     const result = run([["protocol", "plugin"]], { protocol: manifest });
     assert.equal(result.status, 1);
     assert.match(result.stderr, /boundary: protocol is type:contract but depends on plugin/);
+  });
+
+  it("rejects a graph file that is not an nx project graph", () => {
+    const dir = mkdtempSync(join(tmpdir(), "boundaries-"));
+    try {
+      const file = join(dir, "graph.json");
+      writeFileSync(file, JSON.stringify({ graph: { nodes: {} } }));
+      mkdirSync(join(dir, "crates"));
+      const result = spawnSync("node", [script, "--graph", file, "--workspace", dir], {
+        encoding: "utf8",
+      });
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, /not an nx project graph \(no `dependencies` object\)/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("fails rather than skipping a crate whose manifest cannot be read", {
+    skip: process.platform === "win32" || process.getuid?.() === 0,
+  }, () => {
+    const dir = mkdtempSync(join(tmpdir(), "boundaries-"));
+    try {
+      const file = join(dir, "graph.json");
+      writeFileSync(file, JSON.stringify({ graph: graph([]) }));
+      mkdirSync(join(dir, "crates", "plugin"), { recursive: true });
+      const manifest = join(dir, "crates", "plugin", "Cargo.toml");
+      writeFileSync(manifest, "[package]\n");
+      chmodSync(manifest, 0o000);
+      const result = spawnSync("node", [script, "--graph", file, "--workspace", dir], {
+        encoding: "utf8",
+      });
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, /EACCES/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("passes the repository's own graph", () => {

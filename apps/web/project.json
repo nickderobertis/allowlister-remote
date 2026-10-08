@@ -11,10 +11,8 @@
       "node",
       "biome",
       "{workspaceRoot}/knip.json",
-      "{workspaceRoot}/scripts/**/*.mjs",
-      "{workspaceRoot}/.release-please-manifest.json",
-      "{workspaceRoot}/release-please-config.json",
-      "{workspaceRoot}/gh-secrets.json",
+      "{workspaceRoot}/scripts/serve-web.mjs",
+      "{workspaceRoot}/scripts/terminal-svg.mjs",
       "{workspaceRoot}/crates/allowlister-remote-protocol/wire/**"
     ]
   },
@@ -22,21 +20,21 @@
     "format": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "npx biome check --write apps/web scripts package.json package-lock.json nx.json biome.jsonc .release-please-manifest.json release-please-config.json gh-secrets.json",
+        "command": "npx biome check --write apps/web",
         "cwd": "."
       }
     },
     "fmt-check": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "npx biome check --formatter-enabled=true --linter-enabled=false apps/web scripts package.json package-lock.json nx.json biome.jsonc .release-please-manifest.json release-please-config.json gh-secrets.json",
+        "command": "npx biome check --formatter-enabled=true --linter-enabled=false apps/web",
         "cwd": "."
       }
     },
     "lint": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "npx biome lint apps/web scripts && npx knip --production",
+        "command": "npx biome lint apps/web && npx knip --production --workspace apps/web",
         "cwd": "."
       }
     },
@@ -68,7 +66,13 @@
         "cwd": "apps/web"
       },
       "cache": false,
-      "inputs": ["default", "{workspaceRoot}/.github/workflows/bench.yml"]
+      "inputs": [
+        "default",
+        "{workspaceRoot}/.github/workflows/bench.yml",
+        "{workspaceRoot}/scripts/web-bench-report.mjs",
+        "{workspaceRoot}/scripts/web-bundle-size.mjs",
+        "{workspaceRoot}/scripts/web-lighthouse.mjs"
+      ]
     },
     "render-cost": {
       "executor": "nx:run-commands",
@@ -77,7 +81,14 @@
         "cwd": "."
       },
       "cache": false,
-      "inputs": ["default", "{workspaceRoot}/.github/workflows/bench.yml"]
+      "inputs": [
+        "default",
+        "{workspaceRoot}/.github/workflows/bench.yml",
+        "{workspaceRoot}/scripts/web-bench-report.mjs",
+        "{workspaceRoot}/scripts/web-bundle-size.mjs",
+        "{workspaceRoot}/scripts/web-lighthouse.mjs",
+        "{workspaceRoot}/scripts/web-render-cost.mjs"
+      ]
     },
     "heap": {
       "executor": "nx:run-commands",
@@ -86,7 +97,14 @@
         "cwd": "."
       },
       "cache": false,
-      "inputs": ["default", "{workspaceRoot}/.github/workflows/bench.yml"]
+      "inputs": [
+        "default",
+        "{workspaceRoot}/.github/workflows/bench.yml",
+        "{workspaceRoot}/scripts/web-bench-report.mjs",
+        "{workspaceRoot}/scripts/web-bundle-size.mjs",
+        "{workspaceRoot}/scripts/web-lighthouse.mjs",
+        "{workspaceRoot}/scripts/web-heap.mjs"
+      ]
     },
     "build": {
       "executor": "nx:run-commands",

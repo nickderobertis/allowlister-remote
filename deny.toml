@@ -38,11 +38,26 @@ confidence-threshold = 0.9
 ignore = true
 
 [bans]
-# Duplicate versions are reported, not fatal: several come from upstream crates
-# pinning different majors (tungstenite, rand, windows-sys).
-multiple-versions = "warn"
+# Every duplicate version fails the gate unless skipped here with its reason.
+multiple-versions = "deny"
 wildcards = "deny"
 allow-wildcard-paths = true
+skip = [
+  # axum 0.8's WebSocket support pulls tungstenite 0.29 while the daemon and the
+  # tests still use tokio-tungstenite 0.24; unify when the daemon moves to 0.29.
+  { crate = "tokio-tungstenite@0.24", reason = "daemon/tests on 0.24, axum ws on 0.29" },
+  { crate = "tungstenite@0.24", reason = "daemon/tests on 0.24, axum ws on 0.29" },
+  # tungstenite 0.24 (rand 0.8, thiserror 1) and 0.29 (rand 0.9, thiserror 2)
+  # each bring their own generation of these.
+  { crate = "rand@0.8", reason = "via tungstenite 0.24" },
+  { crate = "rand_chacha@0.3", reason = "via tungstenite 0.24" },
+  { crate = "rand_core@0.6", reason = "via tungstenite 0.24" },
+  { crate = "getrandom@0.2", reason = "via rand_core 0.6 (tungstenite 0.24) and ring" },
+  { crate = "thiserror@1", reason = "via tungstenite 0.24" },
+  { crate = "thiserror-impl@1", reason = "via tungstenite 0.24" },
+  # Upstream crates pin different windows-sys majors (Windows-only targets).
+  { crate = "windows-sys@0.52", reason = "ring pins windows-sys 0.52" },
+]
 
 [sources]
 unknown-registry = "deny"
