@@ -137,11 +137,13 @@ the mouse follows on hover; the focused card is ringed and marked
   instruction counts and allocation tallies); Vitest and Lighthouse numbers are absolute and
   noisy, so distrust small deltas.
 - **Heap** (`just heap`, `src/perf/heap.perf.ts` under its own `vitest.heap.config.ts`) is
-  the memory analogue of the Rust allocation reports. JS has no allocation hook, so it
-  weighs the retained object graph structurally, never `process.memoryUsage()`, which keeps
-  the base-vs-PR delta reproducible. It covers the per-card decision surface and asserts the
-  real `src/inbox.ts` reducers return to the empty baseline once every request resolves: the
-  PWA holds the inbox for the whole session, so a leak there grows without bound.
+  the memory analogue of the Rust allocation reports. JS has no allocation hook, so it walks
+  the retained object graph (object/array/string counts and string length), never
+  `process.memoryUsage()`, which keeps the base-vs-PR delta reproducible. It charts the
+  per-card decision surface against script length, and folds a realistic broker stream
+  (snapshot → many `added` → resolve every one) through the real `src/inbox.ts` reducers,
+  asserting the graph returns to the empty baseline: the PWA holds the inbox for the whole
+  session, so a leak there grows without bound.
 - Micro-benchmarks (`just bench-web`) time the pure `approval.ts` functions a
   render calls (`flaggedFragments`/`triggeredRules`/`requestHeadline`/
   `toolParamSummary`); keep React, the DOM, and the network out of any timed loop.
@@ -162,8 +164,8 @@ the mouse follows on hover; the focused card is ringed and marked
 
 ## React Compiler
 
-- `just render-cost` (`src/perf/render-cost.perf.tsx`) counts the decision-surface
-  recomputations per interaction without vs with the compiler. `@vitejs/plugin-react`
+- `just render-cost` (`src/perf/render-cost.perf.tsx`) renders the real `<App>` over an inbox
+  and counts the decision-surface recomputations per interaction without vs with the compiler. `@vitejs/plugin-react`
   compiles JSX with oxc, not Babel, so `vitest.render-cost.config.ts` loads the compiler
   through `@rolldown/plugin-babel` (gated on `REACT_COMPILER=1`) to match the production build.
 - **Do not hand-write `useMemo`/`useCallback`/`React.memo` for performance**:
