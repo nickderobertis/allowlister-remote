@@ -124,7 +124,9 @@ the mouse follows on hover; the focused card is ringed and marked
   path. Cover both the desktop and mobile branches of any keyboard work.
 - Tests cover the approval decision flow, request summarization, the broker
   bridge (the PWA's only request source, driven through a mocked bridge with raw
-  protocol-v3 payloads), and offline behavior. Coverage gates enforce 95% lines/statements, 90% functions, and 80% branches. Line coverage keeps the create-repo default bar while branch coverage stays focused on meaningful UI paths.
+  protocol-v3 payloads), and offline behavior. The `vitest.config.ts` gates keep line
+  coverage at the create-repo default bar and set branches lower so branch coverage stays
+  focused on meaningful UI paths.
 - The production build must include the PWA manifest and service worker.
 - E2E lives in its own project, `apps/web-e2e`, so a
   crate change re-runs it without re-running this project's targets. It must pass in both the `chromium-desktop` and
