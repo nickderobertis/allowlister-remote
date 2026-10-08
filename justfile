@@ -31,7 +31,8 @@ _affected := "npx nx affected --base=" + base + _head_flag
 # release-please's release PR, so CI runs the sweep on that PR (check.yml) and the
 # affected tier everywhere else. The tier is a flag on this one recipe, never a
 # second gate; a mistyped tier aborts instead of quietly buying the weaker one.
-check tier="affected": (test tier)
+check tier="affected":
+    @just test {{ if tier == "all" { "all" } else if tier == "affected" { "affected" } else { error("unknown tier '" + tier + "' — use 'affected' (the default) or 'all'") } }}
     {{ if tier == "all" { "npx nx run-many" } else if tier == "affected" { _affected } else { error("unknown tier '" + tier + "' — use 'affected' (the default) or 'all'") } }} -t fmt-check lint lint-compiler typecheck build supply-chain test-e2e
     @echo "check: ok"
 

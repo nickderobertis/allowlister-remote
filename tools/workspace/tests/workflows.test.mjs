@@ -99,11 +99,16 @@ describe("check.yml gate routing", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
-    const dryRun = (tier) =>
-      spawnSync("just", ["-n", "check", tier], { cwd: root, encoding: "utf8" });
-    assert.match(dryRun("all").stderr, /npx nx run-many -t test coverage/);
-    assert.match(dryRun("all").stderr, /npx nx run-many -t fmt-check lint lint-compiler typecheck/);
-    assert.match(dryRun("affected").stderr, /npx nx affected --base=\S+ -t test coverage/);
+    const dryRun = (...args) => spawnSync("just", ["-n", ...args], { cwd: root, encoding: "utf8" });
+    const sweep = /just test all\n.*npx nx run-many -t fmt-check lint lint-compiler typecheck/s;
+    assert.match(dryRun("check", "all").stderr, sweep);
+    assert.match(
+      dryRun("check", "affected").stderr,
+      /just test affected\n.*npx nx affected --base=\S+ -t fmt-check/s,
+    );
+    assert.match(dryRun("test", "all").stderr, /npx nx run-many -t test coverage/);
+    assert.match(dryRun("test", "affected").stderr, /npx nx affected --base=\S+ -t test coverage/);
+    assert.notEqual(dryRun("check", "bogus").status, 0);
   });
 
   it("fails the `check` context when any matrix leg (the sweep included) fails", () => {
