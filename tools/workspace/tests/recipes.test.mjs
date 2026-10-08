@@ -83,6 +83,12 @@ describe("llmlint recipes", () => {
   });
 });
 
+// The stub stops at nx's command line on purpose: the real chain rebuilds the web
+// bundle and three crates before Playwright starts, too slow for this unit tier.
+// nx run-commands appends everything after `--` to the target's command, so the
+// Playwright filters land as given — the browser e2e run itself (web-e2e) covers
+// the target, and a real `just test-e2e-web <spec> --project <name>` runs only
+// the named spec in the named project.
 describe("test-e2e-web", () => {
   it("hands Playwright's filters to the web-e2e target and propagates its status", () => {
     const run = just(["test-e2e-web", "notifications.spec.ts", "--project", "chromium-desktop"], {
