@@ -98,16 +98,43 @@ describe("check.yml gate routing", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
-    const dryRun = (...args) => spawnSync("just", ["-n", ...args], { cwd: root, encoding: "utf8" });
+    // Pin NX_BASE/NX_HEAD per case: CI exports both, and the recipe's affected
+    // command differs by which are set, so an inherited environment must not pick
+    // the form under test.
+    const dryRun = (env, ...args) => {
+      const { NX_BASE: _b, NX_HEAD: _h, ...rest } = process.env;
+      return spawnSync("just", ["-n", ...args], {
+        cwd: root,
+        encoding: "utf8",
+        env: { ...rest, ...env },
+      });
+    };
     const sweep = /just test all\n.*npx nx run-many -t fmt-check lint lint-compiler typecheck/s;
-    assert.match(dryRun("check", "all").stderr, sweep);
-    assert.match(
-      dryRun("check", "affected").stderr,
-      /just test affected\n.*npx nx affected --base=\S+ -t fmt-check/s,
-    );
-    assert.match(dryRun("test", "all").stderr, /npx nx run-many -t test coverage/);
-    assert.match(dryRun("test", "affected").stderr, /npx nx affected --base=\S+ -t test coverage/);
-    assert.notEqual(dryRun("check", "bogus").status, 0);
+    assert.match(dryRun({}, "check", "all").stderr, sweep);
+    assert.match(dryRun({}, "test", "all").stderr, /npx nx run-many -t test coverage/);
+    const BASE = "a50681a1b06c0000000000000000000000000000";
+    const HEAD = "796a72db60c20000000000000000000000000000";
+    // Every form the recipe produces: local default (origin/main), CI push/PR
+    // with a base only, and a PR with both a base and a head commit.
+    for (const [env, flags] of [
+      [{}, "--base=origin/main"],
+      [{ NX_BASE: BASE }, `--base=${BASE}`],
+      [{ NX_BASE: BASE, NX_HEAD: HEAD }, `--base=${BASE} --head=${HEAD}`],
+    ]) {
+      const affected = `npx nx affected ${flags} -t`;
+      const checkOut = dryRun(env, "check", "affected");
+      assert.equal(checkOut.status, 0, checkOut.stderr);
+      assert.match(checkOut.stderr, /just test affected\n/);
+      assert.ok(
+        checkOut.stderr.includes(
+          `${affected} fmt-check lint lint-compiler typecheck build supply-chain test-e2e`,
+        ),
+        checkOut.stderr,
+      );
+      assert.ok(dryRun(env, "test", "affected").stderr.includes(`${affected} test coverage`));
+    }
+    assert.notEqual(dryRun({ NX_HEAD: "bad;ref" }, "check", "affected").status, 0);
+    assert.notEqual(dryRun({}, "check", "bogus").status, 0);
   });
 
   it("fails the `check` context when any matrix leg (the sweep included) fails", () => {
