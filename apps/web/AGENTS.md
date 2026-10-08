@@ -1,10 +1,5 @@
 # AGENTS — `apps/web`
 
-The Next.js PWA project — a **fully static export** (`output: "export"`, no
-server of its own). It owns the browser UI and the browser/route/UI tests.
-Root-level guidance lives in the repo `CLAUDE.md`; this file documents conventions
-specific to the web app.
-
 ## Project boundaries
 
 - `apps/web` is the static Next.js PWA project (`output: "export"`, no server of its own) and owns
