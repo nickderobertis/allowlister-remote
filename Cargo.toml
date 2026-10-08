@@ -4,6 +4,7 @@ members = [
   "crates/allowlister-remote-daemon",
   "crates/allowlister-remote-e2e",
   "crates/allowlister-remote-plugin",
+  "crates/allowlister-remote-protocol",
 ]
 resolver = "2"
 

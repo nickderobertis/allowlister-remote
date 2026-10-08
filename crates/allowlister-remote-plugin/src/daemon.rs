@@ -12,7 +12,8 @@
 use allowlister_remote_plugin::{
     flagged_fragments, interpret_decision, tool_input_json, RemoteDecision,
 };
-use serde_json::{json, Value};
+use allowlister_remote_protocol as protocol;
+use serde_json::Value;
 use std::env;
 use std::fs::OpenOptions;
 use std::io::{BufRead, BufReader, Write};
@@ -239,11 +240,7 @@ pub fn run_via_daemon(stream: LocalStream, create_body: Value, summary: &str, cw
     let mut writer = stream.try_clone().expect("clone daemon connection");
     let reader = BufReader::new(stream);
 
-    let _ = writeln!(
-        writer,
-        "{}",
-        json!({ "type": "create", "payload": create_body })
-    );
+    let _ = writeln!(writer, "{}", protocol::plugin_create(&create_body));
     let _ = writer.flush();
 
     let (tx, rx) = mpsc::channel::<Event>();
@@ -281,11 +278,11 @@ pub fn run_via_daemon(stream: LocalStream, create_body: Value, summary: &str, cw
             let Ok(value) = serde_json::from_str::<Value>(&line) else {
                 continue;
             };
-            match value.get("type").and_then(Value::as_str) {
-                Some("ack") => {
+            match protocol::message_kind(&value) {
+                protocol::kind::ACK => {
                     let _ = tx_remote.send(Event::Ack);
                 }
-                Some("decision") => {
+                protocol::kind::DECISION => {
                     if let RemoteDecision::Decided { verdict, reason } = interpret_decision(&line) {
                         let _ = tx_remote.send(Event::Remote { verdict, reason });
                     }
@@ -300,11 +297,7 @@ pub fn run_via_daemon(stream: LocalStream, create_body: Value, summary: &str, cw
         match rx.recv() {
             Ok(Event::Remote { verdict, reason }) => crate::write_response(verdict, reason),
             Ok(Event::Local { verdict, reason }) => {
-                let _ = writeln!(
-                    writer,
-                    "{}",
-                    json!({ "type": "decision", "verdict": verdict, "reason": reason })
-                );
+                let _ = writeln!(writer, "{}", protocol::local_decision(verdict, &reason));
                 let _ = writer.flush();
                 // Wait briefly for the daemon's ack so the broker has dismissed the
                 // web prompt before we exit, then settle with the local verdict.

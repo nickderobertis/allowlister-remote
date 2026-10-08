@@ -3,7 +3,11 @@
   "projectType": "application",
   "root": "crates/allowlister-remote-broker",
   "sourceRoot": "crates/allowlister-remote-broker/src",
-  "tags": ["scope:broker", "type:service", "lang:rust"],
+  "tags": [
+    "scope:broker",
+    "type:service",
+    "lang:rust"
+  ],
   "targets": {
     "format": {
       "executor": "nx:run-commands",
@@ -46,7 +50,9 @@
         "command": "cargo build -p allowlister-remote-broker",
         "cwd": "."
       },
-      "outputs": ["{workspaceRoot}/target/debug/allowlister-remote-broker"],
+      "outputs": [
+        "{workspaceRoot}/target/debug/allowlister-remote-broker"
+      ],
       "cache": false
     },
     "bench": {
@@ -65,5 +71,8 @@
       },
       "cache": false
     }
-  }
+  },
+  "implicitDependencies": [
+    "allowlister-remote-protocol"
+  ]
 }

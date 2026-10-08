@@ -1,0 +1,18 @@
+[package]
+name = "allowlister-remote-protocol"
+# Placeholder like every crate here: never published on its own; the binaries
+# that link it carry the release version stamped from the tag.
+version = "0.0.0"
+edition = "2021"
+publish = false
+repository = "https://github.com/nickderobertis/allowlister-remote"
+
+# The protocol-v3 wire contract between the plugin, daemon, broker and PWA: the
+# one authoritative definition of every JSON envelope. It depends on no crate in
+# this workspace (it is `type:contract`; the consumers depend on it).
+[lib]
+name = "allowlister_remote_protocol"
+path = "src/lib.rs"
+
+[dependencies]
+serde_json = "1"

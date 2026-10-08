@@ -39,13 +39,14 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
+use allowlister_remote_protocol as protocol;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::State;
 use axum::response::Response;
 use axum::routing::get;
 use axum::Router;
 use futures_util::{SinkExt, StreamExt};
-use serde_json::{json, Value};
+use serde_json::Value;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 
 /// Which side of the mediation a connection is on. Determines which messages it
@@ -114,29 +115,29 @@ pub type SharedBroker = Arc<Broker>;
 /// The dispatch key of an inbound frame: its `type`, or `""` when absent. Pure;
 /// the first thing `on_message` does to route a frame.
 pub fn message_kind(message: &Value) -> &str {
-    message.get("type").and_then(Value::as_str).unwrap_or("")
+    protocol::message_kind(message)
 }
 
 /// Wire envelope announcing a new pending request to PWAs. Pure: the
 /// per-`create` serialization the broker fans out to every subscriber.
 pub fn added_message(request: &Value) -> String {
-    json!({ "type": "added", "request": request }).to_string()
+    protocol::added(request).to_string()
 }
 
 /// Wire envelope telling PWAs to dismiss a resolved request. Pure.
 pub fn resolved_message(id: &str) -> String {
-    json!({ "type": "resolved", "requestId": id }).to_string()
+    protocol::resolved(id).to_string()
 }
 
 /// Wire envelope routing a web decision back to the owning daemon. Pure.
 pub fn decision_message(id: &str, verdict: &str, reason: &str) -> String {
-    json!({ "type": "decision", "requestId": id, "verdict": verdict, "reason": reason }).to_string()
+    protocol::decision(id, verdict, reason).to_string()
 }
 
 /// Wire envelope of the current pending set sent to a newly-subscribed PWA.
 /// Pure: the snapshot serialization, which grows with the pending count.
 pub fn snapshot_message(requests: &[&Value]) -> String {
-    json!({ "type": "snapshot", "requests": requests }).to_string()
+    protocol::snapshot(requests).to_string()
 }
 
 /// Build the axum router. Split out from `main` so integration tests can serve
@@ -223,43 +224,35 @@ impl Broker {
     pub fn on_message(&self, conn: u64, role: Role, message: Value) {
         let kind = message_kind(&message);
         match (role, kind) {
-            (Role::Daemon, "create") => {
-                if let Some(request) = message.get("request") {
+            (Role::Daemon, protocol::kind::CREATE) => {
+                if let Some(request) = message.get(protocol::REQUEST) {
                     self.create(conn, request.clone());
                 }
             }
-            (_, "decision") => {
-                if let Some(id) = message.get("requestId").and_then(Value::as_str) {
-                    let verdict = message
-                        .get("verdict")
-                        .and_then(Value::as_str)
+            (_, protocol::kind::DECISION) => {
+                if let Some(id) = protocol::str_field(&message, protocol::REQUEST_ID) {
+                    let verdict = protocol::str_field(&message, protocol::VERDICT)
                         .unwrap_or("")
                         .to_string();
-                    let reason = message
-                        .get("reason")
-                        .and_then(Value::as_str)
+                    let reason = protocol::str_field(&message, protocol::REASON)
                         .unwrap_or("")
                         .to_string();
                     self.resolve(id, Some((verdict, reason)), role == Role::Daemon);
                 }
             }
-            (Role::Daemon, "withdraw") => {
-                if let Some(id) = message.get("requestId").and_then(Value::as_str) {
+            (Role::Daemon, protocol::kind::WITHDRAW) => {
+                if let Some(id) = protocol::str_field(&message, protocol::REQUEST_ID) {
                     self.resolve(id, None, true);
                 }
             }
-            (Role::Pwa, "subscribe") => self.send_snapshot(conn),
+            (Role::Pwa, protocol::kind::SUBSCRIBE) => self.send_snapshot(conn),
             _ => {}
         }
     }
 
     /// A daemon opened a request: record ownership and fan it out to every PWA.
     fn create(&self, owner: u64, request: Value) {
-        let Some(id) = request
-            .get("id")
-            .and_then(Value::as_str)
-            .map(str::to_string)
-        else {
+        let Some(id) = protocol::str_field(&request, protocol::ID).map(str::to_string) else {
             return; // a request without an id cannot be routed or dismissed
         };
         let mut inner = self.inner.lock().unwrap();

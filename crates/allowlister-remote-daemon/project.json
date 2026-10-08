@@ -3,7 +3,11 @@
   "projectType": "application",
   "root": "crates/allowlister-remote-daemon",
   "sourceRoot": "crates/allowlister-remote-daemon/src",
-  "tags": ["scope:daemon", "type:service", "lang:rust"],
+  "tags": [
+    "scope:daemon",
+    "type:service",
+    "lang:rust"
+  ],
   "targets": {
     "format": {
       "executor": "nx:run-commands",
@@ -46,7 +50,9 @@
         "command": "cargo build -p allowlister-remote-daemon",
         "cwd": "."
       },
-      "outputs": ["{workspaceRoot}/target/debug/allowlister-remote-daemon"],
+      "outputs": [
+        "{workspaceRoot}/target/debug/allowlister-remote-daemon"
+      ],
       "cache": false
     },
     "bench": {
@@ -65,5 +71,9 @@
       },
       "cache": false
     }
-  }
+  },
+  "implicitDependencies": [
+    "allowlister-remote-protocol",
+    "allowlister-remote-broker"
+  ]
 }

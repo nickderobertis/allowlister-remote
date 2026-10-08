@@ -15,6 +15,8 @@ name = "allowlister-remote-broker"
 path = "src/main.rs"
 
 [dependencies]
+# The protocol-v3 wire contract: every envelope is built and parsed through it.
+allowlister-remote-protocol = { path = "../allowlister-remote-protocol" }
 # axum's built-in WebSocket support is the high-performance, bidirectional
 # transport for both broker edges (service worker <-> broker, daemon <-> broker).
 axum = { version = "0.8", default-features = false, features = ["ws", "tokio", "http1"] }

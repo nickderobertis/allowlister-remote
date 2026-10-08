@@ -15,6 +15,7 @@ dependencies = [
 name = "allowlister-remote-broker"
 version = "0.0.0"
 dependencies = [
+ "allowlister-remote-protocol",
  "axum",
  "criterion",
  "futures-util",
@@ -30,6 +31,7 @@ name = "allowlister-remote-daemon"
 version = "0.0.0"
 dependencies = [
  "allowlister-remote-broker",
+ "allowlister-remote-protocol",
  "axum",
  "criterion",
  "futures-util",
@@ -59,8 +61,16 @@ dependencies = [
 name = "allowlister-remote-plugin"
 version = "0.0.0"
 dependencies = [
+ "allowlister-remote-protocol",
  "criterion",
  "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "allowlister-remote-protocol"
+version = "0.0.0"
+dependencies = [
  "serde_json",
 ]
 

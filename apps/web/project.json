@@ -117,6 +117,7 @@
   "implicitDependencies": [
     "allowlister-remote-plugin",
     "allowlister-remote-broker",
-    "allowlister-remote-daemon"
+    "allowlister-remote-daemon",
+    "allowlister-remote-protocol"
   ]
 }

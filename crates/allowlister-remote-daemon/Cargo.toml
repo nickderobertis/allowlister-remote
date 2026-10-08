@@ -14,6 +14,8 @@ name = "allowlister-remote-daemon"
 path = "src/main.rs"
 
 [dependencies]
+# The protocol-v3 wire contract: every envelope is built and parsed through it.
+allowlister-remote-protocol = { path = "../allowlister-remote-protocol" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "sync", "time", "signal"] }
 # WebSocket client to the broker. rustls + ring handles `wss://` without
 # OpenSSL, so the static musl release binary builds with just the musl C

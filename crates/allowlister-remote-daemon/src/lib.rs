@@ -32,8 +32,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use allowlister_remote_protocol as protocol;
 use futures_util::{SinkExt, StreamExt};
-use serde_json::{json, Value};
+use serde_json::Value;
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use tokio_tungstenite::tungstenite::Message;
@@ -330,13 +331,10 @@ fn route_decision(routes: &Routes, text: &str) {
 /// measured by the protocol benches that exercise this.
 pub fn decision_target(text: &str) -> Option<String> {
     let value: Value = serde_json::from_str(text).ok()?;
-    if value.get("type").and_then(Value::as_str) != Some("decision") {
+    if protocol::message_kind(&value) != protocol::kind::DECISION {
         return None;
     }
-    value
-        .get("requestId")
-        .and_then(Value::as_str)
-        .map(str::to_string)
+    protocol::str_field(&value, protocol::REQUEST_ID).map(str::to_string)
 }
 
 /// Build the broker `create` envelope from a plugin's parsed `create` message,
@@ -345,14 +343,8 @@ pub fn decision_target(text: &str) -> Option<String> {
 /// deterministic function of its inputs — exactly the per-gated-command work the
 /// daemon does between reading the plugin's line and sending it upstream.
 pub fn build_create_msg(create: &Value, id: &str) -> String {
-    let mut request = match create.get("payload").cloned() {
-        Some(Value::Object(map)) => Value::Object(map),
-        other => json!({ "payload": other }),
-    };
-    if let Value::Object(map) = &mut request {
-        map.insert("id".to_string(), json!(id));
-    }
-    json!({ "type": "create", "request": request }).to_string()
+    let request = protocol::request_with_id(create.get(protocol::PAYLOAD), id);
+    protocol::broker_create(&request).to_string()
 }
 
 /// Handle one plugin connection: register its request with the broker, then race
@@ -372,7 +364,7 @@ where
     let Ok(create) = serde_json::from_str::<Value>(&first) else {
         return;
     };
-    if create.get("type").and_then(Value::as_str) != Some("create") {
+    if protocol::message_kind(&create) != protocol::kind::CREATE {
         return;
     }
 
@@ -404,10 +396,11 @@ where
                 match line {
                     Ok(Some(raw)) => {
                         if let Some((verdict, reason)) = local_decision(&raw) {
-                            let _ = broker_tx.send(json!({
-                                "type":"decision","requestId":id,"verdict":verdict,"reason":reason
-                            }).to_string());
-                            let _ = write_half.write_all(b"{\"type\":\"ack\"}\n").await;
+                            let _ = broker_tx
+                                .send(protocol::decision(&id, &verdict, &reason).to_string());
+                            let _ = write_half
+                                .write_all(format!("{}\n", protocol::ack()).as_bytes())
+                                .await;
                             break;
                         }
                         // Unrecognized line: ignore and keep waiting.
@@ -415,7 +408,7 @@ where
                     // EOF: the plugin process exited before any decision. Withdraw
                     // the request so the web app stops showing a dead prompt.
                     _ => {
-                        let _ = broker_tx.send(json!({ "type":"withdraw","requestId":id }).to_string());
+                        let _ = broker_tx.send(protocol::withdraw(&id).to_string());
                         break;
                     }
                 }
@@ -432,13 +425,11 @@ where
 /// it upstream.
 pub fn local_decision(raw: &str) -> Option<(String, String)> {
     let value: Value = serde_json::from_str(raw).ok()?;
-    if value.get("type").and_then(Value::as_str) != Some("decision") {
+    if protocol::message_kind(&value) != protocol::kind::DECISION {
         return None;
     }
-    let verdict = value.get("verdict").and_then(Value::as_str)?.to_string();
-    let reason = value
-        .get("reason")
-        .and_then(Value::as_str)
+    let verdict = protocol::str_field(&value, protocol::VERDICT)?.to_string();
+    let reason = protocol::str_field(&value, protocol::REASON)
         .unwrap_or("")
         .to_string();
     Some((verdict, reason))

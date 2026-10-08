@@ -71,5 +71,8 @@
       },
       "cache": false
     }
-  }
+  },
+  "implicitDependencies": [
+    "allowlister-remote-protocol"
+  ]
 }
