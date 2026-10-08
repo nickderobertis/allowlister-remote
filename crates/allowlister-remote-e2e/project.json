@@ -3,7 +3,23 @@
   "projectType": "application",
   "root": "crates/allowlister-remote-e2e",
   "sourceRoot": "crates/allowlister-remote-e2e/src",
-  "tags": ["scope:e2e", "type:test", "lang:rust"],
+  "tags": [
+    "scope:e2e",
+    "type:test",
+    "lang:rust"
+  ],
+  "implicitDependencies": [
+    "allowlister-remote-broker",
+    "allowlister-remote-daemon",
+    "allowlister-remote-plugin"
+  ],
+  "namedInputs": {
+    "default": [
+      "{projectRoot}/**/*",
+      "sharedGlobals",
+      "rust"
+    ]
+  },
   "targets": {
     "format": {
       "executor": "nx:run-commands",
@@ -36,14 +52,36 @@
     "test": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "cargo test -p allowlister-remote-e2e",
+        "command": "cargo llvm-cov --no-report -p allowlister-remote-e2e",
         "cwd": "."
       },
       "dependsOn": [
-        { "target": "build", "projects": ["allowlister-remote-broker"] },
-        { "target": "build", "projects": ["allowlister-remote-daemon"] },
-        { "target": "build", "projects": ["allowlister-remote-plugin"] }
-      ]
+        {
+          "target": "coverage-clean",
+          "projects": [
+            "workspace"
+          ]
+        },
+        {
+          "target": "build",
+          "projects": [
+            "allowlister-remote-broker"
+          ]
+        },
+        {
+          "target": "build",
+          "projects": [
+            "allowlister-remote-daemon"
+          ]
+        },
+        {
+          "target": "build",
+          "projects": [
+            "allowlister-remote-plugin"
+          ]
+        }
+      ],
+      "cache": false
     }
   }
 }

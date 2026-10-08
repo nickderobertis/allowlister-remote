@@ -57,7 +57,10 @@ fn next_unique() -> u64 {
 /// If any binary is missing (a fresh checkout, or `cargo test -p ...` that only
 /// built this crate's deps), we shell out to `cargo build --bins` for the three
 /// crates so the suite is self-sufficient whether invoked via `cargo test` or
-/// `just`. We never assume the binaries already exist.
+/// `just`. We never assume the binaries already exist. The build targets the
+/// directory this test runs from (`--target-dir`), so a run under a different
+/// target dir — `cargo llvm-cov`'s instrumented `target/llvm-cov-target` — builds
+/// the binaries where it looks for them (instrumented, via the inherited env).
 fn binaries() -> (PathBuf, PathBuf, PathBuf) {
     let exe = std::env::current_exe().expect("locate test executable");
     let debug_dir = exe
@@ -81,7 +84,9 @@ fn binaries() -> (PathBuf, PathBuf, PathBuf) {
                 "-p",
                 "allowlister-remote-plugin",
                 "--bins",
+                "--target-dir",
             ])
+            .arg(debug_dir.parent().expect("<target>/debug has a parent"))
             .stdin(Stdio::null())
             .stdout(Stdio::inherit())
             .stderr(Stdio::inherit())

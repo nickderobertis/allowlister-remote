@@ -13,30 +13,50 @@ setup:
 setup-check:
     @bash scripts/setup-check.sh
 
-check: test
-    if [[ -n "${NX_BASE:-}" ]]; then npx nx affected -t fmt-check lint lint-compiler typecheck build test-e2e --base "$NX_BASE" --head "${NX_HEAD:-HEAD}"; else npx nx affected -t fmt-check lint lint-compiler typecheck build test-e2e --uncommitted; fi
+# The merge base the affected tier keys off. CI exports NX_BASE/NX_HEAD (derived
+# explicitly in check.yml); locally NX_BASE defaults to origin/main, and nx
+# affected compares against the merge base of that ref and HEAD — so a committed
+# branch checks what its commits changed (plus any uncommitted work when NX_HEAD
+# is unset), never an uncommitted-only set. Validate that environment input before
+# anything interpolates it: a git ref or SHA is letters, digits and `. _ / -`.
+_nx_base_input := env_var_or_default("NX_BASE", "origin/main")
+_nx_head_input := env_var_or_default("NX_HEAD", "")
+base := if _nx_base_input =~ '^[A-Za-z0-9._/-]+$' { _nx_base_input } else { error("NX_BASE must be a plain git ref or SHA — letters, digits and . _ / - only; got: " + _nx_base_input) }
+_head_flag := if _nx_head_input == "" { "" } else if _nx_head_input =~ '^[A-Za-z0-9._/-]+$' { " --head=" + _nx_head_input } else { error("NX_HEAD must be a plain git ref or SHA — letters, digits and . _ / - only; got: " + _nx_head_input) }
+_affected := "npx nx affected --base=" + base + _head_flag
+
+# Full quality gate. Defaults to the AFFECTED tier (every target this change can
+# reach, against the merge base above); `just check all` runs the BROADER tier,
+# one sweep over every project. This repo batches releases behind
+# release-please's release PR, so CI runs the sweep on that PR (check.yml) and the
+# affected tier everywhere else. The tier is a flag on this one recipe, never a
+# second gate; a mistyped tier aborts instead of quietly buying the weaker one.
+check tier="affected": (test tier)
+    {{ if tier == "all" { "npx nx run-many" } else if tier == "affected" { _affected } else { error("unknown tier '" + tier + "' — use 'affected' (the default) or 'all'") } }} -t fmt-check lint lint-compiler typecheck build supply-chain test-e2e
     @echo "check: ok"
 
 fmt-check:
-    if [[ -n "${NX_BASE:-}" ]]; then npx nx affected -t fmt-check --base "$NX_BASE" --head "${NX_HEAD:-HEAD}"; else npx nx affected -t fmt-check --uncommitted; fi
+    {{ _affected }} -t fmt-check
 
 format:
-    if [[ -n "${NX_BASE:-}" ]]; then npx nx affected -t format --base "$NX_BASE" --head "${NX_HEAD:-HEAD}"; else npx nx affected -t format --uncommitted; fi
+    {{ _affected }} -t format
 
 lint:
-    if [[ -n "${NX_BASE:-}" ]]; then npx nx affected -t lint --base "$NX_BASE" --head "${NX_HEAD:-HEAD}"; else npx nx affected -t lint --uncommitted; fi
+    {{ _affected }} -t lint
 
 typecheck:
-    if [[ -n "${NX_BASE:-}" ]]; then npx nx affected -t typecheck --base "$NX_BASE" --head "${NX_HEAD:-HEAD}"; else npx nx affected -t typecheck --uncommitted; fi
+    {{ _affected }} -t typecheck
 
-test:
-    if [[ -n "${NX_BASE:-}" ]]; then npx nx affected -t test --base "$NX_BASE" --head "${NX_HEAD:-HEAD}"; else npx nx affected -t test --uncommitted; fi
+# Unit/integration tests plus the repo-level Rust coverage aggregate (the crates'
+# `test` targets write raw profiles; `coverage` merges and enforces the floor).
+test tier="affected":
+    {{ if tier == "all" { "npx nx run-many" } else if tier == "affected" { _affected } else { error("unknown tier '" + tier + "' — use 'affected' (the default) or 'all'") } }} -t test coverage
 
 build:
-    if [[ -n "${NX_BASE:-}" ]]; then npx nx affected -t build --base "$NX_BASE" --head "${NX_HEAD:-HEAD}"; else npx nx affected -t build --uncommitted; fi
+    {{ _affected }} -t build
 
 test-e2e:
-    if [[ -n "${NX_BASE:-}" ]]; then npx nx affected -t test-e2e --base "$NX_BASE" --head "${NX_HEAD:-HEAD}"; else npx nx affected -t test-e2e --uncommitted; fi
+    {{ _affected }} -t test-e2e
 
 dev:
     npx nx run web:dev
@@ -58,10 +78,13 @@ record-terminal-prompts:
     cargo build -p allowlister-remote-plugin --bin allowlister-remote-plugin
     python3 scripts/record-terminal-prompts.py
 
+# Upgrade every ecosystem's dependencies, then re-run the gate as the full sweep:
+# an upgrade can reach any project, so the affected set would understate it.
 upgrade:
     npm update
     npm install
-    @just check
+    cargo update
+    @just check all
 
 # Performance suite (informational — measured, not gated). Each Rust binary has
 # the same two layers over its pure, network-free surface: Criterion timings and

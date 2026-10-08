@@ -3,6 +3,8 @@ name = "allowlister-remote-daemon"
 # Placeholder version; the real version is the release git tag (see plugin crate).
 version = "0.0.0"
 edition = "2021"
+# Shipped as release binaries (GitHub Releases / npm), never to crates.io.
+publish = false
 repository = "https://github.com/nickderobertis/allowlister-remote"
 
 [lib]

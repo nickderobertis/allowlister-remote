@@ -7,7 +7,6 @@
     "apps/web/src/**/*.tsx",
     "apps/web/*.config.ts",
     "apps/web/eslint.config.mjs",
-    "apps/web/playwright.config.ts",
     "apps/web/screenshots/**/*.capture.ts"
   ],
   "project": [

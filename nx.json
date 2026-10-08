@@ -17,17 +17,14 @@
       "{projectRoot}/eslint.config.mjs",
       "{workspaceRoot}/package-lock.json"
     ],
-    "sharedGlobals": [
-      "{workspaceRoot}/package.json",
-      "{workspaceRoot}/package-lock.json",
-      "{workspaceRoot}/nx.json",
+    "sharedGlobals": ["{workspaceRoot}/nx.json"],
+    "node": ["{workspaceRoot}/package.json", "{workspaceRoot}/package-lock.json"],
+    "biome": ["{workspaceRoot}/biome.jsonc"],
+    "rust": [
       "{workspaceRoot}/Cargo.toml",
       "{workspaceRoot}/Cargo.lock",
-      "{workspaceRoot}/.github/workflows/**",
-      "{workspaceRoot}/.release-please-manifest.json",
-      "{workspaceRoot}/gh-secrets.json",
-      "{workspaceRoot}/release-please-config.json",
-      "{workspaceRoot}/scripts/**"
+      "{workspaceRoot}/rust-toolchain.toml",
+      "{workspaceRoot}/.cargo/config.toml"
     ]
   },
   "targetDefaults": {
@@ -37,7 +34,7 @@
     },
     "lint": {
       "cache": true,
-      "inputs": ["default"]
+      "inputs": ["default", "^default"]
     },
     "lint-compiler": {
       "cache": true,
@@ -45,26 +42,32 @@
     },
     "typecheck": {
       "cache": true,
-      "inputs": ["default"]
+      "inputs": ["default", "^default"]
     },
     "test": {
       "cache": true,
-      "inputs": ["default"],
+      "inputs": ["default", "^default"],
       "outputs": ["{projectRoot}/coverage"]
     },
     "build": {
       "cache": true,
-      "inputs": ["production"],
+      "inputs": ["production", "^production"],
       "dependsOn": ["^build"],
       "outputs": ["{projectRoot}/.next", "{workspaceRoot}/target"]
     },
     "test-e2e": {
       "cache": false,
-      "dependsOn": ["build"]
+      "dependsOn": ["build"],
+      "inputs": ["default", "^production"]
     },
     "format": {
       "cache": true,
       "inputs": ["default"]
+    }
+  },
+  "pluginsConfig": {
+    "@nx/js": {
+      "projectsAffectedByDependencyUpdates": "auto"
     }
   }
 }

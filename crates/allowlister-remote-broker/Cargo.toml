@@ -4,6 +4,8 @@ name = "allowlister-remote-broker"
 # injected at publish time. Kept at 0.0.0 so Cargo.toml/Cargo.lock never drift.
 version = "0.0.0"
 edition = "2021"
+# Shipped as release binaries (GitHub Releases / npm), never to crates.io.
+publish = false
 repository = "https://github.com/nickderobertis/allowlister-remote"
 
 [lib]

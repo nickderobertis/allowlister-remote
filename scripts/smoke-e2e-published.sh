@@ -69,6 +69,6 @@ echo "smoke-e2e: daemon resolves to the native binary at $resolved_daemon"
 export ALLOWLISTER_REMOTE_PLUGIN_BIN="$resolved"
 export ALLOWLISTER_REMOTE_DAEMON_BIN="$resolved_daemon"
 echo "smoke-e2e: running Playwright approval flow against the published plugin binary"
-(cd apps/web && npx playwright test --config playwright.config.ts)
+(cd apps/web-e2e && npx playwright test --config playwright.config.ts)
 
 echo "smoke-e2e: ok"

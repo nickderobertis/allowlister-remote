@@ -8,6 +8,17 @@
     "type:cli",
     "lang:rust"
   ],
+  "implicitDependencies": [
+    "allowlister-remote-protocol"
+  ],
+  "namedInputs": {
+    "default": [
+      "{projectRoot}/**/*",
+      "sharedGlobals",
+      "rust",
+      "{workspaceRoot}/apps/web/screenshots/terminal/prompts.json"
+    ]
+  },
   "targets": {
     "format": {
       "executor": "nx:run-commands",
@@ -40,9 +51,18 @@
     "test": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "cargo test -p allowlister-remote-plugin",
+        "command": "cargo llvm-cov --no-report -p allowlister-remote-plugin",
         "cwd": "."
-      }
+      },
+      "dependsOn": [
+        {
+          "target": "coverage-clean",
+          "projects": [
+            "workspace"
+          ]
+        }
+      ],
+      "cache": false
     },
     "build": {
       "executor": "nx:run-commands",
@@ -61,7 +81,15 @@
         "command": "cargo bench --locked -p allowlister-remote-plugin --bench engine",
         "cwd": "."
       },
-      "cache": false
+      "cache": false,
+      "inputs": [
+        "default",
+        "^default",
+        "{workspaceRoot}/.github/workflows/bench.yml",
+        "{workspaceRoot}/scripts/bench.sh",
+        "{workspaceRoot}/scripts/bench-instructions.sh",
+        "{workspaceRoot}/scripts/profile.sh"
+      ]
     },
     "bench-allocs": {
       "executor": "nx:run-commands",
@@ -69,10 +97,15 @@
         "command": "cargo bench --locked --quiet -p allowlister-remote-plugin --bench engine_allocs",
         "cwd": "."
       },
-      "cache": false
+      "cache": false,
+      "inputs": [
+        "default",
+        "^default",
+        "{workspaceRoot}/.github/workflows/bench.yml",
+        "{workspaceRoot}/scripts/bench.sh",
+        "{workspaceRoot}/scripts/bench-instructions.sh",
+        "{workspaceRoot}/scripts/profile.sh"
+      ]
     }
-  },
-  "implicitDependencies": [
-    "allowlister-remote-protocol"
-  ]
+  }
 }

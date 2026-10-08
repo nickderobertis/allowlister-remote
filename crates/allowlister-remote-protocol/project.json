@@ -8,6 +8,13 @@
     "type:contract",
     "lang:rust"
   ],
+  "namedInputs": {
+    "default": [
+      "{projectRoot}/**/*",
+      "sharedGlobals",
+      "rust"
+    ]
+  },
   "targets": {
     "format": {
       "executor": "nx:run-commands",
@@ -40,9 +47,18 @@
     "test": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "cargo test -p allowlister-remote-protocol",
+        "command": "cargo llvm-cov --no-report -p allowlister-remote-protocol",
         "cwd": "."
-      }
+      },
+      "dependsOn": [
+        {
+          "target": "coverage-clean",
+          "projects": [
+            "workspace"
+          ]
+        }
+      ],
+      "cache": false
     },
     "build": {
       "executor": "nx:run-commands",

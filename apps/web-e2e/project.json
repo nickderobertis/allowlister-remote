@@ -1,0 +1,71 @@
+{
+  "name": "web-e2e",
+  "projectType": "application",
+  "root": "apps/web-e2e",
+  "sourceRoot": "apps/web-e2e/specs",
+  "tags": ["scope:web", "type:e2e", "lang:typescript"],
+  "implicitDependencies": [
+    "web",
+    "allowlister-remote-plugin",
+    "allowlister-remote-broker",
+    "allowlister-remote-daemon"
+  ],
+  "namedInputs": {
+    "default": [
+      "{projectRoot}/**/*",
+      "sharedGlobals",
+      "node",
+      "biome",
+      "{workspaceRoot}/scripts/serve-web.mjs"
+    ]
+  },
+  "targets": {
+    "format": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "npx biome check --write apps/web-e2e",
+        "cwd": "."
+      }
+    },
+    "fmt-check": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "npx biome check --formatter-enabled=true --linter-enabled=false apps/web-e2e",
+        "cwd": "."
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "npx biome lint apps/web-e2e",
+        "cwd": "."
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "npx tsc -p apps/web-e2e/tsconfig.json --noEmit",
+        "cwd": "."
+      }
+    },
+    "test-e2e": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "npx playwright test --config playwright.config.ts",
+        "cwd": "apps/web-e2e"
+      },
+      "inputs": ["default", "^production"],
+      "dependsOn": [
+        {
+          "target": "build",
+          "projects": [
+            "web",
+            "allowlister-remote-plugin",
+            "allowlister-remote-broker",
+            "allowlister-remote-daemon"
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -9,20 +9,38 @@ concurrency:
   group: check-${{ github.workflow }}-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
 
+# Least privilege: every job reads the tree and nothing more.
+permissions:
+  contents: read
+
 jobs:
   # PRs run Linux only to keep CI minutes cheap; push to main runs the full
   # cross-platform matrix so macOS/Windows regressions are caught before release.
+  #
+  # Gate tier (see AGENTS.md "Commits, releases, and merging"): releases are
+  # batched behind release-please's release PR, so that PR — and only it — runs
+  # the full sweep (`just check all`); every other PR and every push to main runs
+  # the affected tier. Untrusted event fields reach the shell only through env.
   setup:
     runs-on: ubuntu-latest
     outputs:
       os: ${{ steps.pick.outputs.os }}
+      tier: ${{ steps.pick.outputs.tier }}
     steps:
       - id: pick
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_REF: ${{ github.head_ref }}
         run: |
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
             echo 'os=["ubuntu-latest"]' >> "$GITHUB_OUTPUT"
           else
             echo 'os=["ubuntu-latest","macos-14","windows-latest"]' >> "$GITHUB_OUTPUT"
+          fi
+          if [[ "$EVENT_NAME" == "pull_request" && "$HEAD_REF" == release-please--branches--main* ]]; then
+            echo 'tier=all' >> "$GITHUB_OUTPUT"
+          else
+            echo 'tier=affected' >> "$GITHUB_OUTPUT"
           fi
 
   check:
@@ -33,10 +51,11 @@ jobs:
       fail-fast: false
       matrix:
         os: ${{ fromJSON(needs.setup.outputs.os) }}
-    # The affected lanes (build + nx -t test/test-e2e) finish well inside ~15 min;
-    # cap the job so a wedged test or runner fails fast and is retryable instead
-    # of sitting for the default 6h.
-    timeout-minutes: 30
+    # The affected lanes finish well inside ~20 min and the release PR's full
+    # sweep (every project, Rust coverage included) inside ~35; cap the job so a
+    # wedged test or runner fails fast and is retryable instead of sitting for the
+    # default 6h.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v6
         with:
@@ -52,15 +71,23 @@ jobs:
           # Authenticate the install script's "resolve latest" GitHub API call so
           # shared runner IPs (notably macOS) don't hit the unauthenticated limit.
           GITHUB_TOKEN: ${{ github.token }}
+          RUNNER_OS_NAME: ${{ runner.os }}
         run: |
           curl -fsSL https://raw.githubusercontent.com/nickderobertis/allowlister/main/scripts/install.sh \
             | bash -s -- --bin-dir "$HOME/.allowlister/bin"
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
+          if [[ "$RUNNER_OS_NAME" == "Windows" ]]; then
             cygpath -w "$HOME/.allowlister/bin" >> "$GITHUB_PATH"
           else
             echo "$HOME/.allowlister/bin" >> "$GITHUB_PATH"
           fi
-      - run: rustup component add clippy
+      # The toolchain (stable + rustfmt, clippy, llvm-tools) comes from
+      # rust-toolchain.toml, the single source of truth.
+      - name: Install the Rust toolchain from rust-toolchain.toml
+        run: rustup toolchain install
+      - name: Install coverage and supply-chain tools
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov,cargo-deny,cargo-machete
       - run: just bootstrap
       - name: Install Playwright browser (Linux)
         if: runner.os == 'Linux'
@@ -70,15 +97,20 @@ jobs:
         run: npx playwright install chromium
       - name: Resolve affected base
         shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
         run: |
           # PRs compare against the PR base; pushes against the prior commit. Fall
           # back to the merge-base with origin/main when "before" is unset/zeroed/
           # unreachable (branch creation or force-push), so nx affected never fails
           # to resolve its base.
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            base="${{ github.event.pull_request.base.sha }}"
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            base="$PR_BASE_SHA"
           else
-            base="${{ github.event.before }}"
+            base="$PUSH_BEFORE_SHA"
             zero="0000000000000000000000000000000000000000"
             if [[ -z "$base" || "$base" == "$zero" ]] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
               git fetch --no-tags origin main >/dev/null 2>&1 || true
@@ -86,12 +118,15 @@ jobs:
             fi
           fi
           echo "NX_BASE=$base" >> "$GITHUB_ENV"
-          echo "NX_HEAD=${{ github.sha }}" >> "$GITHUB_ENV"
-      - name: Run affected check
-        run: just check
+          echo "NX_HEAD=$HEAD_SHA" >> "$GITHUB_ENV"
+      - name: Run the gate (affected tier, or the full sweep on the release PR)
+        shell: bash
+        env:
+          TIER: ${{ needs.setup.outputs.tier }}
+        run: just check "$TIER"
 
   # Aggregate context so branch protection can require a single "check" status
-  # regardless of the matrix legs.
+  # regardless of the matrix legs — including the release PR's full sweep.
   check-required:
     name: check
     runs-on: ubuntu-latest
@@ -99,7 +134,9 @@ jobs:
     if: always()
     steps:
       - name: Verify all matrix legs succeeded
-        run: '[ "${{ needs.check.result }}" = "success" ]'
+        env:
+          CHECK_RESULT: ${{ needs.check.result }}
+        run: '[ "$CHECK_RESULT" = "success" ]'
 
   install-smoke:
     runs-on: ubuntu-latest
