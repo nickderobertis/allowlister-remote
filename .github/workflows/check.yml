@@ -9,18 +9,14 @@ concurrency:
   group: check-${{ github.workflow }}-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
 
-# Least privilege: every job reads the tree and nothing more.
 permissions:
   contents: read
 
 jobs:
   # PRs run Linux only to keep CI minutes cheap; push to main runs the full
   # cross-platform matrix so macOS/Windows regressions are caught before release.
-  #
-  # Gate tier (see AGENTS.md "Commits, releases, and merging"): releases are
-  # batched behind release-please's release PR, so that PR — and only it — runs
-  # the full sweep (`just check all`); every other PR and every push to main runs
-  # the affected tier. Untrusted event fields reach the shell only through env.
+  # The gate tier per event is AGENTS.md's release model ("Commits, releases, and
+  # merging"). Untrusted event fields reach the shell only through env.
   setup:
     runs-on: ubuntu-latest
     outputs:

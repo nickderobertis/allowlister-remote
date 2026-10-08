@@ -56,10 +56,16 @@ test tier="affected":
 build:
     {{ _affected }} -t build
 
-# The browser e2e (web-e2e) and the Rust e2e crate; `just test-e2e all` runs them
-# whatever changed.
+# The browser e2e suite (web-e2e); `just test-e2e all` runs it whatever changed.
+# (The Rust e2e crate is a `test` target, run by `just test`.)
 test-e2e tier="affected":
     {{ if tier == "all" { "npx nx run-many" } else if tier == "affected" { _affected } else { error("unknown tier '" + tier + "' — use 'affected' (the default) or 'all'") } }} -t test-e2e
+
+# One filtered browser e2e run, after the same builds: the args go to Playwright,
+# e.g. `just test-e2e-web notifications.spec.ts --project chromium-desktop`.
+[positional-arguments]
+test-e2e-web *args:
+    npx nx run web-e2e:test-e2e -- "$@"
 
 dev:
     npx nx run web:dev
@@ -191,19 +197,23 @@ setup-llmlint:
 
 # LLM-judge lint (llmlint) over the configured set, or the paths passed. Kept out
 # of `check`: it is non-deterministic and needs an authenticated harness.
+[positional-arguments]
 lint-llm *paths:
     @command -v llmlint >/dev/null 2>&1 || { echo "llmlint not installed — run 'just setup-llmlint'"; exit 1; }
-    llmlint {{paths}}
+    llmlint "$@"
 
 # llmlint scoped to the lines this branch changed since it forked from BASE
 # (three-dot/merge-base semantics). This is the blocking `llmlint` PR check.
+[positional-arguments]
 lint-llm-diff base="origin/main" *args:
     @command -v llmlint >/dev/null 2>&1 || { echo "llmlint not installed — run 'just setup-llmlint'"; exit 1; }
-    llmlint --diff --diff-base "{{base}}" {{args}}
+    @[[ "$1" =~ ^[A-Za-z0-9._/-]+$ ]] || { echo "base must be a plain git ref or SHA; got: $1" >&2; exit 2; }
+    llmlint --diff --diff-base "$1" "${@:2}"
 
 # Deterministic llmlint gate — no model call, no credential: config structure,
 # `llmlint: ignore` directives name real rules, edited versioned fragments bumped
 # their `version:`. CI runs it with `--diff-base origin/main` before the model step.
+[positional-arguments]
 lint-llm-validate *args:
     @command -v llmlint >/dev/null 2>&1 || { echo "llmlint not installed — run 'just setup-llmlint'"; exit 1; }
-    llmlint validate {{args}}
+    llmlint validate "$@"

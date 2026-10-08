@@ -21,12 +21,16 @@ _llmlint_handoff() {
   local root launcher
   root="${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
   [ -f "$root/scripts/setup-llmlint.sh" ] || return 0
-  mkdir -p "$root/.dev" 2>/dev/null || return 0
+  if ! mkdir -p "$root/.dev" 2>/dev/null; then
+    printf '[allowlister-remote] llmlint setup skipped: cannot create %s/.dev; fix that path or run `just setup-llmlint`.\n' "$root" >&2
+    return 0
+  fi
   if command -v setsid >/dev/null 2>&1; then
     launcher="setsid"
   elif command -v nohup >/dev/null 2>&1; then
     launcher="nohup"
   else
+    printf '[allowlister-remote] llmlint setup skipped: neither setsid nor nohup is on PATH; run `just setup-llmlint`.\n' >&2
     return 0
   fi
   # shellcheck disable=SC2016 # $1 expands in the child bash, which receives it as an argument.
@@ -40,7 +44,7 @@ _llmlint_handoff() {
     _ "$root" >"$root/.dev/setup-llmlint.log" 2>&1 </dev/null &
   return 0
 }
-trap '_llmlint_handoff || true' EXIT
+trap '_llmlint_handoff || printf "[allowlister-remote] llmlint setup hand-off failed; run \`just setup-llmlint\`.\n" >&2' EXIT
 
 # Skip in this repo's own GitHub Actions CI (jobs provision explicitly). Escape
 # hatch for any other automated context: ALLOWLISTER_SKIP_SETUP.

@@ -199,6 +199,57 @@ async fn local_terminal_decision_relays_up_and_dismisses_web() {
     assert_eq!(ws_recv(&mut pwa).await["type"], "resolved");
 }
 
+/// A local decision whose verdict is not allow/deny is not relayed: the plugin
+/// gets no ack, the web prompt stays up, and a valid decision still goes through.
+#[tokio::test]
+async fn an_invalid_local_verdict_is_not_relayed() {
+    let (base, socket_path) = start_stack().await;
+
+    let mut pwa = connect_async(format!("{base}/ws/pwa")).await.unwrap().0;
+    ws_send(&mut pwa, json!({"type":"subscribe"})).await;
+    assert_eq!(ws_recv(&mut pwa).await["type"], "snapshot");
+
+    let plugin = connect_plugin(&socket_path).await;
+    let (plugin_read, mut plugin_write) = plugin.into_split();
+    let mut plugin_lines = BufReader::new(plugin_read).lines();
+    plugin_write
+        .write_all(
+            b"{\"type\":\"create\",\"payload\":{\"subject\":\"shell\",\"command\":\"make\"}}\n",
+        )
+        .await
+        .unwrap();
+    assert_eq!(ws_recv(&mut pwa).await["type"], "added");
+
+    plugin_write
+        .write_all(b"{\"type\":\"decision\",\"verdict\":\"maybe\",\"reason\":\"?\"}\n")
+        .await
+        .unwrap();
+    assert!(
+        tokio::time::timeout(Duration::from_millis(500), plugin_lines.next_line())
+            .await
+            .is_err(),
+        "an invalid verdict must not be acked"
+    );
+    assert!(
+        tokio::time::timeout(Duration::from_millis(200), pwa.next())
+            .await
+            .is_err(),
+        "an invalid verdict must not dismiss the web prompt"
+    );
+
+    plugin_write
+        .write_all(b"{\"type\":\"decision\",\"verdict\":\"allow\",\"reason\":\"ok\"}\n")
+        .await
+        .unwrap();
+    let ack = tokio::time::timeout(Duration::from_secs(3), plugin_lines.next_line())
+        .await
+        .expect("plugin ack timed out")
+        .unwrap()
+        .unwrap();
+    assert_eq!(serde_json::from_str::<Value>(&ack).unwrap()["type"], "ack");
+    assert_eq!(ws_recv(&mut pwa).await["type"], "resolved");
+}
+
 #[tokio::test]
 async fn plugin_exit_withdraws_the_request_from_web() {
     let (base, socket_path) = start_stack().await;

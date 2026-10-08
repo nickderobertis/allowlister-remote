@@ -42,11 +42,13 @@ function graphShapeError(graph) {
   if (!graph.dependencies || typeof graph.dependencies !== "object")
     return "no `dependencies` object";
   if (Object.keys(graph.nodes).length === 0) return "no projects";
-  const badTags = Object.entries(graph.nodes).find(([, node]) => {
-    const tags = node?.data?.tags ?? [];
+  const badNode = Object.entries(graph.nodes).find(([, node]) => {
+    const tags = node?.data?.tags;
     return !Array.isArray(tags) || tags.some((tag) => typeof tag !== "string");
   });
-  if (badTags) return `${badTags[0]} tags`;
+  if (badNode) return `${badNode[0]} has no tags array`;
+  const missing = Object.keys(graph.nodes).find((name) => !(name in graph.dependencies));
+  if (missing) return `no dependency list for ${missing}`;
   const badDeps = Object.entries(graph.dependencies).find(
     ([, deps]) => !Array.isArray(deps) || deps.some((dep) => typeof dep?.target !== "string"),
   );

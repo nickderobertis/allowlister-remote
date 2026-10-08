@@ -23,7 +23,7 @@ Run the e2e (Chromium only — see below):
 
 ```
 just test-e2e all                                    # full suite
-cd apps/web-e2e && npx playwright test notifications.spec.ts --project chromium-desktop
+just test-e2e-web notifications.spec.ts --project chromium-desktop
 ```
 
 The notification spec sets `test.use({ channel: "chromium" })`: the Notifications

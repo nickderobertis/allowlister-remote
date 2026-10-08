@@ -22,7 +22,29 @@ const swSource = readFileSync(resolve(process.cwd(), "public/sw.js"), "utf8");
 type Frame = Record<string, unknown>;
 type WireFixture = { requestId: string; payload: Frame; frames: Record<string, Frame> };
 
-const loadFixture = (): WireFixture => JSON.parse(readFileSync(FIXTURE_PATH, "utf8"));
+// Narrow a fixture value to a JSON object at runtime rather than asserting it.
+const asFrame = (value: unknown): Frame | undefined =>
+  value !== null && typeof value === "object" && !Array.isArray(value)
+    ? Object.fromEntries(Object.entries(value))
+    : undefined;
+
+// Parse the fixture and check its shape before any check trusts it.
+function loadFixture(): WireFixture {
+  const parsed: unknown = JSON.parse(readFileSync(FIXTURE_PATH, "utf8"));
+  const doc = asFrame(parsed);
+  const payload = asFrame(doc?.payload);
+  const rawFrames = asFrame(doc?.frames);
+  if (typeof doc?.requestId !== "string" || !payload || !rawFrames) {
+    throw new Error(`${FIXTURE_PATH}: expected { requestId, payload, frames }`);
+  }
+  const frames: Record<string, Frame> = {};
+  for (const [name, value] of Object.entries(rawFrames)) {
+    const frame = asFrame(value);
+    if (!frame) throw new Error(`${FIXTURE_PATH}: frame ${name} is not an object`);
+    frames[name] = frame;
+  }
+  return { requestId: doc.requestId, payload, frames };
+}
 
 // How each wire payload field lands on the rendered ApprovalRequest. Every field
 // the fixture's payload carries must be listed, so a new wire field fails here
@@ -40,12 +62,6 @@ const PAYLOAD_TO_REQUEST: Record<string, (request: Frame) => unknown> = {
 };
 
 const same = (a: unknown, b: unknown) => isDeepStrictEqual(a, b);
-
-// Narrow a fixture value to a JSON object at runtime rather than asserting it.
-const asFrame = (value: unknown): Frame | undefined =>
-  value !== null && typeof value === "object" && !Array.isArray(value)
-    ? Object.fromEntries(Object.entries(value))
-    : undefined;
 
 function normalizerDrift(fixture: WireFixture): string[] {
   const drift: string[] = [];

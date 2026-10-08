@@ -1,12 +1,7 @@
 name: llmlint
 
-# The LLM-judge tier — a blocking PR check SEPARATE from the deterministic
-# `check` gate. It judges only the lines this pull request changed (the
-# merge-base diff with main). It REQUIRES the harness credential and fails fast
-# without it: it never no-ops to green, which would report unjudged files as
-# clean. Fork pull requests are gated at the repo level (require approval for
-# fork workflows), not by a skip here. See AGENTS.md ("Commits, releases, and
-# merging") for the secret this job reads.
+# Fork pull requests are gated by the repository's require-approval setting, not
+# by a skip here: the job always needs its credential (see AGENTS.md).
 
 on:
   pull_request:

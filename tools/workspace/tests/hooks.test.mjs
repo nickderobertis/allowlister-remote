@@ -188,6 +188,7 @@ describe("SessionStart hook hands off to setup-llmlint.sh", () => {
     const { dir, marker } = sessionRepo("exit 0");
     const run = runSessionHook(dir, {}, curatedBin(dir, CORE));
     assert.equal(run.status, 0, run.stderr);
+    assert.match(run.stderr, /neither setsid nor nohup is on PATH; run `just setup-llmlint`/);
     assert.ok(!waitFor(marker, 1_000));
   });
 
@@ -197,7 +198,9 @@ describe("SessionStart hook hands off to setup-llmlint.sh", () => {
     assert.equal(runSessionHook(absent.dir, {}).status, 0);
     const blocked = sessionRepo("exit 0");
     writeFileSync(join(blocked.dir, ".dev"), "a file, not a directory");
-    assert.equal(runSessionHook(blocked.dir, {}).status, 0);
+    const run = runSessionHook(blocked.dir, {});
+    assert.equal(run.status, 0);
+    assert.match(run.stderr, /cannot create .*\.dev; fix that path or run `just setup-llmlint`/);
     assert.ok(!waitFor(blocked.marker, 1_000));
   });
 

@@ -64,18 +64,11 @@ follow-ups.
 Use `just`; do not hand-roll equivalent commands.
 
 - `just bootstrap` installs JavaScript dependencies and fetches Rust workspace dependencies.
-- `just check` is the gate's **affected tier**: `nx affected` over formatting, linting
-  (incl. the boundary check), type checking, tests, Rust coverage, supply chain,
-  production builds, and e2e, against the merge base with `origin/main` (CI passes
-  an explicit `NX_BASE`/`NX_HEAD`). `just check all` is the **broader tier**: the
-  same targets over every project (`nx run-many`).
-- `just test` runs every affected project's tests plus the Rust coverage aggregate.
-- `just test-e2e` runs the affected e2e projects (`just test-e2e all` runs every one): the
-  `web-e2e` Playwright suite against the built PWA driving the real broker, daemon, and plugin
-  binaries in desktop and mobile Chromium.
-- Rust targets need `cargo-llvm-cov`, `cargo-deny`, and `cargo-machete` on PATH (CI
-  installs them with `taiki-e/install-action`); the toolchain itself comes from
-  `rust-toolchain.toml`.
+- `just check` is the gate at the **affected tier** (keyed off the merge base with
+  `origin/main`); `just check all` is the **broader tier**, every project. Same targets
+  either way — the tier is a flag, never a second gate.
+- Rust targets need `cargo-llvm-cov`, `cargo-deny`, and `cargo-machete` on PATH; the
+  toolchain comes from `rust-toolchain.toml`.
 - `just dev` delegates to `nx run web:dev`.
 - `just smoke-e2e [version]` builds the app and runs the broker-realtime e2e against the
   plugin package installed from the public npm registry (defaults to the latest version).
@@ -326,11 +319,9 @@ Use `just`; do not hand-roll equivalent commands.
   `release-please--branches--main*` to it, and its failure fails the required `check` context, so
   auto-merge cannot cut a release past a red sweep. Every other PR and every push to `main` runs
   the affected tier.
-- **llmlint tier.** The `llmlint` workflow is a blocking PR check separate from `check`: it
-  installs codex (the primary harness in `oneharness.toml`), reads its credential from the
-  repository secret `OPENAI_API_KEY` (declared in `gh-secrets.json`), runs `just
-  lint-llm-validate --diff-base origin/main`, then judges the diff. Without the secret it fails
-  fast naming it; it never passes unjudged.
+- **llmlint tier.** The `llmlint` PR check is separate from `check` and needs the repository
+  secret `OPENAI_API_KEY` (codex's credential, declared in `gh-secrets.json`); without it the job
+  fails fast naming the secret — it never passes unjudged.
 - GitHub should stay squash-only with auto-merge, branch deletion, required `check`,
   `install-smoke`, `pr-title`, and `Visual docs / visual-docs` checks, linear
   history, conversation resolution, and admin override.
