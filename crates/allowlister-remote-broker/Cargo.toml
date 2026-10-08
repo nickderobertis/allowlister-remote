@@ -53,3 +53,6 @@ harness = false
 [[bench]]
 name = "protocol_allocs"
 harness = false
+
+[lints]
+workspace = true

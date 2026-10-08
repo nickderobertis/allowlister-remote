@@ -18,6 +18,12 @@ edition = "2021"
 repository = "https://github.com/nickderobertis/allowlister-remote"
 publish = false
 
+# Every crate inherits these (`[lints] workspace = true`): a rustc warning is an
+# error in every cargo invocation the gate makes (check, build, llvm-cov tests),
+# not only under clippy's `-D warnings`. Dependencies are capped by cargo.
+[workspace.lints.rust]
+warnings = "deny"
+
 # Dependencies more than one crate declares, resolved once here.
 [workspace.dependencies]
 serde_json = "1.0.150"

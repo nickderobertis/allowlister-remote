@@ -44,3 +44,6 @@ harness = false
 [[bench]]
 name = "engine_allocs"
 harness = false
+
+[lints]
+workspace = true
