@@ -1,8 +1,6 @@
 # AGENTS — `tools/rust-workspace`
 
-The workspace-wide Rust coverage gate (`type:tooling`), kept apart from
-`tools/workspace` and the supply-chain check so only a Rust change re-runs every
-crate's tests.
+The workspace-wide Rust coverage gate (`type:tooling`).
 
 - `coverage` depends on every crate's `test` (each runs `cargo llvm-cov
   --no-report` after `coverage-clean` removes the workspace's previous

@@ -209,4 +209,4 @@ Layer details:
     Rules-of-React violation that makes the compiler silently skip a component (a ref/state write
     during render, impurity, mutation, unsupported syntax, an incompatible library) fails the build.
     Fix the violation rather than papering over it with manual memoization. It runs in CI (`just
-    check`) and the pre-push hook, never pre-commit — see the ESLint note under **Quality and tests**.
+    check`) and the pre-push hook, never pre-commit.
