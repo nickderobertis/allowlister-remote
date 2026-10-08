@@ -166,7 +166,7 @@ Informational, never a gate. The suite:
 
 Layer details:
 
-- Micro-benchmarks (`nx run web:bench`) time the pure `approval.ts` functions a
+- Micro-benchmarks (`just bench-web`) time the pure `approval.ts` functions a
   render calls (`flaggedFragments`/`triggeredRules`/`requestHeadline`/
   `toolParamSummary`); keep React, the DOM, and the network out of any timed loop.
   `*.bench.ts` is excluded from the `*.test.ts` run and coverage.

@@ -1,8 +1,6 @@
 # AGENTS — `apps/web-e2e`
 
-The browser e2e suite (`type:e2e`): Playwright driving the built static PWA
-(`apps/web/out`) against the real broker, daemon and plugin binaries, in desktop
-and mobile Chromium. Run it with `just test-e2e`.
+Playwright, run with `just test-e2e`.
 
 - Keep `web` free of crate edges.
 - `apps/web-e2e` (`type:e2e`) is the browser e2e suite, its own project so a crate change
