@@ -7,3 +7,9 @@
   release binary + `SHA256SUMS` → checksum-verify → install), mirroring `allowlister`'s install
   flow. Its `--version` is stamped from the tag via `ALLOWLISTER_REMOTE_PLUGIN_VERSION`, like the
   plugin and daemon. The listen address comes from `ALLOWLISTER_REMOTE_BROKER_ADDR`.
+- Performance is informational: `just bench-broker` (Criterion, `benches/protocol.rs`) and
+  `just bench-allocs-broker` (allocation tallies, `benches/protocol_allocs.rs`) cover the
+  protocol surface (`message_kind`, `added_message`, `resolved_message`, `decision_message`,
+  `snapshot_message`), the per-message work between its two WebSocket edges;
+  `just profile-broker` samples the Criterion bench via `PROFILE_PKG`/`PROFILE_BENCH` in
+  `scripts/profile.sh`.

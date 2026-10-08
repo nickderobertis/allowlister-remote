@@ -72,19 +72,8 @@ Use `just`; do not hand-roll equivalent commands.
 - `just dev` delegates to `nx run web:dev`.
 - `just smoke-e2e [version]` builds the app and runs the broker-realtime e2e against the
   plugin package installed from the public npm registry (defaults to the latest version).
-- Every Rust binary has informational performance coverage over its pure,
-  network-free surface, in two layers: Criterion micro-benchmarks and a
-  deterministic allocation report. For the **plugin** (the decision path):
-  `just bench` / `just bench-allocs`. For the **daemon** and **broker** (the
-  per-message protocol path — parse, route, and serialize the wire envelopes):
-  `just bench-daemon` / `just bench-allocs-daemon` and `just bench-broker` /
-  `just bench-allocs-broker`. Each crate's benches live in its own `benches/`
-  (`engine`/`engine_allocs` for the plugin, `protocol`/`protocol_allocs` for the
-  daemon and broker) and mirror the same shape: fixtures under `support/`, pure
-  functions only, `harness = false`. `just profile` (samply / callgrind) samples
-  the plugin's hot path; `just profile-daemon` / `just profile-broker` sample the
-  daemon/broker protocol benches (via `PROFILE_PKG`/`PROFILE_BENCH` in
-  `scripts/profile.sh`).
+- Each Rust binary has informational performance suites over its pure, network-free
+  surface: Criterion micro-benchmarks and a deterministic allocation report.
   - The `Performance` workflow (`bench.yml`) runs these on PRs, gated per crate by
     Nx affected (a daemon-only change skips the plugin and broker suites, etc.),
     and posts the numbers as a sticky comment plus a job summary; it is
@@ -94,36 +83,6 @@ Use `just`; do not hand-roll equivalent commands.
 ## Quality and tests
 
 - Keep TypeScript strict and boundary types explicit.
-- **Biome is the linter and formatter.** ESLint exists only for React Compiler rules Biome has no
-  equivalent for (`apps/web/eslint.config.mjs`, the `lint-compiler` target). Keep it that way: do
-  not move general linting to ESLint, and do not enable ESLint rules that overlap Biome — the config
-  already disables `react-hooks/rules-of-hooks` and `exhaustive-deps` because Biome's
-  `useHookAtTopLevel` and `useExhaustiveDependencies` own them. ESLint runs in CI (`just check`) and
-  the pre-push hook only, never pre-commit, so day-to-day commits stay on Biome alone.
-<!-- llmlint: ignore-block[agents_md_durable_and_terse] the create-repo skill allows a coverage floor below 95% only with its documented reason in AGENTS.md, and the approval of this floor required recording the measurement and per-file figures that justify it here, beside the floor. -->
-- **Rust coverage floor: 78% lines, below the skill's 95% default (manager-approved).**
-  Every crate's `test` runs under `cargo llvm-cov --no-report`; `rust-workspace:coverage`
-  enforces `--fail-under-lines 78` over the union. Measured on this tree (cargo-llvm-cov
-  0.8.7, every crate's tests): 79.53% (1192 lines, 244 missed) — broker `lib.rs` 90.64%,
-  broker `main.rs` 0%, daemon `lib.rs` 83.94% (timing-dependent reconnect paths move it a line or two per run), daemon `main.rs` 0%, plugin `daemon.rs`
-  57.52%, plugin `lib.rs` 99.65%, plugin `main.rs` 77.66%, protocol 98.60%. Why it is
-  low: the broker and daemon binaries run only under tests that SIGKILL them, so their
-  profiles never flush, and the plugin's interactive `/dev/tty` and named-pipe paths have
-  no test. Raising it to 95% (graceful shutdown so profiles flush, plus those tests) is
-  an open follow-up; never lower it further.
-<!-- llmlint: ignore-end[agents_md_durable_and_terse] -->
-- The Rust performance suites are informational, not a gate, and each benches its
-  binary's pure, network-free surface so the numbers track what that binary
-  actually runs between its inputs and outputs. The **plugin** benches its decision
-  surface (`triage`, `build_create_body`, `interpret_decision`, `parse_local_input`)
-  — the work between stdin and the daemon. The **daemon** benches its protocol
-  surface (`build_create_msg`, `decision_target`, `local_decision`) — the
-  per-message work between the IPC socket and the broker connection. The **broker**
-  benches its protocol surface (`message_kind`, `added_message`, `resolved_message`,
-  `decision_message`, `snapshot_message`) — the per-message work between its two
-  WebSocket edges. No sockets, TLS, mutexes, or reconnect supervision inside a timed
-  loop. `harness = false` keeps the bench targets out of the test runner and
-  coverage; `--all-targets` lint/typecheck keep them compiling.
 - Approvals have no timeout: the plugin waits indefinitely and presents
   the same request at the local terminal (via `/dev/tty`) and in the web app at the
   same time. Whichever side decides first wins; a local-terminal decision is
@@ -146,17 +105,6 @@ Use `just`; do not hand-roll equivalent commands.
   lane (arm64 on `ubuntu-24.04-arm`), and the pre-push guard classifies the host's
   arch against its own baseline. Regenerate an arch's baseline only on that arch, via
   the hook's Docker capture.
-- After a release publishes, the `e2e-smoke` workflow re-runs the broker-realtime e2e
-  against the plugin package downloaded from the public npm registry (rather than a
-  locally built binary), so the published artifact is verified end-to-end. It first
-  asserts the installed `allowlister-remote-plugin` command resolves directly to the
-  native Rust binary (no Node launcher in the hot path) and that the daemon ships
-  next to it, then points `ALLOWLISTER_REMOTE_PLUGIN_BIN`/`ALLOWLISTER_REMOTE_DAEMON_BIN`
-  at those resolved binaries. The broker is likewise the *published* artifact: the
-  workflow installs it with `scripts/install-broker.sh --version v<tag>` (checksum-verified,
-  the same installer users run), asserts its tag-stamped `--version`, and points
-  `ALLOWLISTER_REMOTE_BROKER_BIN` at it — so all three release binaries plus the install
-  script are verified end-to-end, not built from source.
 
 ## Monorepo projects
 

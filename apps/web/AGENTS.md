@@ -128,13 +128,6 @@ the mouse follows on hover; the focused card is ringed and marked
   coverage at the create-repo default bar and set branches lower so branch coverage stays
   focused on meaningful UI paths.
 - The production build must include the PWA manifest and service worker.
-- E2E lives in its own project, `apps/web-e2e`, so a
-  crate change re-runs it without re-running this project's targets. It must pass in both the `chromium-desktop` and
-  `mobile-chrome` projects. The keyboard affordances must not appear or block
-  interaction in the mobile viewport. The `broker-realtime.spec.ts` suite spawns
-  the real broker, daemon, and plugin binaries and drives the full broker
-  WebSocket path (allow/deny from the inbox and detail view, shell and tool
-  calls); `pwa.spec.ts` and `theme.spec.ts` cover the offline shell and theming.
 
 ## Performance suite
 
@@ -165,6 +158,15 @@ the mouse follows on hover; the focused card is ringed and marked
   across builds.
 - Lighthouse needs Chrome on PATH (or `CHROME_PATH`).
 
+## Linting
+
+- Biome lints and formats this project. ESLint (`eslint.config.mjs`, the `lint-compiler`
+  target) runs only the React Compiler rules Biome has no equivalent for: never move general
+  linting to it or enable a rule Biome owns — the config disables `react-hooks/rules-of-hooks`
+  and `exhaustive-deps` because Biome's `useHookAtTopLevel` and `useExhaustiveDependencies`
+  own them. ESLint runs in CI (`just check`) and the pre-push hook, never pre-commit, so
+  commits stay on Biome alone.
+
 ## React Compiler
 
 - `just render-cost` (`src/perf/render-cost.perf.tsx`) counts the decision-surface
@@ -178,7 +180,6 @@ the mouse follows on hover; the focused card is ringed and marked
   compiler cannot see.
 - **A compiler bailout is a lint error.** The `lint-compiler` target runs ESLint's React
   Compiler rules at error level, so a Rules-of-React violation cannot make the compiler
-  silently skip a component; fix the violation rather than adding manual memoization. It runs
-  in CI (`just check`) and the pre-push hook, never pre-commit.
+  silently skip a component; fix the violation rather than adding manual memoization.
 - Keep the `*.perf.ts`/`*.perf.tsx` harness names: they keep both harnesses out of the
   default `test`/coverage run.

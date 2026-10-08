@@ -10,6 +10,10 @@
   (~9%) is a favorable trade. The crate's `build.rs` instead links the glibc dev binary `-no-pie`,
   which removes load-time relocations there; the static musl build is already relocation-light and
   needs no such flag.
+- Performance is informational: `just bench` (Criterion, `benches/engine.rs`) and
+  `just bench-allocs` (allocation tallies, `benches/engine_allocs.rs`) cover the decision
+  surface (`triage`, `build_create_body`, `interpret_decision`, `parse_local_input`), the
+  work between stdin and the daemon; `just profile` (samply / callgrind) samples it.
 - The plugin additionally has end-to-end **CLI** layers, because it is a
   one-shot process spawned once per gated command, so per-process startup is on
   the hot path: `just bench-cli` (hyperfine latency) and `just bench-instructions`
