@@ -1,0 +1,31 @@
+# Sticky PR comment listing the lint/type-check suppressions a pull request adds
+# (rule, reason, link), so a reviewer sees every bypass without reading the whole
+# diff. A review artifact, not a gate: it skips fork PRs (their read-only token
+# cannot comment), so it must never become a required check — `check` is the gate.
+
+name: notignored
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: notignored-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  suppressions:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The scan diffs against the base branch, which a shallow checkout omits.
+          fetch-depth: 0
+      # Float on the major so suppression-detection fixes arrive without a bump PR;
+      # `@v0` moves only after a release's artifacts publish, so it never resolves to
+      # unreleased work, and a review artifact needs no reproducible pin.
+      - uses: nickderobertis/notignored@v0

@@ -13,6 +13,57 @@
 #     (detached, still non-blocking) instead of being advised.
 set -eu
 
+# Every exit path below hands off to `just setup-llmlint` (the script directly
+# while `just` is not installed yet) through this EXIT trap. The hand-off is
+# detached and best-effort: it never delays or fails session start.
+# shellcheck disable=SC2329 # invoked from the EXIT trap below, which shellcheck does not trace.
+_llmlint_handoff() {
+  local root launcher
+  root="${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+  [ -f "$root/scripts/setup-llmlint.sh" ] || return 0
+  if ! mkdir -p "$root/.dev" 2>/dev/null; then
+    printf '[allowlister-remote] llmlint setup skipped: cannot create %s/.dev; fix that path or run `just setup-llmlint`.\n' "$root" >&2
+    return 0
+  fi
+  if command -v setsid >/dev/null 2>&1; then
+    launcher="setsid"
+  elif command -v nohup >/dev/null 2>&1; then
+    launcher="nohup"
+  else
+    printf '[allowlister-remote] llmlint setup skipped: neither setsid nor nohup is on PATH; run `just setup-llmlint`.\n' >&2
+    return 0
+  fi
+  local log="$root/.dev/setup-llmlint.log"
+  if ! { : >"$log"; } 2>/dev/null; then
+    printf '[allowlister-remote] llmlint setup skipped: cannot write %s; make it writable by you (or delete it) or run `just setup-llmlint`.\n' "$log" >&2
+    return 0
+  fi
+  # The subshell outlives the hook only to record a launcher failure, with its
+  # status and the manual remedy, in the log a developer reads.
+  # shellcheck disable=SC2016 # $1 expands in the child bash, which receives it as an argument.
+  ( "$launcher" bash -c '
+    lock="$1/.dev/setup-llmlint.lock"
+    if { exec 9>"$lock"; } 2>/dev/null; then
+      if command -v flock >/dev/null 2>&1; then
+        flock -n 9; status=$?
+        # 1 is another session holding the lock; anything else is flock failing.
+        [ "$status" -eq 1 ] && exit 0
+        [ "$status" -eq 0 ] || echo "session-setup: flock failed (exit $status); running without the concurrency lock — reinstall util-linux flock (check: flock --version) to restore it" >&2
+      fi
+    else
+      echo "session-setup: cannot open $lock; running without the concurrency lock (make it writable by you, or delete it)" >&2
+    fi
+    if command -v just >/dev/null 2>&1 && [ -f "$1/justfile" ]; then
+      just --justfile "$1/justfile" --working-directory "$1" setup-llmlint && exit 0
+      echo "session-setup: just setup-llmlint failed; running the script directly" >&2
+    fi
+    exec bash "$1/scripts/setup-llmlint.sh"' _ "$root" \
+      || echo "session-setup: llmlint setup via $launcher exited $?; run \`just setup-llmlint\`"
+  ) >"$log" 2>&1 </dev/null &
+  return 0
+}
+trap '_llmlint_handoff || printf "[allowlister-remote] llmlint setup hand-off failed (status %s); run \`just setup-llmlint\`.\n" "$?" >&2' EXIT
+
 # Skip in this repo's own GitHub Actions CI (jobs provision explicitly). Escape
 # hatch for any other automated context: ALLOWLISTER_SKIP_SETUP.
 [ -n "${GITHUB_ACTIONS:-}" ] && exit 0
@@ -65,7 +116,3 @@ printf '%s\n' \
   "and the Playwright browsers (several minutes on a fresh machine)." \
   "Verify anytime with 'just setup-check'."
 exit 0
-
-if [ -x scripts/setup-llmlint.sh ]; then
-  scripts/setup-llmlint.sh
-fi

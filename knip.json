@@ -1,43 +1,26 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
-  "entry": [
-    "apps/web/app/**/*.ts",
-    "apps/web/app/**/*.tsx",
-    "apps/web/src/**/*.ts",
-    "apps/web/src/**/*.tsx",
-    "apps/web/*.config.ts",
-    "apps/web/eslint.config.mjs",
-    "apps/web/playwright.config.ts",
-    "apps/web/screenshots/**/*.capture.ts"
-  ],
-  "project": [
-    "apps/web/**/*.{ts,tsx}"
-  ],
-  "ignore": [
-    "apps/web/next-env.d.ts",
-    "apps/web/.next/**"
-  ],
-  "ignoreWorkspaces": [
-    "packages/allowlister-remote-plugin"
-  ],
-  "ignoreDependencies": [
-    "@playwright/test",
-    "@testing-library/user-event",
-    "class-variance-authority",
-    "clsx",
-    "jsdom",
-    "nx",
-    "tailwind-merge",
-    "chrome-launcher",
-    "lighthouse"
-  ],
-  "ignoreBinaries": [
-    "biome",
-    "knip",
-    "tsc",
-    "vitest",
-    "playwright",
-    "next",
-    "eslint"
-  ]
+  "workspaces": {
+    "apps/web": {
+      "entry": [
+        "app/**/*.{ts,tsx}",
+        "src/**/*.{ts,tsx}",
+        "*.config.ts",
+        "eslint.config.mjs",
+        "screenshots/**/*.capture.ts"
+      ],
+      "project": ["**/*.{ts,tsx}"],
+      "ignore": ["next-env.d.ts", ".next/**"],
+      "ignoreDependencies": [
+        "@playwright/test",
+        "@testing-library/user-event",
+        "class-variance-authority",
+        "clsx",
+        "jsdom",
+        "tailwind-merge"
+      ]
+    }
+  },
+  "ignoreWorkspaces": ["packages/allowlister-remote-plugin"],
+  "ignoreBinaries": ["biome", "knip", "tsc", "vitest", "playwright", "next", "eslint"]
 }

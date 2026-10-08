@@ -69,6 +69,7 @@ echo "smoke-e2e: daemon resolves to the native binary at $resolved_daemon"
 export ALLOWLISTER_REMOTE_PLUGIN_BIN="$resolved"
 export ALLOWLISTER_REMOTE_DAEMON_BIN="$resolved_daemon"
 echo "smoke-e2e: running Playwright approval flow against the published plugin binary"
-(cd apps/web && npx playwright test --config playwright.config.ts)
+# llmlint: ignore[work_goes_through_command_surface] this script is the body of `just smoke-e2e`; it drives Playwright directly because `web-e2e:test-e2e` rebuilds the crates from source, while this smoke must run against the published binaries resolved above.
+(cd apps/web-e2e && npx playwright test --config playwright.config.ts)
 
 echo "smoke-e2e: ok"

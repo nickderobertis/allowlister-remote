@@ -103,7 +103,13 @@ fn main() {
     println!("| added_message | request | {calls} | {bytes} |");
     let (calls, bytes) = measure(|| resolved_message("req_1"));
     println!("| resolved_message | request | {calls} | {bytes} |");
-    let (calls, bytes) = measure(|| decision_message("req_1", "allow", "approved in the web app"));
+    let (calls, bytes) = measure(|| {
+        decision_message(
+            "req_1",
+            allowlister_remote_protocol::Verdict::Allow,
+            "approved in the web app",
+        )
+    });
     println!("| decision_message | request | {calls} | {bytes} |");
     for (n, pending) in &snapshots {
         let refs: Vec<&Value> = pending.iter().collect();

@@ -1,0 +1,9 @@
+# The single source of truth for the Rust toolchain: CI and every local cargo
+# invocation install from this file. Stable, with the strict-gate components
+# (rustfmt, clippy), llvm-tools for the `cargo llvm-cov` coverage gate, and the
+# three release targets publish.yml builds.
+[toolchain]
+channel = "stable"
+profile = "minimal"
+components = ["rustfmt", "clippy", "llvm-tools-preview"]
+targets = ["x86_64-unknown-linux-musl", "aarch64-apple-darwin", "x86_64-pc-windows-msvc"]

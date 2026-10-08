@@ -1,0 +1,271 @@
+{
+  "schema": 1,
+  "shots": [
+    {
+      "name": "empty-state",
+      "toggles": {
+        "theme": "dark",
+        "viewport": "desktop"
+      },
+      "hash": "451a9063d24d0e7d5619e1004c16996e6feda9b93ed4a536e87083c20556bc35"
+    },
+    {
+      "name": "empty-state",
+      "toggles": {
+        "theme": "dark",
+        "viewport": "mobile"
+      },
+      "hash": "da8a1b1cf8e6a7a9c6fe3c2216c06a86c19640f2bce1638766e235a830637f6d"
+    },
+    {
+      "name": "empty-state",
+      "toggles": {
+        "theme": "light",
+        "viewport": "desktop"
+      },
+      "hash": "809183b9a1f0fabf79d3ddd458232731a1160d7a8bc2102ec4833db26188bf80"
+    },
+    {
+      "name": "empty-state",
+      "toggles": {
+        "theme": "light",
+        "viewport": "mobile"
+      },
+      "hash": "fe754a13cd32b2ad94f9dc57036df9de49a234c1ff549ca98f08268a211cbc59"
+    },
+    {
+      "name": "inbox",
+      "toggles": {
+        "theme": "dark",
+        "viewport": "desktop"
+      },
+      "hash": "afe89479bcec2f6b9c793ad8902285973b629e844651f351fa53e92f8f2c7439"
+    },
+    {
+      "name": "inbox",
+      "toggles": {
+        "theme": "dark",
+        "viewport": "mobile"
+      },
+      "hash": "9b799e21280b68f88da061fcf3c154c1b1591cfad4994f344c4597c6ee1571e6"
+    },
+    {
+      "name": "inbox",
+      "toggles": {
+        "theme": "light",
+        "viewport": "desktop"
+      },
+      "hash": "ee99fcc421c2c70a12ec886e4ca0b75df89dc9138a6a51c22ffdb34b2b0f552d"
+    },
+    {
+      "name": "inbox",
+      "toggles": {
+        "theme": "light",
+        "viewport": "mobile"
+      },
+      "hash": "8cd7ac9e224c1b61b0ef949820155be1b92f074fbeed57bbd9f64640ac6c8918"
+    },
+    {
+      "name": "shell-oneoff",
+      "toggles": {
+        "theme": "dark",
+        "viewport": "desktop"
+      },
+      "hash": "1319bc9edaeb48f76f7c18aba59efb552659c1d259c901b05ab802c86ea14b94"
+    },
+    {
+      "name": "shell-oneoff",
+      "toggles": {
+        "theme": "dark",
+        "viewport": "mobile"
+      },
+      "hash": "2d4efb47ca6eb779c64ba92a1545ae22adac5ea7c6511ac1e47d68cf75c63837"
+    },
+    {
+      "name": "shell-oneoff",
+      "toggles": {
+        "theme": "light",
+        "viewport": "desktop"
+      },
+      "hash": "aabfe598492473ff81a8dc5d72daa414ec3e098461c343dcd814b005df104362"
+    },
+    {
+      "name": "shell-oneoff",
+      "toggles": {
+        "theme": "light",
+        "viewport": "mobile"
+      },
+      "hash": "de64bcb725c00f8f162c91352d742e08faa192f71b7cc51665d0508bd2677f4a"
+    },
+    {
+      "name": "shell-script",
+      "toggles": {
+        "theme": "dark",
+        "viewport": "desktop"
+      },
+      "hash": "132c29f70016e0e969686c36e2fa5871d04c8ff58a990656d15fdfda02f17c22"
+    },
+    {
+      "name": "shell-script",
+      "toggles": {
+        "theme": "dark",
+        "viewport": "mobile"
+      },
+      "hash": "2b1d0d6593ed9d7f979330f93efab1ed40e2de3dbd4838f1ccd3d9471bef8f11"
+    },
+    {
+      "name": "shell-script",
+      "toggles": {
+        "theme": "light",
+        "viewport": "desktop"
+      },
+      "hash": "eb9bbba4de70d1a50c62de1e5581ba71c6cb3d77b9c791373d4831f9bc5f2383"
+    },
+    {
+      "name": "shell-script",
+      "toggles": {
+        "theme": "light",
+        "viewport": "mobile"
+      },
+      "hash": "fe8a63dacb6c3590b3a67681a7acc28bf4e67cd65b1072e6a79b5886d3898988"
+    },
+    {
+      "name": "terminal-script",
+      "toggles": {
+        "theme": "dark"
+      },
+      "hash": "3e853be1a7aed4eac6881a3a62bb4605ed3bb5f57d8f1bad0bef947b80737c7e"
+    },
+    {
+      "name": "terminal-script",
+      "toggles": {
+        "theme": "light"
+      },
+      "hash": "f5434ce8352878f5d3539ca45270770e58b1a91ecd07ed17265c9b0a277fd58c"
+    },
+    {
+      "name": "terminal-shell",
+      "toggles": {
+        "theme": "dark"
+      },
+      "hash": "0153ed9f3bf6b87a932970d1da6f467c64ba57ce66646c7768b276629666041b"
+    },
+    {
+      "name": "terminal-shell",
+      "toggles": {
+        "theme": "light"
+      },
+      "hash": "e72212673033fbf4f6cc1ff7f5d6430918e1d5b2e5a160e248be7b0d3c848072"
+    },
+    {
+      "name": "terminal-tool",
+      "toggles": {
+        "theme": "dark"
+      },
+      "hash": "f8875db244fb1ba75d7af989c232880ab7d464a9830ed53900ed4bf3d9b20fbb"
+    },
+    {
+      "name": "terminal-tool",
+      "toggles": {
+        "theme": "light"
+      },
+      "hash": "7152f7a1f5445c823855d0b5836e0c4af289727fa60c904a3c940d28ce814c00"
+    },
+    {
+      "name": "tool-capability",
+      "toggles": {
+        "theme": "dark",
+        "viewport": "desktop"
+      },
+      "hash": "b781863227cfeae25a14e7dbf2038cd1f791b4a251050687e26182d9a28f885b"
+    },
+    {
+      "name": "tool-capability",
+      "toggles": {
+        "theme": "dark",
+        "viewport": "mobile"
+      },
+      "hash": "2b2319c8378e7ebcb34fbcd814df95fa40e49aa9a26e5a47bd4f3216f28b557f"
+    },
+    {
+      "name": "tool-capability",
+      "toggles": {
+        "theme": "light",
+        "viewport": "desktop"
+      },
+      "hash": "e5d6beb66a7725d09354b74d25bd80d3eeef200f4eeb721d0505cae14edfb97d"
+    },
+    {
+      "name": "tool-capability",
+      "toggles": {
+        "theme": "light",
+        "viewport": "mobile"
+      },
+      "hash": "7c783fa0d90c71f9899d149b1cb748c844f89b0ca5e86bbb2639da49249cfa86"
+    },
+    {
+      "name": "tool-formatted",
+      "toggles": {
+        "theme": "dark",
+        "viewport": "desktop"
+      },
+      "hash": "7f29945fda248496185425a7e51c38c937657fda47a701ed99d3a30e171b5144"
+    },
+    {
+      "name": "tool-formatted",
+      "toggles": {
+        "theme": "dark",
+        "viewport": "mobile"
+      },
+      "hash": "243ccf68fd67c5f343a7be8cb48784e398460914d9a5b7e862fac992ea9aa76d"
+    },
+    {
+      "name": "tool-formatted",
+      "toggles": {
+        "theme": "light",
+        "viewport": "desktop"
+      },
+      "hash": "c0ad9c729b0d613f4f1712bc8251a392bd2e33ed02a0a03d570abc5f1f1d9b69"
+    },
+    {
+      "name": "tool-formatted",
+      "toggles": {
+        "theme": "light",
+        "viewport": "mobile"
+      },
+      "hash": "85ec1f76044485608dbe396cf89b8f7812571b1f8d74c7c943934c07a2c90126"
+    },
+    {
+      "name": "tool-json",
+      "toggles": {
+        "theme": "dark",
+        "viewport": "desktop"
+      },
+      "hash": "dffa64ef14cf150c8cd5db7f20596c0ee3612e16485fdffaf5979a5e0e7b2152"
+    },
+    {
+      "name": "tool-json",
+      "toggles": {
+        "theme": "dark",
+        "viewport": "mobile"
+      },
+      "hash": "99d495b8bbe325c8e3c022249097ee0f1366662422303bf42465f10e4b455342"
+    },
+    {
+      "name": "tool-json",
+      "toggles": {
+        "theme": "light",
+        "viewport": "desktop"
+      },
+      "hash": "b77071f98248f2d48c79a9e06c4fd50fce8a4c2f557ab058f7ba17c9ee6129e8"
+    },
+    {
+      "name": "tool-json",
+      "toggles": {
+        "theme": "light",
+        "viewport": "mobile"
+      },
+      "hash": "c36453ee8b8e6f968698920b0dc61c2b376d7f075471b116362d8d1bde6aa173"
+    }
+  ]
+}

@@ -17,13 +17,13 @@ a push server with VAPID) is a separate, not-yet-built follow-up; see the
 | Layer | What it proves | Where |
 | --- | --- | --- |
 | Unit (Vitest, real `sw.js` in a VM) | content build, four-line cap + overflow, actions/tag/data, snapshot-vs-added, focus suppression, resolve-closes, action→`sendDecision`, body→focus/open, socket-down fallback, boot permission request | `src/pwa/service-worker.test.ts`, `src/pwa/register-service-worker.test.tsx` |
-| E2E (Playwright, real broker + daemon + plugin, real browser SW) | the live worker builds the right notification from a **real broker-delivered** request; Chrome accepts and round-trips it (actions + `data.requestId`); a foregrounded inbox suppresses the duplicate; the real `notificationclick` handler decides through the broker and unblocks the waiting plugin; a resolve closes the notification | `apps/web/e2e/notifications.spec.ts` |
+| E2E (Playwright, real broker + daemon + plugin, real browser SW) | the live worker builds the right notification from a **real broker-delivered** request; Chrome accepts and round-trips it (actions + `data.requestId`); a foregrounded inbox suppresses the duplicate; the real `notificationclick` handler decides through the broker and unblocks the waiting plugin; a resolve closes the notification | `apps/web-e2e/specs/notifications.spec.ts` |
 
 Run the e2e (Chromium only — see below):
 
 ```
-npx nx test-e2e web                                  # full suite
-cd apps/web && npx playwright test notifications.spec.ts --project chromium-desktop
+just test-e2e all                                    # full suite
+just test-e2e-web notifications.spec.ts --project chromium-desktop
 ```
 
 The notification spec sets `test.use({ channel: "chromium" })`: the Notifications

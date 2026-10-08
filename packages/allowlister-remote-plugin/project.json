@@ -4,6 +4,9 @@
   "root": "packages/allowlister-remote-plugin",
   "sourceRoot": "packages/allowlister-remote-plugin/bin",
   "tags": ["scope:plugin", "type:npm-package", "lang:javascript"],
+  "namedInputs": {
+    "default": ["{projectRoot}/**/*", "sharedGlobals", "node", "biome"]
+  },
   "targets": {
     "format": {
       "executor": "nx:run-commands",

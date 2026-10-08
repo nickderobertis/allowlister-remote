@@ -3,6 +3,19 @@
 `allowlister-remote` is an Nx monorepo for remote approval of
 allowlister dynamic approval requests.
 
+## Two standing goals on every task
+
+The user's request is the priority, but carry two goals into every task; fold
+either in when it is the lowest-error path to the ask, and surface the rest as
+follow-ups.
+
+1. **Engineer the context for next time.** Realistic end-to-end tests of what
+   the user sees, scripts that automate repeated steps and shrink their output to
+   signal, and terse notes here for what the code does not make obvious.
+2. **Engineer the codebase and environment.** Keep the codebase clean and the
+   environment reproducible (`just bootstrap` from a clean clone), with strict
+   gates and local/CI parity (same checks, same pinned toolchain).
+
 ## Stack and composition
 
 - **Product shape:** Nx monorepo containing a static Next.js PWA plus a Rust
@@ -27,8 +40,17 @@ allowlister dynamic approval requests.
   `nickderobertis/allowlister` ships its CLI — not on npm.
 - **Languages:** TypeScript, React, and Next.js for the app; Rust for the
   allowlister plugin client, daemon, and broker; shell command surface via `just`.
-- **References composed:** `shapes/web-app.md`, `languages/typescript.md`, `ci.md`,
-  `references/releasing.md`, and `references/monorepo.md` from the create-repo skill.
+- **References composed** (create-repo skill, dero-skills v1.47.3): `base.md`,
+  `project-graph.md`, `shapes/web-app.md`, `shapes/react.md`, `shapes/nextjs.md`,
+  `languages/typescript.md`, `languages/rust.md`, `ci.md`, `llmlint.md`, and
+  `releasing.md` (`llmlint.yml` composes the matching rule fragments).
+- **Excluded, and why:** `shapes/cli.md` and `intersections/rust-cli.md` — the
+  Rust binaries are a harness plugin and two long-lived servers shipped as npm
+  carriers and GitHub Release assets (`releasing.md`), not a user-facing CLI with
+  its own install surface; `shapes/library.md` — nothing is published as a
+  library; `languages/bash.md` — shell is limited to helper scripts and hooks, no
+  shell artifact ships; Python, Terraform, asdf-plugin and skills-repo — no such
+  code. No MSRV is promised: the toolchain is the pinned stable channel.
 - **Out of scope (today), and why:** Durable multi-user persistence, broker
   authentication, and push-notification delivery are not yet built; the broker
   holds pending request state in memory and serves any connected daemon/PWA. The
@@ -42,11 +64,11 @@ allowlister dynamic approval requests.
 Use `just`; do not hand-roll equivalent commands.
 
 - `just bootstrap` installs JavaScript dependencies and fetches Rust workspace dependencies.
-- `just check` wraps `nx affected` for formatting, linting, type checking, tests, production builds, and e2e so only affected projects run.
-- `just test` runs the deterministic Vitest suite.
-- `just test-e2e` runs Playwright against the built PWA driving the real broker,
-  daemon, and plugin binaries (the full broker WebSocket path) in desktop and
-  mobile Chromium.
+- `just check` is the gate at the **affected tier** (keyed off the merge base with
+  `origin/main`); `just check all` is the **broader tier**, every project. Same targets
+  either way — the tier is a flag, never a second gate.
+- Rust targets need `cargo-llvm-cov`, `cargo-deny`, and `cargo-machete` on PATH; the
+  toolchain comes from `rust-toolchain.toml`.
 - `just dev` delegates to `nx run web:dev`.
 - `just smoke-e2e [version]` builds the app and runs the broker-realtime e2e against the
   plugin package installed from the public npm registry (defaults to the latest version).
@@ -137,6 +159,22 @@ Use `just`; do not hand-roll equivalent commands.
   bridge (the PWA's only request source, driven through a mocked bridge with raw
   protocol-v3 payloads), and offline behavior. Coverage gates enforce 95% lines/statements, 90% functions, and 80% branches. Line coverage keeps the create-repo default bar while branch coverage stays focused on meaningful UI paths.
 - The production build must include the PWA manifest and service worker.
+<!-- llmlint: ignore-block[agents_md_durable_and_terse] the create-repo skill allows a coverage floor below 95% only with its documented reason in AGENTS.md, and the approval of this floor required recording the measurement and per-file figures that justify it here, beside the floor. -->
+- **Rust coverage floor: 78% lines, below the skill's 95% default (manager-approved).**
+  Every crate's `test` runs under `cargo llvm-cov --no-report`; `rust-workspace:coverage`
+  enforces `--fail-under-lines 78` over the union. Measured on this tree (cargo-llvm-cov
+  0.8.7, every crate's tests): 79.53% (1192 lines, 244 missed) — broker `lib.rs` 90.64%,
+  broker `main.rs` 0%, daemon `lib.rs` 83.94% (timing-dependent reconnect paths move it a line or two per run), daemon `main.rs` 0%, plugin `daemon.rs`
+  57.52%, plugin `lib.rs` 99.65%, plugin `main.rs` 77.66%, protocol 98.60%. Why it is
+  low: the broker and daemon binaries run only under tests that SIGKILL them, so their
+  profiles never flush, and the plugin's interactive `/dev/tty` and named-pipe paths have
+  no test. Raising it to 95% (graceful shutdown so profiles flush, plus those tests) is
+  an open follow-up; never lower it further.
+<!-- llmlint: ignore-end[agents_md_durable_and_terse] -->
+- **Supply chain.** `deny.toml` (advisories, a license allow-list, bans, sources) is
+  enforced by `cargo deny check`, with `cargo machete` for unused dependencies
+  (`rust-supply-chain:supply-chain`). Every ignored advisory and duplicate-version skip carries its
+  reason there.
 - The Rust performance suites are informational, not a gate, and each benches its
   binary's pure, network-free surface so the numbers track what that binary
   actually runs between its inputs and outputs. The **plugin** benches its decision
@@ -170,6 +208,12 @@ Use `just`; do not hand-roll equivalent commands.
   live `local_prompt` still reproduces it, so the gallery can never depict a prompt
   the plugin no longer emits. Terminal shots carry only the `theme` toggle (a
   terminal frame is not responsive), so viewport is a screencomp wildcard.
+- **One baseline and one CI lane per architecture.** `[capture].arches` in
+  `screencomp.toml` lists `x86_64` and `arm64`; each has its own committed digest
+  baseline (`shots/baseline/<arch>.json`) and its own `visual-docs / capture (<arch>)`
+  lane (arm64 on `ubuntu-24.04-arm`), and the pre-push guard classifies the host's
+  arch against its own baseline. Regenerate an arch's baseline only on that arch, via
+  the hook's Docker capture.
 - After a release publishes, the `e2e-smoke` workflow re-runs the broker-realtime e2e
   against the plugin package downloaded from the public npm registry (rather than a
   locally built binary), so the published artifact is verified end-to-end. It first
@@ -185,9 +229,24 @@ Use `just`; do not hand-roll equivalent commands.
 ## Monorepo projects
 
 - `apps/web` is the static Next.js PWA project (`output: "export"`, no server of its own) and owns
-  the browser, UI, and service-worker tests. Its e2e and visual-docs capture serve the built
-  `out/` bundle with the zero-dep `scripts/serve-web.mjs` and seed the broker URL client-side
-  (localStorage) before navigating.
+  the UI and service-worker unit tests and the visual-docs capture (`web:capture`). It has no
+  edge to any crate. It is its own npm workspace package (`apps/web/package.json` declares every
+  dependency the app uses); the root `package.json` keeps only repo tooling (Nx, Biome, knip,
+  the root scripts' Lighthouse deps, `yaml`), and `web-e2e` declares its own.
+- `apps/web-e2e` (`type:e2e`) is the browser e2e suite, its own project so a crate change
+  re-runs it without re-running `web`'s targets; `test-e2e` builds `web` and the three crates
+  first. It and the capture serve the built `out/` bundle with `scripts/serve-web.mjs` and seed
+  the broker URL client-side (localStorage) before navigating.
+- `crates/allowlister-remote-protocol` (`type:contract`) is the protocol-v3 wire contract's one
+  source: the plugin, daemon, and broker build and parse every envelope through it, and its
+  `wire/protocol-v3.json` (captured from the pre-contract tree) pins the bytes. Drift checks:
+  `tests/wire_golden.rs` (Rust) and `apps/web/src/protocol-contract.test.ts` (the web app's
+  restatements). It depends on no consumer.
+- `tools/workspace` (`type:tooling`) holds the repo-level JavaScript checks (the tag-based
+  boundary check; the workflow, graph and hook tests) and owns the root `scripts/` and config
+  files. `tools/rust-workspace` holds the Rust `coverage` aggregate and
+  `tools/rust-supply-chain` the `supply-chain` gate, each its own project so a workflow, hook or
+  policy edit never re-runs every crate's tests.
 - `crates/allowlister-remote-plugin` is the Rust allowlister dynamic plugin client. It is
   network-free: it hands each request to the daemon over local IPC and never opens a socket
   to the broker itself.
@@ -202,8 +261,8 @@ Use `just`; do not hand-roll equivalent commands.
   release binary + `SHA256SUMS` → checksum-verify → install), mirroring `allowlister`'s install
   flow. Its `--version` is stamped from the tag via `ALLOWLISTER_REMOTE_PLUGIN_VERSION`, like the
   plugin and daemon. The listen address comes from `ALLOWLISTER_REMOTE_BROKER_ADDR`.
-- `crates/allowlister-remote-e2e` drives the real broker + daemon + plugin binaries through the
-  full chain.
+- `crates/allowlister-remote-e2e` (`type:test`) drives the real broker + daemon + plugin binaries
+  through the full chain.
 - `packages/allowlister-remote-web` is the npm package for the static PWA: a zero-dependency static
   server (`bin/serve.mjs`) plus the prebuilt `out/` bundle vendored into `static/` at release time.
   Run it with `npx @nickderobertis/allowlister-remote-web` (or host the assets anywhere) and point
@@ -234,9 +293,17 @@ Use `just`; do not hand-roll equivalent commands.
   release/deploy validation: `install-smoke`, `e2e-smoke`, and `publish` build and verify **every**
   package every time on purpose, because lockstep `vX.Y.Z` versioning ships them as a set.
 - Each project's targets touch only its own files: per-crate Rust commands are `-p <crate>` scoped,
-  and a project's `biome`/`tsc` paths never reach into another project's tree. Shared root files
-  (`scripts/`, root configs) have exactly one owner (`web`); `packages/**` is owned solely by
-  `allowlister-remote-plugin-npm`. This keeps an affected run from re-checking another package.
+  and a project's `biome`/`tsc` paths never reach into another project's tree; `packages/**` is
+  owned solely by `allowlister-remote-plugin-npm`.
+- **A root file reaches exactly the projects that read it.** `sharedGlobals` is `nx.json` alone;
+  each project lists the workspace files its targets read (`rust`/`node`/`biome` named inputs,
+  plus e.g. `scripts/serve-web.mjs` for `web` and `web-e2e`, `bench.yml` for the bench targets,
+  every workflow and root script for `workspace`). When a target starts reading a new root file, add it to that
+  project's inputs, or a change to it will skip the check. `tools/workspace/tests/affected.test.mjs`
+  pins representative selections.
+- **Boundaries are enforced from tags** (`workspace:lint`): nothing depends on a `type:e2e` or
+  `type:test` project, a `type:contract` project depends only on contracts, and every Cargo path
+  dependency between crates must also be a declared Nx `implicitDependencies` edge.
 
 ## Commits, releases, and merging
 
@@ -253,6 +320,14 @@ Use `just`; do not hand-roll equivalent commands.
   release binary (plugin, daemon, **and** broker) and every npm package uses, so `--version`
   matches the npm/release version across the board.
 - After the required checks (`check`, `install-smoke`, `pr-title`, and `Visual docs / visual-docs`) pass, Release Please opens or updates a release PR with `RELEASE_TOKEN` and turns on squash **auto-merge**, so the PR merges itself once required checks pass — no manual click. Merging tags `vX.Y.Z`, which fires `publish.yml`. That tag build does three things, all stamped from the tag: (1) it builds the plugin, daemon, and **broker** for all three platforms and attaches them — with `SHA256SUMS` — to the **GitHub Release** (the broker's only distribution channel, consumed by `scripts/install-broker.sh`); (2) it stages and publishes the per-platform native npm packages followed by the parent `@nickderobertis/allowlister-remote-plugin` (which depends on them) with `NPM_TOKEN`; and (3) in a parallel `web-publish` job it builds the static PWA export, stages it into `@nickderobertis/allowlister-remote-web`, and publishes that package. The web package has no native binaries and no dependency on the plugin packages, so it publishes independently.
+- **Release model and sweep placement.** Releases are batched: merges to `main` accumulate in
+  release-please's release PR, and merging that PR is what cuts the release. So the full sweep
+  (`just check all`) runs on the release PR — `check.yml` routes a PR whose head is
+  `release-please--branches--main*` to it, and its failure fails the required `check` context, so
+  auto-merge cannot cut a release past a red sweep. Every other PR and every push to `main` runs
+  the affected tier.
+- **llmlint tier.** The secret it needs is `OPENAI_API_KEY` (codex, the primary harness). Never
+  add a skip-when-absent path to that job: an unjudged green reports unlinted code as clean.
 - GitHub should stay squash-only with auto-merge, branch deletion, required `check`,
   `install-smoke`, `pr-title`, and `Visual docs / visual-docs` checks, linear
   history, conversation resolution, and admin override.

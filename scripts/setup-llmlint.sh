@@ -40,8 +40,9 @@ set -uo pipefail
 # branch's changes, treats a plain `--diff-base <ref>` as three-dot/merge-base
 # (0.3.15), and ships the deterministic `validate` gate — config structure +
 # `llmlint: ignore` directives + fragment version bumps — that `just
-# lint-llm-validate` runs with no model call (0.3.17).
-readonly LLMLINT_MIN="0.3.17"
+# lint-llm-validate` runs with no model call (0.3.17). The 0.3.23 floor is
+# create-repo's current minimum.
+readonly LLMLINT_MIN="0.3.23"
 readonly BIN_DIR="$HOME/.local/bin"
 
 log() { printf 'setup-llmlint: %s\n' "$*" >&2; }

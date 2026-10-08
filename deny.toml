@@ -1,0 +1,66 @@
+# cargo-deny supply-chain policy, enforced by the `supply-chain` target
+# (`cargo deny check` + `cargo machete`) that `just check` runs.
+
+[graph]
+all-features = false
+
+[advisories]
+# Every RustSec advisory (vulnerability, unmaintained, unsound, yanked) fails the
+# gate unless it is listed here with a reason.
+version = 2
+yanked = "deny"
+ignore = [
+  # rustls-pemfile is archived (unmaintained, not a vulnerability); the daemon's
+  # private-CA loader still uses it. Migrating to rustls-pki-types' PemObject is
+  # a follow-up; remove this entry with that change.
+  { id = "RUSTSEC-2025-0134", reason = "unmaintained only; migration to rustls-pki-types PemObject pending" },
+]
+
+[licenses]
+version = 2
+# Explicit allow-list: the licenses the current dependency tree actually uses.
+# Adding a dependency under any other license fails the gate until it is reviewed.
+allow = [
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "CDLA-Permissive-2.0",
+  "ISC",
+  "MIT",
+  "Unicode-3.0",
+]
+confidence-threshold = 0.9
+
+[licenses.private]
+# The workspace crates are `publish = false` (released as GitHub Release / npm
+# binaries, never to crates.io) and carry no license field of their own.
+ignore = true
+
+[bans]
+# Every duplicate version fails the gate unless skipped here with its reason.
+multiple-versions = "deny"
+wildcards = "deny"
+allow-wildcard-paths = true
+skip = [
+  # axum 0.8's WebSocket support pulls tungstenite 0.29 while the daemon and the
+  # tests still use tokio-tungstenite 0.24; unify when the daemon moves to 0.29.
+  { crate = "tokio-tungstenite@0.24", reason = "daemon/tests on 0.24, axum ws on 0.29" },
+  { crate = "tungstenite@0.24", reason = "daemon/tests on 0.24, axum ws on 0.29" },
+  # tungstenite 0.24 (rand 0.8, thiserror 1) and 0.29 (rand 0.9, thiserror 2)
+  # each bring their own generation of these.
+  { crate = "rand@0.8", reason = "via tungstenite 0.24" },
+  { crate = "rand_chacha@0.3", reason = "via tungstenite 0.24" },
+  { crate = "rand_core@0.6", reason = "via tungstenite 0.24" },
+  { crate = "getrandom@0.2", reason = "via rand_core 0.6 (tungstenite 0.24) and ring" },
+  { crate = "thiserror@1", reason = "via tungstenite 0.24" },
+  { crate = "thiserror-impl@1", reason = "via tungstenite 0.24" },
+  # Upstream crates pin different windows-sys majors (Windows-only targets).
+  { crate = "windows-sys@0.52", reason = "ring pins windows-sys 0.52" },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

@@ -24,6 +24,22 @@ if [ -z "${CI:-}" ]; then
   }
 fi
 
+# llmlint's deterministic validate gate (no model call, no credential): the config
+# parses, every `llmlint: ignore` directive names a configured rule, and edited
+# versioned fragments bumped their `version:`. A local safety net before the
+# blocking `llmlint` CI job; skipped (never blocking) when llmlint is not
+# installed — `just setup-llmlint` installs it.
+if [ -z "${CI:-}" ]; then
+  if command -v llmlint >/dev/null 2>&1; then
+    llmlint validate || {
+      echo "pre-push: llmlint validate failed; fix llmlint.yml or the ignore directive it names" >&2
+      exit 1
+    }
+  else
+    echo "pre-push: llmlint not on PATH; skipping llmlint validate (run 'just setup-llmlint')" >&2
+  fi
+fi
+
 # Detect this machine's arch so the same committed hook works for every developer.
 # It must be one of [capture].arches in screencomp.toml; if not, classify below
 # fails with an explanatory error telling you to add it.

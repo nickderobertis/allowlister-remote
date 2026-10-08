@@ -1,0 +1,190 @@
+{
+  "requestId": "4242-1700000000000000000-0",
+  "payload": {
+    "protocol_version": 3,
+    "subject": "shell",
+    "harness": "claude-code",
+    "session_id": "9f3c1a2b",
+    "cwd": "/repo",
+    "current_verdict": "ask",
+    "current_reason": "ask before merging a PR",
+    "command": "gh pr merge 42",
+    "fragments": [
+      {
+        "display": "gh pr merge 42",
+        "argv": [
+          "gh",
+          "pr",
+          "merge",
+          "42"
+        ],
+        "role": "standalone",
+        "verdict": "ask",
+        "rule": "ask before merging a PR",
+        "reason": "matched rule"
+      }
+    ]
+  },
+  "frames": {
+    "plugin_to_daemon.create": {
+      "payload": {
+        "command": "gh pr merge 42",
+        "current_reason": "ask before merging a PR",
+        "current_verdict": "ask",
+        "cwd": "/repo",
+        "fragments": [
+          {
+            "argv": [
+              "gh",
+              "pr",
+              "merge",
+              "42"
+            ],
+            "display": "gh pr merge 42",
+            "reason": "matched rule",
+            "role": "standalone",
+            "rule": "ask before merging a PR",
+            "verdict": "ask"
+          }
+        ],
+        "harness": "claude-code",
+        "protocol_version": 3,
+        "session_id": "9f3c1a2b",
+        "subject": "shell"
+      },
+      "type": "create"
+    },
+    "plugin_to_daemon.decision": {
+      "reason": "denied at the local terminal",
+      "type": "decision",
+      "verdict": "deny"
+    },
+    "daemon_to_plugin.decision": {
+      "reason": "approved from the web",
+      "requestId": "4242-1700000000000000000-0",
+      "type": "decision",
+      "verdict": "allow"
+    },
+    "daemon_to_plugin.ack": {
+      "type": "ack"
+    },
+    "daemon_to_broker.create": {
+      "request": {
+        "command": "gh pr merge 42",
+        "current_reason": "ask before merging a PR",
+        "current_verdict": "ask",
+        "cwd": "/repo",
+        "fragments": [
+          {
+            "argv": [
+              "gh",
+              "pr",
+              "merge",
+              "42"
+            ],
+            "display": "gh pr merge 42",
+            "reason": "matched rule",
+            "role": "standalone",
+            "rule": "ask before merging a PR",
+            "verdict": "ask"
+          }
+        ],
+        "harness": "claude-code",
+        "id": "4242-1700000000000000000-0",
+        "protocol_version": 3,
+        "session_id": "9f3c1a2b",
+        "subject": "shell"
+      },
+      "type": "create"
+    },
+    "daemon_to_broker.decision": {
+      "reason": "denied at the local terminal",
+      "requestId": "4242-1700000000000000000-0",
+      "type": "decision",
+      "verdict": "deny"
+    },
+    "daemon_to_broker.withdraw": {
+      "requestId": "4242-1700000000000000000-0",
+      "type": "withdraw"
+    },
+    "broker_to_daemon.decision": {
+      "reason": "approved from the web",
+      "requestId": "4242-1700000000000000000-0",
+      "type": "decision",
+      "verdict": "allow"
+    },
+    "pwa_to_broker.subscribe": {
+      "type": "subscribe"
+    },
+    "pwa_to_broker.decision": {
+      "reason": "approved from the web",
+      "requestId": "4242-1700000000000000000-0",
+      "type": "decision",
+      "verdict": "allow"
+    },
+    "broker_to_pwa.snapshot": {
+      "requests": [
+        {
+          "command": "gh pr merge 42",
+          "current_reason": "ask before merging a PR",
+          "current_verdict": "ask",
+          "cwd": "/repo",
+          "fragments": [
+            {
+              "argv": [
+                "gh",
+                "pr",
+                "merge",
+                "42"
+              ],
+              "display": "gh pr merge 42",
+              "reason": "matched rule",
+              "role": "standalone",
+              "rule": "ask before merging a PR",
+              "verdict": "ask"
+            }
+          ],
+          "harness": "claude-code",
+          "id": "4242-1700000000000000000-0",
+          "protocol_version": 3,
+          "session_id": "9f3c1a2b",
+          "subject": "shell"
+        }
+      ],
+      "type": "snapshot"
+    },
+    "broker_to_pwa.added": {
+      "request": {
+        "command": "gh pr merge 42",
+        "current_reason": "ask before merging a PR",
+        "current_verdict": "ask",
+        "cwd": "/repo",
+        "fragments": [
+          {
+            "argv": [
+              "gh",
+              "pr",
+              "merge",
+              "42"
+            ],
+            "display": "gh pr merge 42",
+            "reason": "matched rule",
+            "role": "standalone",
+            "rule": "ask before merging a PR",
+            "verdict": "ask"
+          }
+        ],
+        "harness": "claude-code",
+        "id": "4242-1700000000000000000-0",
+        "protocol_version": 3,
+        "session_id": "9f3c1a2b",
+        "subject": "shell"
+      },
+      "type": "added"
+    },
+    "broker_to_pwa.resolved": {
+      "requestId": "4242-1700000000000000000-0",
+      "type": "resolved"
+    }
+  }
+}

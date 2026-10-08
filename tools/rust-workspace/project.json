@@ -1,0 +1,42 @@
+{
+  "name": "rust-workspace",
+  "projectType": "library",
+  "root": "tools/rust-workspace",
+  "sourceRoot": "tools/rust-workspace",
+  "tags": ["scope:workspace", "type:tooling", "lang:rust"],
+  "namedInputs": {
+    "default": ["{projectRoot}/**/*", "sharedGlobals", "rust", "{workspaceRoot}/crates/**/*"]
+  },
+  "targets": {
+    "coverage-clean": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo llvm-cov clean --workspace",
+        "cwd": "."
+      },
+      "inputs": [],
+      "cache": false
+    },
+    "coverage": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo llvm-cov report --fail-under-lines 78",
+        "cwd": "."
+      },
+      "dependsOn": [
+        {
+          "target": "test",
+          "projects": [
+            "allowlister-remote-broker",
+            "allowlister-remote-daemon",
+            "allowlister-remote-plugin",
+            "allowlister-remote-protocol",
+            "allowlister-remote-e2e"
+          ]
+        }
+      ],
+      "inputs": ["default"],
+      "cache": false
+    }
+  }
+}

@@ -490,6 +490,25 @@ mod tests {
     }
 
     #[test]
+    fn decision_parses_the_protocol_crates_decision_envelope() {
+        // interpret_decision reads `verdict`/`reason` through its own serde struct;
+        // feed it the authoritative envelope so a renamed field fails here.
+        let frame = allowlister_remote_protocol::decision(
+            "id-1",
+            allowlister_remote_protocol::Verdict::Deny,
+            "nope",
+        )
+        .to_string();
+        assert_eq!(
+            interpret_decision(&frame),
+            RemoteDecision::Decided {
+                verdict: "deny",
+                reason: "nope".to_string()
+            }
+        );
+    }
+
+    #[test]
     fn decision_allow_deny_and_invalid() {
         assert_eq!(
             interpret_decision(r#"{"verdict":"deny","reason":"nope"}"#),

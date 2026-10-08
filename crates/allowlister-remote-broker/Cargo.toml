@@ -1,10 +1,11 @@
 [package]
 name = "allowlister-remote-broker"
-# Placeholder, like the plugin crate: the real version is the release git tag,
-# injected at publish time. Kept at 0.0.0 so Cargo.toml/Cargo.lock never drift.
-version = "0.0.0"
-edition = "2021"
-repository = "https://github.com/nickderobertis/allowlister-remote"
+# The 0.0.0 placeholder (see [workspace.package]): the real version is the
+# release git tag, injected at publish time.
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+repository.workspace = true
 
 [lib]
 name = "allowlister_remote_broker"
@@ -15,12 +16,14 @@ name = "allowlister-remote-broker"
 path = "src/main.rs"
 
 [dependencies]
+# The protocol-v3 wire contract: every envelope is built and parsed through it.
+allowlister-remote-protocol = { path = "../allowlister-remote-protocol" }
 # axum's built-in WebSocket support is the high-performance, bidirectional
 # transport for both broker edges (service worker <-> broker, daemon <-> broker).
 axum = { version = "0.8", default-features = false, features = ["ws", "tokio", "http1"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "signal", "time"] }
 futures-util = { version = "0.3", default-features = false, features = ["sink"] }
-serde_json = "1"
+serde_json = { workspace = true }
 # Observable diagnostics gated by RUST_LOG (off by default). The broker is a
 # long-lived server, so the subscriber's startup cost is amortized to nothing and
 # the per-message hot path (the benched protocol functions) never touches tracing.
@@ -50,3 +53,6 @@ harness = false
 [[bench]]
 name = "protocol_allocs"
 harness = false
+
+[lints]
+workspace = true

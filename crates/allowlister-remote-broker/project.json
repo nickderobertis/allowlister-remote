@@ -3,7 +3,21 @@
   "projectType": "application",
   "root": "crates/allowlister-remote-broker",
   "sourceRoot": "crates/allowlister-remote-broker/src",
-  "tags": ["scope:broker", "type:service", "lang:rust"],
+  "tags": [
+    "scope:broker",
+    "type:service",
+    "lang:rust"
+  ],
+  "implicitDependencies": [
+    "allowlister-remote-protocol"
+  ],
+  "namedInputs": {
+    "default": [
+      "{projectRoot}/**/*",
+      "sharedGlobals",
+      "rust"
+    ]
+  },
   "targets": {
     "format": {
       "executor": "nx:run-commands",
@@ -36,9 +50,18 @@
     "test": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "cargo test -p allowlister-remote-broker",
+        "command": "cargo llvm-cov --no-report -p allowlister-remote-broker",
         "cwd": "."
-      }
+      },
+      "dependsOn": [
+        {
+          "target": "coverage-clean",
+          "projects": [
+            "rust-workspace"
+          ]
+        }
+      ],
+      "cache": false
     },
     "build": {
       "executor": "nx:run-commands",
@@ -46,7 +69,9 @@
         "command": "cargo build -p allowlister-remote-broker",
         "cwd": "."
       },
-      "outputs": ["{workspaceRoot}/target/debug/allowlister-remote-broker"],
+      "outputs": [
+        "{workspaceRoot}/target/debug/allowlister-remote-broker"
+      ],
       "cache": false
     },
     "bench": {
@@ -55,7 +80,13 @@
         "command": "cargo bench --locked -p allowlister-remote-broker --bench protocol",
         "cwd": "."
       },
-      "cache": false
+      "cache": false,
+      "inputs": [
+        "default",
+        "^default",
+        "{workspaceRoot}/.github/workflows/bench.yml",
+        "{workspaceRoot}/scripts/profile.sh"
+      ]
     },
     "bench-allocs": {
       "executor": "nx:run-commands",
@@ -63,7 +94,13 @@
         "command": "cargo bench --locked --quiet -p allowlister-remote-broker --bench protocol_allocs",
         "cwd": "."
       },
-      "cache": false
+      "cache": false,
+      "inputs": [
+        "default",
+        "^default",
+        "{workspaceRoot}/.github/workflows/bench.yml",
+        "{workspaceRoot}/scripts/profile.sh"
+      ]
     }
   }
 }

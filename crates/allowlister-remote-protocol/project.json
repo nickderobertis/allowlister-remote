@@ -1,0 +1,71 @@
+{
+  "name": "allowlister-remote-protocol",
+  "projectType": "library",
+  "root": "crates/allowlister-remote-protocol",
+  "sourceRoot": "crates/allowlister-remote-protocol/src",
+  "tags": [
+    "scope:protocol",
+    "type:contract",
+    "lang:rust"
+  ],
+  "namedInputs": {
+    "default": [
+      "{projectRoot}/**/*",
+      "sharedGlobals",
+      "rust"
+    ]
+  },
+  "targets": {
+    "format": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo fmt --manifest-path crates/allowlister-remote-protocol/Cargo.toml",
+        "cwd": "."
+      }
+    },
+    "fmt-check": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo fmt --manifest-path crates/allowlister-remote-protocol/Cargo.toml --check",
+        "cwd": "."
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo clippy -p allowlister-remote-protocol --all-targets -- -D warnings",
+        "cwd": "."
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo check -p allowlister-remote-protocol --all-targets",
+        "cwd": "."
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo llvm-cov --no-report -p allowlister-remote-protocol",
+        "cwd": "."
+      },
+      "dependsOn": [
+        {
+          "target": "coverage-clean",
+          "projects": [
+            "rust-workspace"
+          ]
+        }
+      ],
+      "cache": false
+    },
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo build -p allowlister-remote-protocol",
+        "cwd": "."
+      }
+    }
+  }
+}

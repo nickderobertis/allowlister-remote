@@ -1,0 +1,19 @@
+[package]
+name = "allowlister-remote-protocol"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+# The protocol-v3 wire contract between the plugin, daemon, broker and PWA: the
+# one authoritative definition of every JSON envelope. It depends on no crate in
+# this workspace (it is `type:contract`; the consumers depend on it).
+[lib]
+name = "allowlister_remote_protocol"
+path = "src/lib.rs"
+
+[dependencies]
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

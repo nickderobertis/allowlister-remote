@@ -1,0 +1,81 @@
+{
+  "name": "workspace",
+  "projectType": "library",
+  "root": "tools/workspace",
+  "sourceRoot": "tools/workspace",
+  "tags": ["scope:workspace", "type:tooling", "lang:javascript"],
+  "namedInputs": {
+    "default": [
+      "{projectRoot}/**/*",
+      "sharedGlobals",
+      "node",
+      "biome",
+      "{workspaceRoot}/scripts/**/*",
+      "{workspaceRoot}/.release-please-manifest.json",
+      "{workspaceRoot}/release-please-config.json",
+      "{workspaceRoot}/gh-secrets.json"
+    ],
+    "graph": [
+      "{workspaceRoot}/**/project.json",
+      "{workspaceRoot}/crates/*/Cargo.toml",
+      "{workspaceRoot}/Cargo.toml"
+    ],
+    "repoConfig": [
+      "{workspaceRoot}/.github/workflows/**",
+      "{workspaceRoot}/justfile",
+      "{workspaceRoot}/scripts/session-setup.sh",
+      "{workspaceRoot}/scripts/setup-llmlint.sh",
+      "{workspaceRoot}/.githooks/**",
+      "{workspaceRoot}/llmlint.yml",
+      "{workspaceRoot}/oneharness.toml",
+      "{workspaceRoot}/rust-toolchain.toml",
+      "{workspaceRoot}/screencomp.toml",
+      "{workspaceRoot}/shots/baseline/**"
+    ]
+  },
+  "targets": {
+    "format": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "npx biome check --write tools/workspace scripts package.json package-lock.json nx.json biome.jsonc .release-please-manifest.json release-please-config.json gh-secrets.json",
+        "cwd": "."
+      }
+    },
+    "fmt-check": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "npx biome check --formatter-enabled=true --linter-enabled=false tools/workspace scripts package.json package-lock.json nx.json biome.jsonc .release-please-manifest.json release-please-config.json gh-secrets.json",
+        "cwd": "."
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": [
+          "npx biome lint tools/workspace scripts",
+          "node tools/workspace/check-boundaries.mjs"
+        ],
+        "cwd": ".",
+        "parallel": false
+      },
+      "inputs": ["default", "graph"],
+      "cache": false
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node --test tools/workspace/tests/affected.test.mjs tools/workspace/tests/boundaries.test.mjs tools/workspace/tests/hooks.test.mjs tools/workspace/tests/recipes.test.mjs tools/workspace/tests/workflows.test.mjs",
+        "cwd": "."
+      },
+      "inputs": ["default", "graph", "repoConfig"],
+      "cache": false
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node --check tools/workspace/check-boundaries.mjs",
+        "cwd": "."
+      }
+    }
+  }
+}

@@ -121,7 +121,8 @@ the mouse follows on hover; the focused card is ringed and marked
   path. Cover both the desktop and mobile branches of any keyboard work.
 - Coverage gates (root `CLAUDE.md`): 95% lines/statements, 90% functions, 80%
   branches.
-- E2E (`e2e/`, Playwright) must pass in both the `chromium-desktop` and
+- E2E lives in its own project, `apps/web-e2e` (see its `AGENTS.md`), so a
+  crate change re-runs it without re-running this project's targets. It must pass in both the `chromium-desktop` and
   `mobile-chrome` projects. The keyboard affordances must not appear or block
   interaction in the mobile viewport. The `broker-realtime.spec.ts` suite spawns
   the real broker, daemon, and plugin binaries and drives the full broker

@@ -1,0 +1,28 @@
+{
+  "name": "rust-supply-chain",
+  "projectType": "library",
+  "root": "tools/rust-supply-chain",
+  "sourceRoot": "tools/rust-supply-chain",
+  "tags": ["scope:workspace", "type:tooling", "lang:rust"],
+  "namedInputs": {
+    "default": [
+      "{projectRoot}/**/*",
+      "sharedGlobals",
+      "rust",
+      "{workspaceRoot}/deny.toml",
+      "{workspaceRoot}/crates/*/Cargo.toml"
+    ]
+  },
+  "targets": {
+    "supply-chain": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": ["cargo deny check", "cargo machete"],
+        "cwd": ".",
+        "parallel": false
+      },
+      "inputs": ["default"],
+      "cache": false
+    }
+  }
+}

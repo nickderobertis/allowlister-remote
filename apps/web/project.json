@@ -3,26 +3,38 @@
   "projectType": "application",
   "root": "apps/web",
   "sourceRoot": "apps/web/src",
-  "tags": ["scope:web", "type:app"],
+  "tags": ["scope:web", "type:app", "lang:typescript"],
+  "namedInputs": {
+    "default": [
+      "{projectRoot}/**/*",
+      "sharedGlobals",
+      "node",
+      "biome",
+      "{workspaceRoot}/knip.json",
+      "{workspaceRoot}/scripts/serve-web.mjs",
+      "{workspaceRoot}/scripts/terminal-svg.mjs",
+      "{workspaceRoot}/crates/allowlister-remote-protocol/wire/**"
+    ]
+  },
   "targets": {
     "format": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "npx biome check --write apps/web scripts package.json package-lock.json nx.json biome.jsonc .release-please-manifest.json release-please-config.json gh-secrets.json",
+        "command": "npx biome check --write apps/web",
         "cwd": "."
       }
     },
     "fmt-check": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "npx biome check --formatter-enabled=true --linter-enabled=false apps/web scripts package.json package-lock.json nx.json biome.jsonc .release-please-manifest.json release-please-config.json gh-secrets.json",
+        "command": "npx biome check --formatter-enabled=true --linter-enabled=false apps/web",
         "cwd": "."
       }
     },
     "lint": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "npx biome lint apps/web scripts && npx knip --production",
+        "command": "npx biome lint apps/web && npx knip --production --workspace apps/web",
         "cwd": "."
       }
     },
@@ -53,7 +65,14 @@
         "command": "npx vitest bench --config vitest.config.ts --run --outputJson ../../target/web-perf/bench.json",
         "cwd": "apps/web"
       },
-      "cache": false
+      "cache": false,
+      "inputs": [
+        "default",
+        "{workspaceRoot}/.github/workflows/bench.yml",
+        "{workspaceRoot}/scripts/web-bench-report.mjs",
+        "{workspaceRoot}/scripts/web-bundle-size.mjs",
+        "{workspaceRoot}/scripts/web-lighthouse.mjs"
+      ]
     },
     "render-cost": {
       "executor": "nx:run-commands",
@@ -61,7 +80,15 @@
         "command": "node scripts/web-render-cost.mjs",
         "cwd": "."
       },
-      "cache": false
+      "cache": false,
+      "inputs": [
+        "default",
+        "{workspaceRoot}/.github/workflows/bench.yml",
+        "{workspaceRoot}/scripts/web-bench-report.mjs",
+        "{workspaceRoot}/scripts/web-bundle-size.mjs",
+        "{workspaceRoot}/scripts/web-lighthouse.mjs",
+        "{workspaceRoot}/scripts/web-render-cost.mjs"
+      ]
     },
     "heap": {
       "executor": "nx:run-commands",
@@ -69,7 +96,15 @@
         "command": "node scripts/web-heap.mjs",
         "cwd": "."
       },
-      "cache": false
+      "cache": false,
+      "inputs": [
+        "default",
+        "{workspaceRoot}/.github/workflows/bench.yml",
+        "{workspaceRoot}/scripts/web-bench-report.mjs",
+        "{workspaceRoot}/scripts/web-bundle-size.mjs",
+        "{workspaceRoot}/scripts/web-lighthouse.mjs",
+        "{workspaceRoot}/scripts/web-heap.mjs"
+      ]
     },
     "build": {
       "executor": "nx:run-commands",
@@ -78,24 +113,6 @@
         "cwd": "."
       },
       "cache": false
-    },
-    "test-e2e": {
-      "executor": "nx:run-commands",
-      "options": {
-        "command": "npx playwright test --config playwright.config.ts",
-        "cwd": "apps/web"
-      },
-      "dependsOn": [
-        "build",
-        {
-          "target": "build",
-          "projects": [
-            "allowlister-remote-plugin",
-            "allowlister-remote-broker",
-            "allowlister-remote-daemon"
-          ]
-        }
-      ]
     },
     "capture": {
       "executor": "nx:run-commands",
@@ -113,10 +130,5 @@
         "cwd": "."
       }
     }
-  },
-  "implicitDependencies": [
-    "allowlister-remote-plugin",
-    "allowlister-remote-broker",
-    "allowlister-remote-daemon"
-  ]
+  }
 }
