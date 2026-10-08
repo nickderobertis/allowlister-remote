@@ -163,8 +163,8 @@ Use `just`; do not hand-roll equivalent commands.
 - **Rust coverage floor: 78% lines, below the skill's 95% default (manager-approved).**
   Every crate's `test` runs under `cargo llvm-cov --no-report`; `rust-workspace:coverage`
   enforces `--fail-under-lines 78` over the union. Measured on this tree (cargo-llvm-cov
-  0.8.7, every crate's tests): 79.45% (1192 lines, 245 missed) — broker `lib.rs` 90.64%,
-  broker `main.rs` 0%, daemon `lib.rs` 83.53%, daemon `main.rs` 0%, plugin `daemon.rs`
+  0.8.7, every crate's tests): 79.53% (1192 lines, 244 missed) — broker `lib.rs` 90.64%,
+  broker `main.rs` 0%, daemon `lib.rs` 83.94% (timing-dependent reconnect paths move it a line or two per run), daemon `main.rs` 0%, plugin `daemon.rs`
   57.52%, plugin `lib.rs` 99.65%, plugin `main.rs` 77.66%, protocol 98.60%. Why it is
   low: the broker and daemon binaries run only under tests that SIGKILL them, so their
   profiles never flush, and the plugin's interactive `/dev/tty` and named-pipe paths have
