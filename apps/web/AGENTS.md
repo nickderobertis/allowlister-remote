@@ -171,19 +171,14 @@ Informational, never a gate. The suite:
 
 Layer details:
 
-- **Micro-benchmarks** (`src/perf/*.bench.ts`, `nx run web:bench` /
-  `just bench-web`): Vitest benchmarks of the pure, render-free decision surface
-  in `approval.ts` (the `flaggedFragments`/`triggeredRules`/`requestHeadline`/
-  `toolParamSummary` functions). Keep React, the DOM, and the
-  network out of any timed loop — bench the same pure functions a render calls,
-  not components. `*.bench.ts` is excluded from the `*.test.ts` run and coverage.
-- **Bundle size** (`scripts/web-bundle-size.mjs` / `just bundle-size`): the
-  deterministic, trustworthy delta layer — gzip + raw of the client JS/CSS under
-  `.next/static`, aggregated by stable category (Turbopack content-hashes the
-  filenames, so only category totals are comparable across builds).
-- **Lighthouse** (`scripts/web-lighthouse.mjs` / `just lighthouse`): a runtime
-  audit of the built app shell; wall-clock and noise-prone, so informational
-  only. Needs Chrome on PATH (or `CHROME_PATH`).
+- Micro-benchmarks (`nx run web:bench`) time the pure `approval.ts` functions a
+  render calls (`flaggedFragments`/`triggeredRules`/`requestHeadline`/
+  `toolParamSummary`); keep React, the DOM, and the network out of any timed loop.
+  `*.bench.ts` is excluded from the `*.test.ts` run and coverage.
+- Bundle size reads the client JS/CSS under `.next/static` by stable category:
+  Turbopack content-hashes the filenames, so only category totals are comparable
+  across builds.
+- Lighthouse needs Chrome on PATH (or `CHROME_PATH`).
 
 ## React Compiler
 
