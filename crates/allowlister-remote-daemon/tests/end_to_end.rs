@@ -230,11 +230,19 @@ async fn an_invalid_local_verdict_is_not_relayed() {
             .is_err(),
         "an invalid verdict must not be acked"
     );
+    // Keepalive pings may arrive; only a text frame would be a dismissal.
+    let dismissal = tokio::time::timeout(Duration::from_millis(300), async {
+        while let Some(Ok(message)) = pwa.next().await {
+            if let Message::Text(text) = message {
+                return Some(text);
+            }
+        }
+        None
+    })
+    .await;
     assert!(
-        tokio::time::timeout(Duration::from_millis(200), pwa.next())
-            .await
-            .is_err(),
-        "an invalid verdict must not dismiss the web prompt"
+        dismissal.is_err(),
+        "an invalid verdict must not dismiss the web prompt: {dismissal:?}"
     );
 
     plugin_write

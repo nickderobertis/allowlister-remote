@@ -8,6 +8,20 @@ members = [
 ]
 resolver = "2"
 
+# Metadata every crate inherits. `version` is the 0.0.0 placeholder: the shipped
+# binaries' version is the release tag, stamped at build time
+# (ALLOWLISTER_REMOTE_PLUGIN_VERSION), so Cargo.toml/Cargo.lock never drift. No
+# crate is published to crates.io.
+[workspace.package]
+version = "0.0.0"
+edition = "2021"
+repository = "https://github.com/nickderobertis/allowlister-remote"
+publish = false
+
+# Dependencies more than one crate declares, resolved once here.
+[workspace.dependencies]
+serde_json = "1.0.150"
+
 # Small, fast-starting release binary: thin LTO + a single codegen unit for
 # cross-function inlining, stripped symbols, and abort-on-panic to drop the
 # unwinding tables. Profiles live at the workspace root because cargo only

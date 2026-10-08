@@ -1,12 +1,11 @@
 [package]
 name = "allowlister-remote-broker"
-# Placeholder, like the plugin crate: the real version is the release git tag,
-# injected at publish time. Kept at 0.0.0 so Cargo.toml/Cargo.lock never drift.
-version = "0.0.0"
-edition = "2021"
-# Shipped as release binaries (GitHub Releases / npm), never to crates.io.
-publish = false
-repository = "https://github.com/nickderobertis/allowlister-remote"
+# The 0.0.0 placeholder (see [workspace.package]): the real version is the
+# release git tag, injected at publish time.
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+repository.workspace = true
 
 [lib]
 name = "allowlister_remote_broker"
@@ -24,7 +23,7 @@ allowlister-remote-protocol = { path = "../allowlister-remote-protocol" }
 axum = { version = "0.8", default-features = false, features = ["ws", "tokio", "http1"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "signal", "time"] }
 futures-util = { version = "0.3", default-features = false, features = ["sink"] }
-serde_json = "1"
+serde_json = { workspace = true }
 # Observable diagnostics gated by RUST_LOG (off by default). The broker is a
 # long-lived server, so the subscriber's startup cost is amortized to nothing and
 # the per-message hot path (the benched protocol functions) never touches tracing.
