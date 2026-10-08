@@ -25,5 +25,7 @@ jobs:
         with:
           # The scan diffs against the base branch, which a shallow checkout omits.
           fetch-depth: 0
-      # Floating major: follows each published 0.x release.
+      # Float on the major so suppression-detection fixes arrive without a bump PR;
+      # `@v0` moves only after a release's artifacts publish, so it never resolves to
+      # unreleased work, and a review artifact needs no reproducible pin.
       - uses: nickderobertis/notignored@v0
