@@ -112,10 +112,6 @@ Use `just`; do not hand-roll equivalent commands.
   no test. Raising it to 95% (graceful shutdown so profiles flush, plus those tests) is
   an open follow-up; never lower it further.
 <!-- llmlint: ignore-end[agents_md_durable_and_terse] -->
-- **Supply chain.** `deny.toml` (advisories, a license allow-list, bans, sources) is
-  enforced by `cargo deny check`, with `cargo machete` for unused dependencies
-  (`rust-supply-chain:supply-chain`). Every ignored advisory and duplicate-version skip carries its
-  reason there.
 - The Rust performance suites are informational, not a gate, and each benches its
   binary's pure, network-free surface so the numbers track what that binary
   actually runs between its inputs and outputs. The **plugin** benches its decision
