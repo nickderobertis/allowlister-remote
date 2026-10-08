@@ -165,15 +165,13 @@ the mouse follows on hover; the focused card is ringed and marked
 
 ## React Compiler
 
-`reactCompiler: true` (`next.config.ts`) auto-memoizes every component and hook at build
-time.
-
 - `just render-cost` (`src/perf/render-cost.perf.tsx`) counts the decision-surface
   recomputations per interaction without vs with the compiler. `@vitejs/plugin-react`
   compiles JSX with oxc, not Babel, so `vitest.render-cost.config.ts` loads the compiler
   through `@rolldown/plugin-babel` (gated on `REACT_COMPILER=1`) to match the production build.
-- **Do not hand-write `useMemo`/`useCallback`/`React.memo` for performance**: the compiler
-  already memoizes, so manual caching is redundant; prefer plain derived values and inline
+- **Do not hand-write `useMemo`/`useCallback`/`React.memo` for performance**:
+  `reactCompiler: true` (`next.config.ts`) already memoizes every component and hook at
+  build time, so manual caching is redundant; prefer plain derived values and inline
   handlers. Use `useMemo` only when correctness needs a referentially stable value the
   compiler cannot see.
 - **A compiler bailout is a lint error.** The `lint-compiler` target runs ESLint's React
