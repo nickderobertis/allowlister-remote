@@ -148,19 +148,12 @@ the mouse follows on hover; the focused card is ringed and marked
   are the deterministic, trustworthy deltas (the web counterpart of the plugin's cachegrind
   instruction counts and allocation tallies); the Vitest and Lighthouse numbers are absolute and
   noise-prone, so treat small deltas with caution.
-- The PWA's **memory** layer is the web analogue of the Rust binaries' allocation reports (`just
-  bench-allocs`): `just heap` runs the heap-footprint harness
-  (`apps/web/src/perf/heap.perf.ts`), which measures memory the deterministic way — a structural
-  walk of the retained object graph (object/array/string counts and string length), not
-  `process.memoryUsage()`, so the base-vs-PR delta is reproducible. JS exposes no allocation hook
-  the way a custom global allocator does in Rust, so it weighs what stays reachable: the per-inbox-card
-  decision surface (charted against script length), plus an **inbox retention/leak check** —
-  it folds a realistic broker event stream (snapshot → many `added` → resolve every one) through the
-  real inbox reducers (`apps/web/src/inbox.ts`, the pure `applySnapshot`/`applyAdded`/`applyResolved`
-  App uses) and asserts the retained graph returns to the empty baseline, since the PWA is the one
-  long-lived web component and holds the inbox for the whole session. The harness file is kept out of
-  the default `test`/coverage run by its `*.perf.ts` name and runs under its own
-  `vitest.heap.config.ts`.
+- **Heap** (`just heap`, `src/perf/heap.perf.ts` under its own `vitest.heap.config.ts`) is
+  the memory analogue of the Rust allocation reports. JS has no allocation hook, so it
+  weighs the retained object graph structurally, never `process.memoryUsage()`, which keeps
+  the base-vs-PR delta reproducible. It covers the per-card decision surface and asserts the
+  real `src/inbox.ts` reducers return to the empty baseline once every request resolves: the
+  PWA holds the inbox for the whole session, so a leak there grows without bound.
 - Micro-benchmarks (`just bench-web`) time the pure `approval.ts` functions a
   render calls (`flaggedFragments`/`triggeredRules`/`requestHeadline`/
   `toolParamSummary`); keep React, the DOM, and the network out of any timed loop.
@@ -172,26 +165,20 @@ the mouse follows on hover; the focused card is ringed and marked
 
 ## React Compiler
 
-- The PWA enables **React Compiler** (`reactCompiler: true` in `apps/web/next.config.ts`,
-  via `babel-plugin-react-compiler`): it auto-memoizes components/hooks at build time, so a
-  re-render from state that does not touch a subtree skips it and each card's decision-surface
-  work is cached across renders where its request is unchanged. The render-cost harness
-  (`apps/web/src/perf/render-cost.perf.tsx`, run by `just render-cost`) is the render-side
-  analogue of the plugin's instruction counts: it renders the real `<App>` over an inbox and
-  counts how many decision-surface calls each interaction recomputes without the compiler vs
-  with it (the deterministic delta). `@vitejs/plugin-react` transforms JSX with oxc, not Babel,
-  so the harness wires the compiler through `@rolldown/plugin-babel` + `reactCompilerPreset`
-  (`apps/web/vitest.render-cost.config.ts`, gated on `REACT_COMPILER=1`) to match the production
-  build. The harness file is kept out of the default `test`/coverage run (its name is `*.perf.tsx`,
-  not `*.test.tsx`).
-  - **Do not hand-write `useMemo`/`useCallback`/`React.memo` for performance.** The compiler
-    auto-memoizes every component and hook value at build time, so manual caching is redundant
-    here — leave it out, and prefer plain derived values and inline handlers. (Reach for `useMemo`
-    only on the rare occasion you need a *referentially stable value for correctness*, e.g. a
-    dependency the compiler cannot see, not as an optimization.)
-  - **A compiler bailout is a lint error.** The `lint-compiler` target (`nx run web:lint-compiler`,
-    cached on the web `.ts`/`.tsx` sources) runs ESLint's React Compiler rules at error level, so a
-    Rules-of-React violation that makes the compiler silently skip a component (a ref/state write
-    during render, impurity, mutation, unsupported syntax, an incompatible library) fails the build.
-    Fix the violation rather than papering over it with manual memoization. It runs in CI (`just
-    check`) and the pre-push hook, never pre-commit.
+`reactCompiler: true` (`next.config.ts`) auto-memoizes every component and hook at build
+time.
+
+- `just render-cost` (`src/perf/render-cost.perf.tsx`) counts the decision-surface
+  recomputations per interaction without vs with the compiler. `@vitejs/plugin-react`
+  compiles JSX with oxc, not Babel, so `vitest.render-cost.config.ts` loads the compiler
+  through `@rolldown/plugin-babel` (gated on `REACT_COMPILER=1`) to match the production build.
+- **Do not hand-write `useMemo`/`useCallback`/`React.memo` for performance**: the compiler
+  already memoizes, so manual caching is redundant; prefer plain derived values and inline
+  handlers. Use `useMemo` only when correctness needs a referentially stable value the
+  compiler cannot see.
+- **A compiler bailout is a lint error.** The `lint-compiler` target runs ESLint's React
+  Compiler rules at error level, so a Rules-of-React violation cannot make the compiler
+  silently skip a component; fix the violation rather than adding manual memoization. It runs
+  in CI (`just check`) and the pre-push hook, never pre-commit.
+- Keep the `*.perf.ts`/`*.perf.tsx` harness names: they keep both harnesses out of the
+  default `test`/coverage run.
