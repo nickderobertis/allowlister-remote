@@ -124,6 +124,24 @@ describe("check-boundaries.mjs CLI", () => {
     }
   });
 
+  it("rejects malformed dependency records with a shape error, not a crash", () => {
+    const dir = mkdtempSync(join(tmpdir(), "boundaries-"));
+    try {
+      const file = join(dir, "graph.json");
+      const malformed = graph([]);
+      malformed.dependencies.web = [null, { target: 7 }];
+      writeFileSync(file, JSON.stringify({ graph: malformed }));
+      mkdirSync(join(dir, "crates"));
+      const result = spawnSync("node", [script, "--graph", file, "--workspace", dir], {
+        encoding: "utf8",
+      });
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, /web dependencies are not a list of \{ target \} records/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("rejects an edge onto a project the graph does not declare", () => {
     const dir = mkdtempSync(join(tmpdir(), "boundaries-"));
     try {

@@ -41,7 +41,7 @@ _llmlint_handoff() {
     if { exec 9>"$lock"; } 2>/dev/null; then
       if command -v flock >/dev/null 2>&1; then flock -n 9 || exit 0; fi
     else
-      echo "session-setup: cannot open $lock; running without the concurrency lock" >&2
+      echo "session-setup: cannot open $lock; running without the concurrency lock (make it writable by you, or delete it)" >&2
     fi
     if command -v just >/dev/null 2>&1 && [ -f "$1/justfile" ]; then
       just --justfile "$1/justfile" --working-directory "$1" setup-llmlint && exit 0
@@ -90,7 +90,6 @@ if [ -n "${ALLOWLISTER_AUTO_SETUP:-}" ]; then
   mkdir -p .dev
   launcher="nohup"
   command -v setsid >/dev/null 2>&1 && launcher="setsid"
-  # shellcheck disable=SC2016 # $1/$2 expand in the child bash, which receives them as arguments.
   "$launcher" bash -c 'exec 9>.dev/setup.lock; flock -n 9 || exit 0; exec bash scripts/setup.sh' \
     >.dev/setup.log 2>&1 </dev/null &
   printf '%s\n' \

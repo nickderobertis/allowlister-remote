@@ -47,22 +47,22 @@ function graphShapeError(graph) {
     return !Array.isArray(tags) || tags.some((tag) => typeof tag !== "string");
   });
   if (badNode) return `${badNode[0]} has no tags array`;
-  const missing = Object.keys(graph.nodes).find((name) => !(name in graph.dependencies));
-  if (missing) return `no dependency list for ${missing}`;
-  const unknown = Object.keys(graph.dependencies).find(
-    (name) => !(name in graph.nodes) && !name.startsWith("npm:"),
-  );
-  if (unknown) return `dependencies listed for unknown project ${unknown}`;
-  const isKnown = (name) => name in graph.nodes || name.startsWith("npm:");
-  const dangling = Object.values(graph.dependencies)
-    .flat()
-    .find((dep) => !isKnown(dep.target));
-  if (dangling)
-    return `${dangling.source ?? "a project"} depends on unknown project ${dangling.target}`;
+  // Shape of every dependency list first, so the membership checks below can
+  // read `target` safely.
   const badDeps = Object.entries(graph.dependencies).find(
     ([, deps]) => !Array.isArray(deps) || deps.some((dep) => typeof dep?.target !== "string"),
   );
-  return badDeps ? `${badDeps[0]} dependencies` : undefined;
+  if (badDeps) return `${badDeps[0]} dependencies are not a list of { target } records`;
+  const missing = Object.keys(graph.nodes).find((name) => !(name in graph.dependencies));
+  if (missing) return `no dependency list for ${missing}`;
+  const isKnown = (name) => name in graph.nodes || name.startsWith("npm:");
+  const unknown = Object.keys(graph.dependencies).find((name) => !isKnown(name));
+  if (unknown) return `dependencies listed for unknown project ${unknown}`;
+  for (const [source, deps] of Object.entries(graph.dependencies)) {
+    const dangling = deps.find((dep) => !isKnown(dep.target));
+    if (dangling) return `${source} depends on unknown project ${dangling.target}`;
+  }
+  return undefined;
 }
 
 function validateGraph(graph, source) {
