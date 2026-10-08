@@ -1,8 +1,8 @@
 # AGENTS — `tools/rust-supply-chain`
 
-The Rust supply-chain gate (`type:tooling`): `cargo deny check` against the root
-`deny.toml`, then `cargo machete`. Its own project so a policy edit selects only
-this check, not every crate's tests.
-
+- `tools/rust-supply-chain` (`type:tooling`) holds the `supply-chain` gate:
+  `cargo deny check` enforces the root `deny.toml` (advisories, a license
+  allow-list, bans, sources), then `cargo machete` flags unused dependencies. It is
+  its own project so a policy edit never re-runs every crate's tests.
 - Every advisory ignore and duplicate-version skip in `deny.toml` carries its
   reason; remove an entry as soon as its cause is gone.

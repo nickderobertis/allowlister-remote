@@ -21,7 +21,7 @@ const nx = (args) => {
 const affected = (file) =>
   new Set(JSON.parse(nx(["show", "projects", "--affected", `--files=${file}`, "--json"])));
 
-const RUST = [
+const RUST_CRATES = [
   "allowlister-remote-plugin",
   "allowlister-remote-broker",
   "allowlister-remote-daemon",
@@ -54,14 +54,14 @@ describe("affected selection", () => {
       ],
     });
     assertSelection("crates/allowlister-remote-protocol/src/lib.rs", {
-      includes: RUST,
+      includes: RUST_CRATES,
       excludes: ["web", "allowlister-remote-plugin-npm"],
     });
   });
 
   it("the protocol fixture also selects web, whose contract test reads it", () => {
     assertSelection("crates/allowlister-remote-protocol/wire/protocol-v3.json", {
-      includes: ["web", ...RUST],
+      includes: ["web", ...RUST_CRATES],
     });
   });
 
@@ -79,14 +79,17 @@ describe("affected selection", () => {
   });
 
   it("a script selects each project that reads it and leaves the rest", () => {
-    assertSelection("scripts/serve-web.mjs", { includes: ["web", "web-e2e"], excludes: RUST });
+    assertSelection("scripts/serve-web.mjs", {
+      includes: ["web", "web-e2e"],
+      excludes: RUST_CRATES,
+    });
     assertSelection("scripts/bench.sh", {
       includes: ["allowlister-remote-plugin"],
       excludes: ["web", "allowlister-remote-broker", "allowlister-remote-plugin-npm"],
     });
     assertSelection("scripts/stage-npm-package.mjs", {
       includes: ["workspace"],
-      excludes: ["web", "web-e2e", ...RUST],
+      excludes: ["web", "web-e2e", ...RUST_CRATES],
     });
     assert.deepEqual([...affected("justfile")], ["workspace"]);
   });
@@ -97,7 +100,7 @@ describe("affected selection", () => {
 
   it("a workflow or hook edit never selects the Rust coverage aggregate", () => {
     for (const file of [".github/workflows/check.yml", "scripts/session-setup.sh", "justfile"]) {
-      assertSelection(file, { excludes: ["rust-workspace", ...RUST] });
+      assertSelection(file, { excludes: ["rust-workspace", ...RUST_CRATES] });
     }
   });
 });
@@ -131,9 +134,9 @@ describe("task ordering", () => {
     const graph = taskGraph("rust-workspace:coverage");
     assert.deepEqual(
       new Set(graph.dependencies["rust-workspace:coverage"]),
-      new Set(RUST.map((crate) => `${crate}:test`)),
+      new Set(RUST_CRATES.map((crate) => `${crate}:test`)),
     );
-    for (const crate of RUST) {
+    for (const crate of RUST_CRATES) {
       assert.ok(
         graph.dependencies[`${crate}:test`].includes("rust-workspace:coverage-clean"),
         crate,

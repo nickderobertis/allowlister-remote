@@ -1,9 +1,12 @@
 # AGENTS — `apps/web`
 
-The Next.js PWA project — a **fully static export** (`output: "export"`, no
-server of its own). It owns the browser UI and the browser/route/UI tests.
-Root-level guidance lives in the repo `CLAUDE.md`; this file documents conventions
-specific to the web app.
+## Project boundaries
+
+- `apps/web` is the static Next.js PWA project (`output: "export"`, no server of its own) and owns
+  the UI and service-worker unit tests and the visual-docs capture (`web:capture`). It has no
+  edge to any crate. It is its own npm workspace package (`apps/web/package.json` declares every
+  dependency the app uses); the root `package.json` keeps only repo tooling (Nx, Biome, knip,
+  the root scripts' Lighthouse deps, `yaml`), and `web-e2e` declares its own.
 
 ## Structure & imports
 
@@ -119,34 +122,59 @@ the mouse follows on hover; the focused card is ringed and marked
   `src/test/setup.ts` mocks `matchMedia` (defaulting to desktop) and
   `scrollIntoView`; a test flips `matchMedia` to assert the mobile no-keyboard
   path. Cover both the desktop and mobile branches of any keyboard work.
-- Coverage gates (root `CLAUDE.md`): 95% lines/statements, 90% functions, 80%
-  branches.
-- E2E lives in its own project, `apps/web-e2e` (see its `AGENTS.md`), so a
-  crate change re-runs it without re-running this project's targets. It must pass in both the `chromium-desktop` and
-  `mobile-chrome` projects. The keyboard affordances must not appear or block
-  interaction in the mobile viewport. The `broker-realtime.spec.ts` suite spawns
-  the real broker, daemon, and plugin binaries and drives the full broker
-  WebSocket path (allow/deny from the inbox and detail view, shell and tool
-  calls); `pwa.spec.ts` and `theme.spec.ts` cover the offline shell and theming.
+- Tests cover the approval decision flow, request summarization, the broker
+  bridge (the PWA's only request source, driven through a mocked bridge with raw
+  protocol-v3 payloads), and offline behavior. The `vitest.config.ts` gates keep line
+  coverage at the create-repo default bar and set branches lower so branch coverage stays
+  focused on meaningful UI paths.
+- The production build must include the PWA manifest and service worker.
 
 ## Performance suite
 
-Informational, never a gate (root `CLAUDE.md`). Three layers mirror the Rust
-plugin's bench suite:
+- The suite is informational, never a required check: the `Performance` workflow's `web` job
+  runs it on PRs that affect web and posts a sticky comment plus job summary. Bundle size,
+  render cost and heap are the deterministic deltas (the web counterpart of the plugin's
+  instruction counts and allocation tallies); Vitest and Lighthouse numbers are absolute and
+  noisy, so distrust small deltas.
+- **Heap** (`just heap`, `src/perf/heap.perf.ts` under its own `vitest.heap.config.ts`) is
+  the memory analogue of the Rust allocation reports. JS has no allocation hook, so it walks
+  the retained object graph (object/array/string counts and string length), never
+  `process.memoryUsage()`, which keeps the base-vs-PR delta reproducible. It charts the
+  per-card decision surface against script length, and folds a realistic broker stream
+  (snapshot → many `added` → resolve every one) through the real `src/inbox.ts` reducers,
+  asserting the graph returns to the empty baseline: the PWA holds the inbox for the whole
+  session, so a leak there grows without bound.
+- Micro-benchmarks (`just bench-web`) time the pure `approval.ts` functions a
+  render calls (`flaggedFragments`/`triggeredRules`/`requestHeadline`/
+  `toolParamSummary`); keep React, the DOM, and the network out of any timed loop.
+  `*.bench.ts` is excluded from the `*.test.ts` run and coverage.
+- Bundle size (`just bundle-size`) reads the client JS/CSS under `.next/static` by stable category:
+  Turbopack content-hashes the filenames, so only category totals are comparable
+  across builds.
+- Lighthouse (`just lighthouse`) needs Chrome on PATH (or `CHROME_PATH`).
 
-- **Micro-benchmarks** (`src/perf/*.bench.ts`, `nx run web:bench` /
-  `just bench-web`): Vitest benchmarks of the pure, render-free decision surface
-  in `approval.ts` (the `flaggedFragments`/`triggeredRules`/`requestHeadline`/
-  `toolParamSummary` functions). Keep React, the DOM, and the
-  network out of any timed loop — bench the same pure functions a render calls,
-  not components. `*.bench.ts` is excluded from the `*.test.ts` run and coverage.
-- **Bundle size** (`scripts/web-bundle-size.mjs` / `just bundle-size`): the
-  deterministic, trustworthy delta layer — gzip + raw of the client JS/CSS under
-  `.next/static`, aggregated by stable category (Turbopack content-hashes the
-  filenames, so only category totals are comparable across builds).
-- **Lighthouse** (`scripts/web-lighthouse.mjs` / `just lighthouse`): a runtime
-  audit of the built app shell; wall-clock and noise-prone, so informational
-  only. Needs Chrome on PATH (or `CHROME_PATH`).
+## Linting
 
-The `Performance` workflow's `web` job runs all three on every PR and posts a
-sticky comment plus a job summary.
+- Biome lints and formats this project. ESLint (`eslint.config.mjs`, the `lint-compiler`
+  target) runs only the React Compiler rules Biome has no equivalent for: never move general
+  linting to it or enable a rule Biome owns — the config disables `react-hooks/rules-of-hooks`
+  and `exhaustive-deps` because Biome's `useHookAtTopLevel` and `useExhaustiveDependencies`
+  own them. ESLint runs in CI (`just check`) and the pre-push hook, never pre-commit, so
+  commits stay on Biome alone.
+
+## React Compiler
+
+- `just render-cost` (`src/perf/render-cost.perf.tsx`) renders the real `<App>` over an inbox
+  and counts the decision-surface recomputations per interaction without vs with the compiler. `@vitejs/plugin-react`
+  compiles JSX with oxc, not Babel, so `vitest.render-cost.config.ts` loads the compiler
+  through `@rolldown/plugin-babel` (gated on `REACT_COMPILER=1`) to match the production build.
+- **Do not hand-write `useMemo`/`useCallback`/`React.memo` for performance**:
+  `reactCompiler: true` (`next.config.ts`) already memoizes every component and hook at
+  build time, so manual caching is redundant; prefer plain derived values and inline
+  handlers. Use `useMemo` only when correctness needs a referentially stable value the
+  compiler cannot see.
+- **A compiler bailout is a lint error.** The `lint-compiler` target runs ESLint's React
+  Compiler rules at error level, so a Rules-of-React violation cannot make the compiler
+  silently skip a component; fix the violation rather than adding manual memoization.
+- Keep the `*.perf.ts`/`*.perf.tsx` harness names: they keep both harnesses out of the
+  default `test`/coverage run.
