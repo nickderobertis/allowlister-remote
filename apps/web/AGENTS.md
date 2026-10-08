@@ -136,8 +136,6 @@ the mouse follows on hover; the focused card is ringed and marked
 
 ## Performance suite
 
-Informational, never a gate. The suite:
-
 - `just bench-web` / `just bundle-size` / `just render-cost` / `just heap` / `just lighthouse` run
   the PWA's parallel performance suite: Vitest micro-benchmarks of the pure decision/summarization
   surface (`apps/web/src/perf/*.bench.ts`), a deterministic gzip bundle-size report
@@ -163,9 +161,6 @@ Informational, never a gate. The suite:
   long-lived web component and holds the inbox for the whole session. The harness file is kept out of
   the default `test`/coverage run by its `*.perf.ts` name and runs under its own
   `vitest.heap.config.ts`.
-
-Layer details:
-
 - Micro-benchmarks (`just bench-web`) time the pure `approval.ts` functions a
   render calls (`flaggedFragments`/`triggeredRules`/`requestHeadline`/
   `toolParamSummary`); keep React, the DOM, and the network out of any timed loop.
