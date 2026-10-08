@@ -53,6 +53,12 @@ function graphShapeError(graph) {
     (name) => !(name in graph.nodes) && !name.startsWith("npm:"),
   );
   if (unknown) return `dependencies listed for unknown project ${unknown}`;
+  const isKnown = (name) => name in graph.nodes || name.startsWith("npm:");
+  const dangling = Object.values(graph.dependencies)
+    .flat()
+    .find((dep) => !isKnown(dep.target));
+  if (dangling)
+    return `${dangling.source ?? "a project"} depends on unknown project ${dangling.target}`;
   const badDeps = Object.entries(graph.dependencies).find(
     ([, deps]) => !Array.isArray(deps) || deps.some((dep) => typeof dep?.target !== "string"),
   );
@@ -110,7 +116,7 @@ export function boundaryViolations(graph, crates = {}) {
   const edges = new Set();
   for (const [source, deps] of Object.entries(graph.dependencies)) {
     // External (npm:) nodes are not projects and carry no tags.
-    for (const { target } of deps.filter(({ target }) => graph.nodes[target])) {
+    for (const { target } of deps.filter(({ target }) => !target.startsWith("npm:"))) {
       edges.add(`${source}->${target}`);
       violations.push(...tagViolations(graph, source, target));
     }

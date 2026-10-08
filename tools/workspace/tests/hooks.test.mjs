@@ -275,7 +275,9 @@ describe("SessionStart hook hands off to setup-llmlint.sh", () => {
     assert.equal(runSessionHook(dir, {}, bin).status, 0);
     assert.ok(waitFor(join(dir, ".dev/setup-llmlint.log")));
     spawnSync("sleep", ["0.5"]);
-    assert.match(readFileSync(join(dir, ".dev/setup-llmlint.log"), "utf8"), /setsid: cannot start/);
+    const log = readFileSync(join(dir, ".dev/setup-llmlint.log"), "utf8");
+    assert.match(log, /setsid: cannot start/);
+    assert.match(log, /llmlint setup via setsid exited 1; run `just setup-llmlint`/);
     assert.ok(!existsSync(marker));
   });
 });

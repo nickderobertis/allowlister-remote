@@ -124,6 +124,23 @@ describe("check-boundaries.mjs CLI", () => {
     }
   });
 
+  it("rejects an edge onto a project the graph does not declare", () => {
+    const dir = mkdtempSync(join(tmpdir(), "boundaries-"));
+    try {
+      const file = join(dir, "graph.json");
+      const dangling = graph([["web", "phantom"]]);
+      writeFileSync(file, JSON.stringify({ graph: dangling }));
+      mkdirSync(join(dir, "crates"));
+      const result = spawnSync("node", [script, "--graph", file, "--workspace", dir], {
+        encoding: "utf8",
+      });
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, /web depends on unknown project phantom/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("fails rather than skipping a crate whose manifest cannot be read", {
     skip: process.platform === "win32" || process.getuid?.() === 0,
   }, () => {

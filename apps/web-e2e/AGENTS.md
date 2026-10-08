@@ -9,5 +9,3 @@ and mobile Chromium. Run it with `just test-e2e`.
 - `specs/broker-harness.ts` spawns the binaries and honours the
   `ALLOWLISTER_REMOTE_*_BIN` overrides the post-release smoke uses. The visual-docs
   capture is not here: it stays `web:capture`.
-- Only `playwright.config.ts` is type-checked (as it was under `web`); the specs
-  need strict-mode fixes before `tsconfig.json` can include them.

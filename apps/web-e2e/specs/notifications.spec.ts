@@ -41,9 +41,14 @@ test.beforeEach(({ browser: _browser }, testInfo) => {
 });
 
 type NotificationContentFn = (request: unknown) => { title: string; options: NotificationOptions };
+// Chrome's Notification carries the `actions` it was shown with; lib.dom omits it.
+type ShownNotification = Notification & { actions: { action: string; title: string }[] };
+
 type ServiceWorkerScope = {
   notificationContent: NotificationContentFn;
-  registration: ServiceWorkerRegistration;
+  registration: Omit<ServiceWorkerRegistration, "getNotifications"> & {
+    getNotifications(filter?: { tag?: string }): Promise<ShownNotification[]>;
+  };
 };
 
 // Record every request the broker pushes to this page (its `added` fan-out and the
@@ -102,7 +107,7 @@ test("builds and shows the approval notification from the live broker request", 
     reason: "needs approval",
   }));
 
-  await context.grantPermissions(["notifications"], { origin: baseURL ?? undefined });
+  await context.grantPermissions(["notifications"], baseURL ? { origin: baseURL } : {});
   await captureBrokerRequests(page);
   await subscribe(page);
 
@@ -157,7 +162,7 @@ test("a notification action decides the request through the broker to the plugin
   context,
   baseURL,
 }) => {
-  await context.grantPermissions(["notifications"], { origin: baseURL ?? undefined });
+  await context.grantPermissions(["notifications"], baseURL ? { origin: baseURL } : {});
   await captureBrokerRequests(page);
   await subscribe(page);
 
@@ -193,7 +198,7 @@ test("a notification action decides the request through the broker to the plugin
 });
 
 test("resolving a request closes its notification", async ({ page, context, baseURL }) => {
-  await context.grantPermissions(["notifications"], { origin: baseURL ?? undefined });
+  await context.grantPermissions(["notifications"], baseURL ? { origin: baseURL } : {});
   await captureBrokerRequests(page);
   await subscribe(page);
 

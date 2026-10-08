@@ -171,8 +171,9 @@ test("concurrent requests from one daemon resolve independently", async ({ page 
   // Several plugins open requests through the same daemon at once. Each is its own
   // card; deciding one must release only that plugin and clear only its card,
   // proving the daemon's multiplexing and the broker's per-request routing.
-  const commands = [0, 1, 2].map((i) => `terraform destroy ${i} ${randomUUID().slice(0, 8)}`);
-  const running = commands.map((command) => runShell(command));
+  const command = (i: number) => `terraform destroy ${i} ${randomUUID().slice(0, 8)}`;
+  const commands = [command(0), command(1), command(2)] as const;
+  const running = [runShell(commands[0]), runShell(commands[1]), runShell(commands[2])] as const;
   try {
     for (const r of running) await expectStillRunning(r);
     await subscribe(page);

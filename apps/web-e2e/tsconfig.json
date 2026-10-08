@@ -15,5 +15,5 @@
     "exactOptionalPropertyTypes": true,
     "noUncheckedIndexedAccess": true
   },
-  "include": ["playwright.config.ts"]
+  "include": ["specs/**/*.ts", "playwright.config.ts"]
 }
