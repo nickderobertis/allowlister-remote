@@ -12,3 +12,5 @@ definition of every JSON envelope the plugin, daemon, broker and PWA exchange.
   fixture and the web restatements in one deliberate change; the allowlister
   payload is forwarded verbatim and the format is a cross-repo contract, so never
   change it unilaterally.
+- **Drift checks**: `tests/wire_golden.rs` (Rust) and
+  `apps/web/src/protocol-contract.test.ts` (the web app's restatements).

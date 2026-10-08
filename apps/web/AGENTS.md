@@ -5,6 +5,14 @@ server of its own). It owns the browser UI and the browser/route/UI tests.
 Root-level guidance lives in the repo `CLAUDE.md`; this file documents conventions
 specific to the web app.
 
+## Project boundaries
+
+It owns the UI and service-worker unit tests and the visual-docs capture
+(`web:capture`). It has no edge to any crate. It is its own npm workspace package
+(`apps/web/package.json` declares every dependency the app uses); the root
+`package.json` keeps only repo tooling (Nx, Biome, knip, the root scripts'
+Lighthouse deps, `yaml`), and `web-e2e` declares its own.
+
 ## Structure & imports
 
 `src/App.tsx` is the thin orchestrator (state, effects, the `MainView` view
@@ -119,20 +127,22 @@ the mouse follows on hover; the focused card is ringed and marked
   `src/test/setup.ts` mocks `matchMedia` (defaulting to desktop) and
   `scrollIntoView`; a test flips `matchMedia` to assert the mobile no-keyboard
   path. Cover both the desktop and mobile branches of any keyboard work.
-- Coverage gates (root `CLAUDE.md`): 95% lines/statements, 90% functions, 80%
-  branches.
-- E2E lives in its own project, `apps/web-e2e` (see its `AGENTS.md`), so a
-  crate change re-runs it without re-running this project's targets. It must pass in both the `chromium-desktop` and
-  `mobile-chrome` projects. The keyboard affordances must not appear or block
-  interaction in the mobile viewport. The `broker-realtime.spec.ts` suite spawns
-  the real broker, daemon, and plugin binaries and drives the full broker
-  WebSocket path (allow/deny from the inbox and detail view, shell and tool
-  calls); `pwa.spec.ts` and `theme.spec.ts` cover the offline shell and theming.
+- Tests cover the approval decision flow, request summarization, the broker
+  bridge (the PWA's only request source, driven through a mocked bridge with raw
+  protocol-v3 payloads), and offline behavior. The coverage gates in
+  `vitest.config.ts` keep line coverage at the create-repo default bar while
+  branch coverage stays focused on meaningful UI paths.
+- The production build must include the PWA manifest and service worker.
+- The keyboard affordances must not appear or block interaction in the mobile
+  viewport.
 
 ## Performance suite
 
-Informational, never a gate (root `CLAUDE.md`). Three layers mirror the Rust
-plugin's bench suite:
+Informational, never a required check; the `Performance` workflow's `web` job runs
+every layer on PRs that affect web and posts a sticky comment plus a job summary.
+Bundle size, render cost, and heap footprint are the deterministic deltas; the
+Vitest and Lighthouse numbers are absolute and noise-prone, so treat small deltas
+with caution.
 
 - **Micro-benchmarks** (`src/perf/*.bench.ts`, `nx run web:bench` /
   `just bench-web`): Vitest benchmarks of the pure, render-free decision surface
@@ -144,9 +154,29 @@ plugin's bench suite:
   deterministic, trustworthy delta layer — gzip + raw of the client JS/CSS under
   `.next/static`, aggregated by stable category (Turbopack content-hashes the
   filenames, so only category totals are comparable across builds).
+- **Render cost** (`src/perf/render-cost.perf.tsx` / `just render-cost`): counts the
+  decision-surface calls each interaction recomputes without vs with React Compiler.
+- **Heap** (`src/perf/heap.perf.ts` / `just heap`): weighs the retained object graph
+  structurally, never `process.memoryUsage()`, so the delta is reproducible. Its
+  inbox retention check folds a broker event stream through the real `src/inbox.ts`
+  reducers and asserts the graph returns to the empty baseline.
 - **Lighthouse** (`scripts/web-lighthouse.mjs` / `just lighthouse`): a runtime
   audit of the built app shell; wall-clock and noise-prone, so informational
   only. Needs Chrome on PATH (or `CHROME_PATH`).
 
-The `Performance` workflow's `web` job runs all three on every PR and posts a
-sticky comment plus a job summary.
+`*.perf.ts(x)` harnesses stay out of the default `test`/coverage run.
+
+## React Compiler
+
+`reactCompiler: true` (`next.config.ts`) auto-memoizes every component and hook at
+build time. The render-cost harness must wire the compiler the same way
+(`vitest.render-cost.config.ts`, gated on `REACT_COMPILER=1`) to match the
+production build.
+
+- **Do not hand-write `useMemo`/`useCallback`/`React.memo` for performance.** Prefer
+  plain derived values and inline handlers; reach for `useMemo` only when a
+  referentially stable value is needed for correctness.
+- **A compiler bailout is a lint error.** `nx run web:lint-compiler` runs ESLint's
+  React Compiler rules at error level; fix the Rules-of-React violation rather than
+  papering over it with manual memoization. It runs in CI (`just check`) and the
+  pre-push hook, never pre-commit.

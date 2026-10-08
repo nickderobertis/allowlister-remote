@@ -85,65 +85,10 @@ Use `just`; do not hand-roll equivalent commands.
   the plugin's hot path; `just profile-daemon` / `just profile-broker` sample the
   daemon/broker protocol benches (via `PROFILE_PKG`/`PROFILE_BENCH` in
   `scripts/profile.sh`).
-  - The plugin additionally has end-to-end **CLI** layers, because it is a
-    one-shot process spawned once per gated command, so per-process startup is on
-    the hot path: `just bench-cli` (hyperfine latency) and `just bench-instructions`
-    (cachegrind instruction counts), see `scripts/{bench,bench-instructions}.sh`.
-    These do **not** apply to the daemon and broker — they are long-lived servers,
-    so per-process startup is amortized to nothing and their hot path is the
-    per-message protocol work covered by the Criterion + allocation layers above.
   - The `Performance` workflow (`bench.yml`) runs these on PRs, gated per crate by
     Nx affected (a daemon-only change skips the plugin and broker suites, etc.),
     and posts the numbers as a sticky comment plus a job summary; it is
     informational, never a required check.
-- `just bench-web` / `just bundle-size` / `just render-cost` / `just heap` / `just lighthouse` run
-  the PWA's parallel performance suite: Vitest micro-benchmarks of the pure decision/summarization
-  surface (`apps/web/src/perf/*.bench.ts`), a deterministic gzip bundle-size report
-  (`scripts/web-bundle-size.mjs`), a deterministic render-cost report
-  (`scripts/web-render-cost.mjs`), a deterministic heap-footprint report
-  (`scripts/web-heap.mjs`), and a Lighthouse runtime audit
-  (`scripts/web-lighthouse.mjs`). The same `Performance` workflow `web` job runs all of them
-  on PRs that affect web and posts its own sticky comment plus job summary; like the plugin
-  suite it is informational, never a required check. Bundle size, render cost, and heap footprint
-  are the deterministic, trustworthy deltas (the web counterpart of the plugin's cachegrind
-  instruction counts and allocation tallies); the Vitest and Lighthouse numbers are absolute and
-  noise-prone, so treat small deltas with caution.
-- The PWA's **memory** layer is the web analogue of the Rust binaries' allocation reports (`just
-  bench-allocs`): `just heap` runs the heap-footprint harness
-  (`apps/web/src/perf/heap.perf.ts`), which measures memory the deterministic way — a structural
-  walk of the retained object graph (object/array/string counts and string length), not
-  `process.memoryUsage()`, so the base-vs-PR delta is reproducible. JS exposes no allocation hook
-  the way a custom global allocator does in Rust, so it weighs what stays reachable: the per-inbox-card
-  decision surface (charted against script length), plus an **inbox retention/leak check** —
-  it folds a realistic broker event stream (snapshot → many `added` → resolve every one) through the
-  real inbox reducers (`apps/web/src/inbox.ts`, the pure `applySnapshot`/`applyAdded`/`applyResolved`
-  App uses) and asserts the retained graph returns to the empty baseline, since the PWA is the one
-  long-lived web component and holds the inbox for the whole session. The harness file is kept out of
-  the default `test`/coverage run by its `*.perf.ts` name and runs under its own
-  `vitest.heap.config.ts`.
-- The PWA enables **React Compiler** (`reactCompiler: true` in `apps/web/next.config.ts`,
-  via `babel-plugin-react-compiler`): it auto-memoizes components/hooks at build time, so a
-  re-render from state that does not touch a subtree skips it and each card's decision-surface
-  work is cached across renders where its request is unchanged. The render-cost harness
-  (`apps/web/src/perf/render-cost.perf.tsx`, run by `just render-cost`) is the render-side
-  analogue of the plugin's instruction counts: it renders the real `<App>` over an inbox and
-  counts how many decision-surface calls each interaction recomputes without the compiler vs
-  with it (the deterministic delta). `@vitejs/plugin-react` transforms JSX with oxc, not Babel,
-  so the harness wires the compiler through `@rolldown/plugin-babel` + `reactCompilerPreset`
-  (`apps/web/vitest.render-cost.config.ts`, gated on `REACT_COMPILER=1`) to match the production
-  build. The harness file is kept out of the default `test`/coverage run (its name is `*.perf.tsx`,
-  not `*.test.tsx`).
-  - **Do not hand-write `useMemo`/`useCallback`/`React.memo` for performance.** The compiler
-    auto-memoizes every component and hook value at build time, so manual caching is redundant
-    here — leave it out, and prefer plain derived values and inline handlers. (Reach for `useMemo`
-    only on the rare occasion you need a *referentially stable value for correctness*, e.g. a
-    dependency the compiler cannot see, not as an optimization.)
-  - **A compiler bailout is a lint error.** The `lint-compiler` target (`nx run web:lint-compiler`,
-    cached on the web `.ts`/`.tsx` sources) runs ESLint's React Compiler rules at error level, so a
-    Rules-of-React violation that makes the compiler silently skip a component (a ref/state write
-    during render, impurity, mutation, unsupported syntax, an incompatible library) fails the build.
-    Fix the violation rather than papering over it with manual memoization. It runs in CI (`just
-    check`) and the pre-push hook, never pre-commit — see the ESLint note under **Quality and tests**.
 - Release helpers live behind `npm run release:*`; tags, GitHub Releases, and npm publishing run in Actions.
 
 ## Quality and tests
@@ -155,10 +100,6 @@ Use `just`; do not hand-roll equivalent commands.
   already disables `react-hooks/rules-of-hooks` and `exhaustive-deps` because Biome's
   `useHookAtTopLevel` and `useExhaustiveDependencies` own them. ESLint runs in CI (`just check`) and
   the pre-push hook only, never pre-commit, so day-to-day commits stay on Biome alone.
-- Tests cover the approval decision flow, request summarization, the broker
-  bridge (the PWA's only request source, driven through a mocked bridge with raw
-  protocol-v3 payloads), and offline behavior. Coverage gates enforce 95% lines/statements, 90% functions, and 80% branches. Line coverage keeps the create-repo default bar while branch coverage stays focused on meaningful UI paths.
-- The production build must include the PWA manifest and service worker.
 <!-- llmlint: ignore-block[agents_md_durable_and_terse] the create-repo skill allows a coverage floor below 95% only with its documented reason in AGENTS.md, and the approval of this floor required recording the measurement and per-file figures that justify it here, beside the floor. -->
 - **Rust coverage floor: 78% lines, below the skill's 95% default (manager-approved).**
   Every crate's `test` runs under `cargo llvm-cov --no-report`; `rust-workspace:coverage`
@@ -187,11 +128,6 @@ Use `just`; do not hand-roll equivalent commands.
   WebSocket edges. No sockets, TLS, mutexes, or reconnect supervision inside a timed
   loop. `harness = false` keeps the bench targets out of the test runner and
   coverage; `--all-targets` lint/typecheck keep them compiling.
-- E2E must exercise the real browser approval flow in both desktop and mobile
-  viewports through the actual allowlister plugin process, the host daemon, and
-  the broker over a WebSocket — remote allow/deny decisions (from both the inbox
-  and the expanded detail view, for shell and tool calls) and static allow/deny
-  no-wait paths.
 - Approvals have no timeout: the plugin waits indefinitely and presents
   the same request at the local terminal (via `/dev/tty`) and in the web app at the
   same time. Whichever side decides first wins; a local-terminal decision is
@@ -228,65 +164,6 @@ Use `just`; do not hand-roll equivalent commands.
 
 ## Monorepo projects
 
-- `apps/web` is the static Next.js PWA project (`output: "export"`, no server of its own) and owns
-  the UI and service-worker unit tests and the visual-docs capture (`web:capture`). It has no
-  edge to any crate. It is its own npm workspace package (`apps/web/package.json` declares every
-  dependency the app uses); the root `package.json` keeps only repo tooling (Nx, Biome, knip,
-  the root scripts' Lighthouse deps, `yaml`), and `web-e2e` declares its own.
-- `apps/web-e2e` (`type:e2e`) is the browser e2e suite, its own project so a crate change
-  re-runs it without re-running `web`'s targets; `test-e2e` builds `web` and the three crates
-  first. It and the capture serve the built `out/` bundle with `scripts/serve-web.mjs` and seed
-  the broker URL client-side (localStorage) before navigating.
-- `crates/allowlister-remote-protocol` (`type:contract`) is the protocol-v3 wire contract's one
-  source: the plugin, daemon, and broker build and parse every envelope through it, and its
-  `wire/protocol-v3.json` (captured from the pre-contract tree) pins the bytes. Drift checks:
-  `tests/wire_golden.rs` (Rust) and `apps/web/src/protocol-contract.test.ts` (the web app's
-  restatements). It depends on no consumer.
-- `tools/workspace` (`type:tooling`) holds the repo-level JavaScript checks (the tag-based
-  boundary check; the workflow, graph and hook tests) and owns the root `scripts/` and config
-  files. `tools/rust-workspace` holds the Rust `coverage` aggregate and
-  `tools/rust-supply-chain` the `supply-chain` gate, each its own project so a workflow, hook or
-  policy edit never re-runs every crate's tests.
-- `crates/allowlister-remote-plugin` is the Rust allowlister dynamic plugin client. It is
-  network-free: it hands each request to the daemon over local IPC and never opens a socket
-  to the broker itself.
-- `crates/allowlister-remote-daemon` is the per-host daemon: one long-lived process that
-  multiplexes the host's ephemeral plugin processes onto a single supervised WebSocket to the
-  broker, re-announcing still-pending requests on reconnect. Plugin↔daemon is a Unix socket on
-  Unix and a named pipe on Windows (a transport-generic `handle_plugin` serves both).
-- `crates/allowlister-remote-broker` is the standalone WebSocket broker (`/ws/daemon`, `/ws/pwa`,
-  `/healthz`); it holds pending requests in memory and mediates between daemons and PWAs. It ships
-  as a server-side CLI on GitHub Releases (built for all three platforms in `publish.yml`), not on
-  npm; `scripts/install-broker.sh` is the cross-platform installer (detect platform → download the
-  release binary + `SHA256SUMS` → checksum-verify → install), mirroring `allowlister`'s install
-  flow. Its `--version` is stamped from the tag via `ALLOWLISTER_REMOTE_PLUGIN_VERSION`, like the
-  plugin and daemon. The listen address comes from `ALLOWLISTER_REMOTE_BROKER_ADDR`.
-- `crates/allowlister-remote-e2e` (`type:test`) drives the real broker + daemon + plugin binaries
-  through the full chain.
-- `packages/allowlister-remote-web` is the npm package for the static PWA: a zero-dependency static
-  server (`bin/serve.mjs`) plus the prebuilt `out/` bundle vendored into `static/` at release time.
-  Run it with `npx @nickderobertis/allowlister-remote-web` (or host the assets anywhere) and point
-  it at a broker in the app. It is not a workspace member, so its publish-time version never drifts
-  the dev lockfile.
-- `packages/allowlister-remote-plugin` is the parent npm package users install; it carries
-  only a small JS launcher plus an `install.mjs` that links the native binaries onto the command path.
-- `packages/allowlister-remote-plugin-{darwin-arm64,linux-x64,win32-x64}` are the per-platform npm
-  packages that each ship the release-built plugin **and** daemon binaries (the plugin auto-starts
-  the daemon as a sibling on every OS), gated by `os`/`cpu`. The parent declares
-  them as optional dependencies so npm installs only the one matching the host. These are published
-  from their directories (not workspace members) so their `os`/`cpu` gates do not break dev installs.
-- The `linux-x64` binary is a fully static **musl** build (`x86_64-unknown-linux-musl`, see
-  `publish.yml`): it embeds libc so it carries no glibc version floor (runs on Alpine/distroless/old
-  distros) and skips the dynamic loader entirely. The plugin is spawned once per gated command, so
-  dropping `ld.so` cuts the no-network hot path ~75% in instruction count; the modest size cost
-  (~9%) is a favorable trade. The crate's `build.rs` instead links the glibc dev binary `-no-pie`,
-  which removes load-time relocations there; the static musl build is already relocation-light and
-  needs no such flag.
-- Native binaries are vendored into the per-platform packages only at release time and are never
-  committed; `npm run release:stage-npm` stages them from the downloaded release artifacts. The PWA
-  bundle is likewise vendored into the web package only at release time: `npm run release:stage-web`
-  builds nothing itself but copies a prebuilt `apps/web/out` into `packages/allowlister-remote-web/static`
-  and stamps the version. Both `apps/web/out` and the web package's `static/` are gitignored.
 - Root commands must delegate to Nx affected/run targets; do not add bespoke root loops over projects.
 - Affected-only is the default for everything CI does — fmt, lint, typecheck, test, build, e2e,
   and perf (`bench.yml` gates each lane on its package via the `changes` job). The sole exception is
