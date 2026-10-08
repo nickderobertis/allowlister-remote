@@ -53,9 +53,9 @@ function graphShapeError(graph) {
     ([, deps]) => !Array.isArray(deps) || deps.some((dep) => typeof dep?.target !== "string"),
   );
   if (badDeps) return `${badDeps[0]} dependencies are not a list of { target } records`;
-  const missing = Object.keys(graph.nodes).find((name) => !(name in graph.dependencies));
+  const missing = Object.keys(graph.nodes).find((name) => !Object.hasOwn(graph.dependencies, name));
   if (missing) return `no dependency list for ${missing}`;
-  const isKnown = (name) => name in graph.nodes || name.startsWith("npm:");
+  const isKnown = (name) => Object.hasOwn(graph.nodes, name) || name.startsWith("npm:");
   const unknown = Object.keys(graph.dependencies).find((name) => !isKnown(name));
   if (unknown) return `dependencies listed for unknown project ${unknown}`;
   for (const [source, deps] of Object.entries(graph.dependencies)) {

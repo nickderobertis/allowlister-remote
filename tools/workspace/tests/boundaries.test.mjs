@@ -3,9 +3,9 @@
 // not declare, and passes the repository's real graph.
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { delimiter, join, resolve } from "node:path";
 import { describe, it } from "node:test";
 import { boundaryViolations, cargoCrateEdges } from "../check-boundaries.mjs";
 
@@ -141,59 +141,108 @@ describe("check-boundaries.mjs CLI", () => {
     assert.match(result.stderr, /cargo metadata failed/);
   });
 
-  it("rejects a graph file that is not an nx project graph", () => {
+  // The CLI fed a graph file (any JSON value) and an empty scratch workspace.
+  function runGraph(graphValue) {
     const dir = mkdtempSync(join(tmpdir(), "boundaries-"));
     try {
       const file = join(dir, "graph.json");
-      const ghost = graph([]);
-      ghost.dependencies.ghost = [{ source: "ghost", target: "plugin", type: "implicit" }];
-      writeFileSync(file, JSON.stringify({ graph: ghost }));
+      writeFileSync(file, JSON.stringify({ graph: graphValue }));
       mkdirSync(join(dir, "crates"));
-      const result = spawnSync("node", [script, "--graph", file, "--workspace", dir], {
+      return spawnSync("node", [script, "--graph", file, "--workspace", dir], {
         encoding: "utf8",
       });
-      assert.notEqual(result.status, 0);
-      assert.match(
-        result.stderr,
-        /not an nx project graph \(dependencies listed for unknown project ghost\)/,
-      );
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
-  });
+  }
 
-  it("rejects malformed dependency records with a shape error, not a crash", () => {
-    const dir = mkdtempSync(join(tmpdir(), "boundaries-"));
-    try {
-      const file = join(dir, "graph.json");
-      const malformed = graph([]);
-      malformed.dependencies.web = [null, { target: 7 }];
-      writeFileSync(file, JSON.stringify({ graph: malformed }));
-      mkdirSync(join(dir, "crates"));
-      const result = spawnSync("node", [script, "--graph", file, "--workspace", dir], {
-        encoding: "utf8",
-      });
-      assert.notEqual(result.status, 0);
-      assert.match(result.stderr, /web dependencies are not a list of \{ target \} records/);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
+  const withDeps = (mutate) => {
+    const g = graph([]);
+    mutate(g);
+    return g;
+  };
+  const shapeCases = [
+    ["no graph object", undefined, /no `graph` object/],
+    ["no nodes", { dependencies: {} }, /no `nodes` object/],
+    ["no dependencies", { nodes: {} }, /no `dependencies` object/],
+    ["no projects", { nodes: {}, dependencies: {} }, /no projects/],
+    [
+      "a project without a tags array",
+      withDeps((g) => {
+        g.nodes.web.data.tags = "type:app";
+      }),
+      /web has no tags array/,
+    ],
+    [
+      "a project without a dependency list",
+      withDeps((g) => {
+        delete g.dependencies.web;
+      }),
+      /no dependency list for web/,
+    ],
+    [
+      "malformed dependency records",
+      withDeps((g) => {
+        g.dependencies.web = [null, { target: 7 }];
+      }),
+      /web dependencies are not a list of \{ target \} records/,
+    ],
+    [
+      "dependencies for a project the graph does not declare",
+      withDeps((g) => {
+        g.dependencies.ghost = [{ source: "ghost", target: "plugin", type: "implicit" }];
+      }),
+      /dependencies listed for unknown project ghost/,
+    ],
+    [
+      "an inherited property name as a dependency source",
+      withDeps((g) => {
+        g.dependencies.toString = [];
+      }),
+      /dependencies listed for unknown project toString/,
+    ],
+    [
+      "an edge onto a project the graph does not declare",
+      graph([["web", "phantom"]]),
+      /web depends on unknown project phantom/,
+    ],
+    [
+      "an edge onto an inherited property name",
+      graph([["web", "constructor"]]),
+      /web depends on unknown project constructor/,
+    ],
+  ];
+  for (const [label, value, message] of shapeCases) {
+    it(`rejects a graph with ${label} as not an nx project graph`, () => {
+      const result = runGraph(value);
+      assert.equal(result.status, 1, result.stderr);
+      assert.match(result.stderr, /not an nx project graph/);
+      assert.match(result.stderr, message);
+    });
+  }
+
+  it("rejects an unknown option and an option missing its value", () => {
+    for (const argv of [["--graf", "x.json"], ["--graph"]]) {
+      const result = spawnSync("node", [script, ...argv], { encoding: "utf8" });
+      assert.equal(result.status, 1, argv.join(" "));
+      assert.match(result.stderr, /usage: check-boundaries\.mjs \[--graph FILE\]/);
     }
   });
 
-  it("rejects an edge onto a project the graph does not declare", () => {
-    const dir = mkdtempSync(join(tmpdir(), "boundaries-"));
+  it("fails, carrying nx's output, when nx cannot produce the graph", () => {
+    // A failing `npx` first on PATH stands in for an nx that cannot build the graph.
+    const bin = mkdtempSync(join(tmpdir(), "boundaries-bin-"));
     try {
-      const file = join(dir, "graph.json");
-      const dangling = graph([["web", "phantom"]]);
-      writeFileSync(file, JSON.stringify({ graph: dangling }));
-      mkdirSync(join(dir, "crates"));
-      const result = spawnSync("node", [script, "--graph", file, "--workspace", dir], {
+      writeFileSync(join(bin, "npx"), "#!/bin/sh\necho 'nx: project graph failed' >&2\nexit 1\n");
+      chmodSync(join(bin, "npx"), 0o755);
+      const result = spawnSync("node", [script], {
         encoding: "utf8",
+        env: { ...process.env, PATH: `${bin}${delimiter}${process.env.PATH}` },
       });
-      assert.notEqual(result.status, 0);
-      assert.match(result.stderr, /web depends on unknown project phantom/);
+      assert.equal(result.status, 1);
+      assert.match(result.stderr, /nx graph failed:\nnx: project graph failed/);
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      rmSync(bin, { recursive: true, force: true });
     }
   });
 
