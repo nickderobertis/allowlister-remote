@@ -1,6 +1,7 @@
 # AGENTS — `tools/rust-workspace`
 
-The workspace-wide Rust coverage gate (`type:tooling`).
+The workspace-wide Rust coverage gate (`type:tooling`), its own project so a workflow or hook
+edit never re-runs every crate's tests.
 
 - `coverage` depends on every crate's `test` (each runs `cargo llvm-cov
   --no-report` after `coverage-clean` removes the workspace's previous
@@ -13,5 +14,3 @@ The workspace-wide Rust coverage gate (`type:tooling`).
   that SIGKILL them, so their profiles never flush, and the plugin's `/dev/tty` and
   named-pipe paths have no test. Raising it to 95% (graceful shutdown so profiles
   flush, plus those tests) is an open follow-up; never lower it.
-- `tools/rust-workspace` holds the Rust `coverage` aggregate, its own project so a
-  workflow or hook edit never re-runs every crate's tests.
