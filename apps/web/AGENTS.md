@@ -7,11 +7,11 @@ specific to the web app.
 
 ## Project boundaries
 
-It owns the UI and service-worker unit tests and the visual-docs capture
-(`web:capture`). It has no edge to any crate. It is its own npm workspace package
-(`apps/web/package.json` declares every dependency the app uses); the root
-`package.json` keeps only repo tooling (Nx, Biome, knip, the root scripts'
-Lighthouse deps, `yaml`), and `web-e2e` declares its own.
+- `apps/web` is the static Next.js PWA project (`output: "export"`, no server of its own) and owns
+  the UI and service-worker unit tests and the visual-docs capture (`web:capture`). It has no
+  edge to any crate. It is its own npm workspace package (`apps/web/package.json` declares every
+  dependency the app uses); the root `package.json` keeps only repo tooling (Nx, Biome, knip,
+  the root scripts' Lighthouse deps, `yaml`), and `web-e2e` declares its own.
 
 ## Structure & imports
 
@@ -129,20 +129,47 @@ the mouse follows on hover; the focused card is ringed and marked
   path. Cover both the desktop and mobile branches of any keyboard work.
 - Tests cover the approval decision flow, request summarization, the broker
   bridge (the PWA's only request source, driven through a mocked bridge with raw
-  protocol-v3 payloads), and offline behavior. The coverage gates in
-  `vitest.config.ts` keep line coverage at the create-repo default bar while
-  branch coverage stays focused on meaningful UI paths.
+  protocol-v3 payloads), and offline behavior. Coverage gates enforce 95% lines/statements, 90% functions, and 80% branches. Line coverage keeps the create-repo default bar while branch coverage stays focused on meaningful UI paths.
 - The production build must include the PWA manifest and service worker.
-- The keyboard affordances must not appear or block interaction in the mobile
-  viewport.
+- E2E lives in its own project, `apps/web-e2e`, so a
+  crate change re-runs it without re-running this project's targets. It must pass in both the `chromium-desktop` and
+  `mobile-chrome` projects. The keyboard affordances must not appear or block
+  interaction in the mobile viewport. The `broker-realtime.spec.ts` suite spawns
+  the real broker, daemon, and plugin binaries and drives the full broker
+  WebSocket path (allow/deny from the inbox and detail view, shell and tool
+  calls); `pwa.spec.ts` and `theme.spec.ts` cover the offline shell and theming.
 
 ## Performance suite
 
-Informational, never a required check; the `Performance` workflow's `web` job runs
-every layer on PRs that affect web and posts a sticky comment plus a job summary.
-Bundle size, render cost, and heap footprint are the deterministic deltas; the
-Vitest and Lighthouse numbers are absolute and noise-prone, so treat small deltas
-with caution.
+Informational, never a gate. The suite:
+
+- `just bench-web` / `just bundle-size` / `just render-cost` / `just heap` / `just lighthouse` run
+  the PWA's parallel performance suite: Vitest micro-benchmarks of the pure decision/summarization
+  surface (`apps/web/src/perf/*.bench.ts`), a deterministic gzip bundle-size report
+  (`scripts/web-bundle-size.mjs`), a deterministic render-cost report
+  (`scripts/web-render-cost.mjs`), a deterministic heap-footprint report
+  (`scripts/web-heap.mjs`), and a Lighthouse runtime audit
+  (`scripts/web-lighthouse.mjs`). The same `Performance` workflow `web` job runs all of them
+  on PRs that affect web and posts its own sticky comment plus job summary; like the plugin
+  suite it is informational, never a required check. Bundle size, render cost, and heap footprint
+  are the deterministic, trustworthy deltas (the web counterpart of the plugin's cachegrind
+  instruction counts and allocation tallies); the Vitest and Lighthouse numbers are absolute and
+  noise-prone, so treat small deltas with caution.
+- The PWA's **memory** layer is the web analogue of the Rust binaries' allocation reports (`just
+  bench-allocs`): `just heap` runs the heap-footprint harness
+  (`apps/web/src/perf/heap.perf.ts`), which measures memory the deterministic way — a structural
+  walk of the retained object graph (object/array/string counts and string length), not
+  `process.memoryUsage()`, so the base-vs-PR delta is reproducible. JS exposes no allocation hook
+  the way a custom global allocator does in Rust, so it weighs what stays reachable: the per-inbox-card
+  decision surface (charted against script length), plus an **inbox retention/leak check** —
+  it folds a realistic broker event stream (snapshot → many `added` → resolve every one) through the
+  real inbox reducers (`apps/web/src/inbox.ts`, the pure `applySnapshot`/`applyAdded`/`applyResolved`
+  App uses) and asserts the retained graph returns to the empty baseline, since the PWA is the one
+  long-lived web component and holds the inbox for the whole session. The harness file is kept out of
+  the default `test`/coverage run by its `*.perf.ts` name and runs under its own
+  `vitest.heap.config.ts`.
+
+Layer details:
 
 - **Micro-benchmarks** (`src/perf/*.bench.ts`, `nx run web:bench` /
   `just bench-web`): Vitest benchmarks of the pure, render-free decision surface
@@ -154,29 +181,32 @@ with caution.
   deterministic, trustworthy delta layer — gzip + raw of the client JS/CSS under
   `.next/static`, aggregated by stable category (Turbopack content-hashes the
   filenames, so only category totals are comparable across builds).
-- **Render cost** (`src/perf/render-cost.perf.tsx` / `just render-cost`): counts the
-  decision-surface calls each interaction recomputes without vs with React Compiler.
-- **Heap** (`src/perf/heap.perf.ts` / `just heap`): weighs the retained object graph
-  structurally, never `process.memoryUsage()`, so the delta is reproducible. Its
-  inbox retention check folds a broker event stream through the real `src/inbox.ts`
-  reducers and asserts the graph returns to the empty baseline.
 - **Lighthouse** (`scripts/web-lighthouse.mjs` / `just lighthouse`): a runtime
   audit of the built app shell; wall-clock and noise-prone, so informational
   only. Needs Chrome on PATH (or `CHROME_PATH`).
 
-`*.perf.ts(x)` harnesses stay out of the default `test`/coverage run.
-
 ## React Compiler
 
-`reactCompiler: true` (`next.config.ts`) auto-memoizes every component and hook at
-build time. The render-cost harness must wire the compiler the same way
-(`vitest.render-cost.config.ts`, gated on `REACT_COMPILER=1`) to match the
-production build.
-
-- **Do not hand-write `useMemo`/`useCallback`/`React.memo` for performance.** Prefer
-  plain derived values and inline handlers; reach for `useMemo` only when a
-  referentially stable value is needed for correctness.
-- **A compiler bailout is a lint error.** `nx run web:lint-compiler` runs ESLint's
-  React Compiler rules at error level; fix the Rules-of-React violation rather than
-  papering over it with manual memoization. It runs in CI (`just check`) and the
-  pre-push hook, never pre-commit.
+- The PWA enables **React Compiler** (`reactCompiler: true` in `apps/web/next.config.ts`,
+  via `babel-plugin-react-compiler`): it auto-memoizes components/hooks at build time, so a
+  re-render from state that does not touch a subtree skips it and each card's decision-surface
+  work is cached across renders where its request is unchanged. The render-cost harness
+  (`apps/web/src/perf/render-cost.perf.tsx`, run by `just render-cost`) is the render-side
+  analogue of the plugin's instruction counts: it renders the real `<App>` over an inbox and
+  counts how many decision-surface calls each interaction recomputes without the compiler vs
+  with it (the deterministic delta). `@vitejs/plugin-react` transforms JSX with oxc, not Babel,
+  so the harness wires the compiler through `@rolldown/plugin-babel` + `reactCompilerPreset`
+  (`apps/web/vitest.render-cost.config.ts`, gated on `REACT_COMPILER=1`) to match the production
+  build. The harness file is kept out of the default `test`/coverage run (its name is `*.perf.tsx`,
+  not `*.test.tsx`).
+  - **Do not hand-write `useMemo`/`useCallback`/`React.memo` for performance.** The compiler
+    auto-memoizes every component and hook value at build time, so manual caching is redundant
+    here — leave it out, and prefer plain derived values and inline handlers. (Reach for `useMemo`
+    only on the rare occasion you need a *referentially stable value for correctness*, e.g. a
+    dependency the compiler cannot see, not as an optimization.)
+  - **A compiler bailout is a lint error.** The `lint-compiler` target (`nx run web:lint-compiler`,
+    cached on the web `.ts`/`.tsx` sources) runs ESLint's React Compiler rules at error level, so a
+    Rules-of-React violation that makes the compiler silently skip a component (a ref/state write
+    during render, impurity, mutation, unsupported syntax, an incompatible library) fails the build.
+    Fix the violation rather than papering over it with manual memoization. It runs in CI (`just
+    check`) and the pre-push hook, never pre-commit — see the ESLint note under **Quality and tests**.

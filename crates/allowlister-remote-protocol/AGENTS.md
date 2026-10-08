@@ -12,5 +12,8 @@ definition of every JSON envelope the plugin, daemon, broker and PWA exchange.
   fixture and the web restatements in one deliberate change; the allowlister
   payload is forwarded verbatim and the format is a cross-repo contract, so never
   change it unilaterally.
-- **Drift checks**: `tests/wire_golden.rs` (Rust) and
-  `apps/web/src/protocol-contract.test.ts` (the web app's restatements).
+- `crates/allowlister-remote-protocol` (`type:contract`) is the protocol-v3 wire contract's one
+  source: the plugin, daemon, and broker build and parse every envelope through it, and its
+  `wire/protocol-v3.json` (captured from the pre-contract tree) pins the bytes. Drift checks:
+  `tests/wire_golden.rs` (Rust) and `apps/web/src/protocol-contract.test.ts` (the web app's
+  restatements). It depends on no consumer.

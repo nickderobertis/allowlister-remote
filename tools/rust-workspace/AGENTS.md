@@ -9,3 +9,6 @@ crate's tests.
   instrumented builds and profiles) and enforces the floor over their union. Never
   cache these targets or skip the clean: stale objects or a partial profile set
   report a wrong number.
+- `tools/rust-workspace` holds the Rust `coverage` aggregate and
+  `tools/rust-supply-chain` the `supply-chain` gate, each its own project so a workflow, hook or
+  policy edit never re-runs every crate's tests.
