@@ -280,6 +280,31 @@ describe("SessionStart hook hands off to setup-llmlint.sh", () => {
     assert.match(log, /llmlint setup via setsid exited 1; run `just setup-llmlint`/);
     assert.ok(!existsSync(marker));
   });
+
+  it("runs without the lock, saying so, when flock itself fails", () => {
+    const { dir, marker } = sessionRepo("exit 0");
+    const bin = curatedBin(dir, [...CORE, "setsid"]);
+    writeExecutable(join(bin, "flock"), "exit 71");
+    assert.equal(runSessionHook(dir, {}, bin).status, 0);
+    assert.ok(waitFor(marker));
+    assert.match(
+      readFileSync(join(dir, ".dev/setup-llmlint.log"), "utf8"),
+      /flock failed \(exit 71\); running without the concurrency lock/,
+    );
+  });
+
+  it("reports an unwritable log instead of silently skipping setup", {
+    skip: process.getuid?.() === 0,
+  }, () => {
+    const { dir, marker } = sessionRepo("exit 0");
+    mkdirSync(join(dir, ".dev"));
+    writeFileSync(join(dir, ".dev/setup-llmlint.log"), "");
+    chmodSync(join(dir, ".dev/setup-llmlint.log"), 0o444);
+    const run = runSessionHook(dir, {});
+    assert.equal(run.status, 0);
+    assert.match(run.stderr, /cannot write .*setup-llmlint\.log; make it writable/);
+    assert.ok(!waitFor(marker, 1_000));
+  });
 });
 
 describe("pre-push hook runs llmlint validate", () => {

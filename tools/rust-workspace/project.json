@@ -5,13 +5,7 @@
   "sourceRoot": "tools/rust-workspace",
   "tags": ["scope:workspace", "type:tooling", "lang:rust"],
   "namedInputs": {
-    "default": [
-      "{projectRoot}/**/*",
-      "sharedGlobals",
-      "rust",
-      "{workspaceRoot}/crates/**/*",
-      "{workspaceRoot}/deny.toml"
-    ]
+    "default": ["{projectRoot}/**/*", "sharedGlobals", "rust", "{workspaceRoot}/crates/**/*"]
   },
   "targets": {
     "coverage-clean": {
@@ -42,16 +36,6 @@
         }
       ],
       "inputs": ["default"],
-      "cache": false
-    },
-    "supply-chain": {
-      "executor": "nx:run-commands",
-      "options": {
-        "commands": ["cargo deny check", "cargo machete"],
-        "cwd": ".",
-        "parallel": false
-      },
-      "inputs": ["rust", "{workspaceRoot}/deny.toml", "{workspaceRoot}/crates/*/Cargo.toml"],
       "cache": false
     }
   }

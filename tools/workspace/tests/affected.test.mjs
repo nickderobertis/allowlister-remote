@@ -91,6 +91,10 @@ describe("affected selection", () => {
     assert.deepEqual([...affected("justfile")], ["workspace"]);
   });
 
+  it("a supply-chain policy edit selects only the supply-chain gate", () => {
+    assert.deepEqual([...affected("deny.toml")], ["rust-supply-chain"]);
+  });
+
   it("a workflow or hook edit never selects the Rust coverage aggregate", () => {
     for (const file of [".github/workflows/check.yml", "scripts/session-setup.sh", "justfile"]) {
       assertSelection(file, { excludes: ["rust-workspace", ...RUST] });

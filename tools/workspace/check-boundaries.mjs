@@ -11,10 +11,10 @@
 //
 // Usage: node tools/workspace/check-boundaries.mjs [--graph FILE] [--workspace DIR]
 //   --graph      read the graph from an `nx graph --file` JSON instead of asking nx
-//   --workspace  the repository root whose crates/*/Cargo.toml are cross-checked
+//   --workspace  the Cargo workspace root whose crates/* are cross-checked
 // Node built-ins only.
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -88,16 +88,23 @@ function loadGraph(file, workspace) {
   }
 }
 
-// Every `path = "..."` / `path = '...'` in a crate manifest — inline tables and
-// `[dependencies.<name>]` sub-tables alike — resolved against the crate and kept
-// when it names a sibling crate directory.
-export function cargoPathDeps(manifest, crateDir, cratesDir) {
-  const deps = [];
-  for (const match of manifest.matchAll(/^[^#\n]*\bpath\s*=\s*(["'])([^"'\n]+)\1/gm)) {
-    const target = resolve(crateDir, match[2]);
-    if (dirname(target) === cratesDir) deps.push(basename(target));
+// Each workspace crate's path dependencies on sibling crates, every kind, from
+// `cargo metadata` — Cargo's own parse of the manifests, so a malformed manifest
+// fails here instead of reading as "no dependencies".
+export function cargoCrateEdges(metadata, cratesDir) {
+  if (!Array.isArray(metadata?.packages)) throw new Error("cargo metadata: no `packages` list");
+  const crates = {};
+  for (const pkg of metadata.packages) {
+    if (typeof pkg?.manifest_path !== "string" || !Array.isArray(pkg.dependencies)) {
+      throw new Error(`cargo metadata: malformed package ${JSON.stringify(pkg?.name)}`);
+    }
+    const crateDir = dirname(pkg.manifest_path);
+    if (dirname(crateDir) !== cratesDir) continue;
+    crates[basename(crateDir)] = pkg.dependencies
+      .filter((dep) => typeof dep?.path === "string" && dirname(dep.path) === cratesDir)
+      .map((dep) => basename(dep.path));
   }
-  return deps;
+  return crates;
 }
 
 function tagViolations(graph, source, target) {
@@ -132,21 +139,13 @@ export function boundaryViolations(graph, crates = {}) {
 }
 
 function readCrates(workspace) {
-  const cratesDir = join(workspace, "crates");
-  const crates = {};
-  for (const entry of readdirSync(cratesDir, { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue;
-    const crateDir = join(cratesDir, entry.name);
-    let manifest;
-    try {
-      manifest = readFileSync(join(crateDir, "Cargo.toml"), "utf8");
-    } catch (error) {
-      if (error?.code === "ENOENT") continue; // not a crate directory
-      throw error;
-    }
-    crates[entry.name] = cargoPathDeps(manifest, crateDir, cratesDir);
-  }
-  return crates;
+  const run = spawnSync("cargo", ["metadata", "--format-version", "1", "--no-deps", "--offline"], {
+    cwd: workspace,
+    encoding: "utf8",
+    shell: process.platform === "win32",
+  });
+  if (run.status !== 0) throw new Error(`cargo metadata failed:\n${run.stderr}`);
+  return cargoCrateEdges(JSON.parse(run.stdout), realpathSync(join(workspace, "crates")));
 }
 
 // Run as a script (CI pins Node 20, which has no `import.meta.main`).

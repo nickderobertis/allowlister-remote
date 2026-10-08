@@ -15,7 +15,11 @@
       "{workspaceRoot}/release-please-config.json",
       "{workspaceRoot}/gh-secrets.json"
     ],
-    "graph": ["{workspaceRoot}/**/project.json", "{workspaceRoot}/crates/*/Cargo.toml"],
+    "graph": [
+      "{workspaceRoot}/**/project.json",
+      "{workspaceRoot}/crates/*/Cargo.toml",
+      "{workspaceRoot}/Cargo.toml"
+    ],
     "repoConfig": [
       "{workspaceRoot}/.github/workflows/**",
       "{workspaceRoot}/justfile",

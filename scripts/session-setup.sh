@@ -33,13 +33,23 @@ _llmlint_handoff() {
     printf '[allowlister-remote] llmlint setup skipped: neither setsid nor nohup is on PATH; run `just setup-llmlint`.\n' >&2
     return 0
   fi
+  local log="$root/.dev/setup-llmlint.log"
+  if ! { : >"$log"; } 2>/dev/null; then
+    printf '[allowlister-remote] llmlint setup skipped: cannot write %s; make it writable by you (or delete it) or run `just setup-llmlint`.\n' "$log" >&2
+    return 0
+  fi
   # The subshell outlives the hook only to record a launcher failure, with its
   # status and the manual remedy, in the log a developer reads.
   # shellcheck disable=SC2016 # $1 expands in the child bash, which receives it as an argument.
   ( "$launcher" bash -c '
     lock="$1/.dev/setup-llmlint.lock"
     if { exec 9>"$lock"; } 2>/dev/null; then
-      if command -v flock >/dev/null 2>&1; then flock -n 9 || exit 0; fi
+      if command -v flock >/dev/null 2>&1; then
+        flock -n 9; status=$?
+        # 1 is another session holding the lock; anything else is flock failing.
+        [ "$status" -eq 1 ] && exit 0
+        [ "$status" -eq 0 ] || echo "session-setup: flock failed (exit $status); running without the concurrency lock" >&2
+      fi
     else
       echo "session-setup: cannot open $lock; running without the concurrency lock (make it writable by you, or delete it)" >&2
     fi
@@ -49,7 +59,7 @@ _llmlint_handoff() {
     fi
     exec bash "$1/scripts/setup-llmlint.sh"' _ "$root" \
       || echo "session-setup: llmlint setup via $launcher exited $?; run \`just setup-llmlint\`"
-  ) >"$root/.dev/setup-llmlint.log" 2>&1 </dev/null &
+  ) >"$log" 2>&1 </dev/null &
   return 0
 }
 trap '_llmlint_handoff || printf "[allowlister-remote] llmlint setup hand-off failed (status %s); run \`just setup-llmlint\`.\n" "$?" >&2' EXIT

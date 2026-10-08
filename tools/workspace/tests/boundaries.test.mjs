@@ -3,11 +3,11 @@
 // not declare, and passes the repository's real graph.
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, it } from "node:test";
-import { boundaryViolations, cargoPathDeps } from "../check-boundaries.mjs";
+import { boundaryViolations, cargoCrateEdges } from "../check-boundaries.mjs";
 
 const script = resolve(import.meta.dirname, "../check-boundaries.mjs");
 
@@ -63,33 +63,55 @@ describe("boundaryViolations", () => {
   });
 });
 
-describe("cargoPathDeps", () => {
-  it("reads inline tables, sub-tables and either quote, keeping only sibling crates", () => {
-    const manifest = [
-      "[dependencies]",
-      'a = { path = "../a" }',
-      "b = { path = '../b', version = \"1\" }",
-      '# c = { path = "../c" }',
-      "[dev-dependencies.d]",
-      'path = "../../crates/d"',
-      "[dependencies.vendored]",
-      'path = "vendor/x"',
-    ].join("\n");
-    assert.deepEqual(cargoPathDeps(manifest, "/r/crates/me", "/r/crates"), ["a", "b", "d"]);
+describe("cargoCrateEdges", () => {
+  it("keeps every dependency kind on a sibling crate and ignores the rest", () => {
+    const metadata = {
+      packages: [
+        {
+          name: "me",
+          manifest_path: "/r/crates/me/Cargo.toml",
+          dependencies: [
+            { name: "a", path: "/r/crates/a" },
+            { name: "b", path: "/r/crates/b", kind: "dev" },
+            { name: "serde_json" },
+            { name: "vendored", path: "/r/crates/me/vendor/x" },
+          ],
+        },
+        { name: "outside", manifest_path: "/r/tools/x/Cargo.toml", dependencies: [] },
+      ],
+    };
+    assert.deepEqual(cargoCrateEdges(metadata, "/r/crates"), { me: ["a", "b"] });
+  });
+
+  it("rejects output that is not cargo metadata", () => {
+    assert.throws(() => cargoCrateEdges({}, "/r/crates"), /no `packages` list/);
+    assert.throws(
+      () => cargoCrateEdges({ packages: [{ name: "x" }] }, "/r/crates"),
+      /malformed package/,
+    );
   });
 });
 
 describe("check-boundaries.mjs CLI", () => {
+  // A scratch Cargo workspace: `crates` maps a crate name to its manifest's extra
+  // TOML (e.g. a [dependencies] table), so `cargo metadata` parses real manifests.
   function run(edges, crates) {
     const dir = mkdtempSync(join(tmpdir(), "boundaries-"));
     try {
       const file = join(dir, "graph.json");
       writeFileSync(file, JSON.stringify({ graph: graph(edges) }));
-      for (const [crate, manifest] of Object.entries(crates)) {
-        mkdirSync(join(dir, "crates", crate), { recursive: true });
-        writeFileSync(join(dir, "crates", crate, "Cargo.toml"), manifest);
+      writeFileSync(
+        join(dir, "Cargo.toml"),
+        '[workspace]\nmembers = ["crates/*"]\nresolver = "2"\n',
+      );
+      for (const [crate, extra] of Object.entries(crates)) {
+        mkdirSync(join(dir, "crates", crate, "src"), { recursive: true });
+        writeFileSync(join(dir, "crates", crate, "src", "lib.rs"), "");
+        writeFileSync(
+          join(dir, "crates", crate, "Cargo.toml"),
+          `[package]\nname = "${crate}"\nversion = "0.0.0"\nedition = "2021"\n${extra}`,
+        );
       }
-      mkdirSync(join(dir, "crates"), { recursive: true });
       return spawnSync("node", [script, "--graph", file, "--workspace", dir], { encoding: "utf8" });
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -98,9 +120,25 @@ describe("check-boundaries.mjs CLI", () => {
 
   it("exits non-zero naming a forbidden edge read from Cargo", () => {
     const manifest = '[dependencies]\nplugin = { path = "../plugin" }\n';
-    const result = run([["protocol", "plugin"]], { protocol: manifest });
+    const result = run([["protocol", "plugin"]], { protocol: manifest, plugin: "" });
     assert.equal(result.status, 1);
     assert.match(result.stderr, /boundary: protocol is type:contract but depends on plugin/);
+  });
+
+  it("exits non-zero when a Cargo dev-dependency has no Nx edge", () => {
+    const manifest = '[dev-dependencies]\nplugin = { path = "../plugin" }\n';
+    const result = run([], { web: manifest, plugin: "" });
+    assert.equal(result.status, 1);
+    assert.match(
+      result.stderr,
+      /crates\/web\/Cargo.toml depends on plugin but the Nx graph has no web -> plugin edge/,
+    );
+  });
+
+  it("fails on a manifest Cargo cannot parse", () => {
+    const result = run([], { plugin: "this is not TOML" });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /cargo metadata failed/);
   });
 
   it("rejects a graph file that is not an nx project graph", () => {
@@ -154,27 +192,6 @@ describe("check-boundaries.mjs CLI", () => {
       });
       assert.notEqual(result.status, 0);
       assert.match(result.stderr, /web depends on unknown project phantom/);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  it("fails rather than skipping a crate whose manifest cannot be read", {
-    skip: process.platform === "win32" || process.getuid?.() === 0,
-  }, () => {
-    const dir = mkdtempSync(join(tmpdir(), "boundaries-"));
-    try {
-      const file = join(dir, "graph.json");
-      writeFileSync(file, JSON.stringify({ graph: graph([]) }));
-      mkdirSync(join(dir, "crates", "plugin"), { recursive: true });
-      const manifest = join(dir, "crates", "plugin", "Cargo.toml");
-      writeFileSync(manifest, "[package]\n");
-      chmodSync(manifest, 0o000);
-      const result = spawnSync("node", [script, "--graph", file, "--workspace", dir], {
-        encoding: "utf8",
-      });
-      assert.notEqual(result.status, 0);
-      assert.match(result.stderr, /EACCES/);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

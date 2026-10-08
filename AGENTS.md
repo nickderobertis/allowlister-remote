@@ -173,7 +173,7 @@ Use `just`; do not hand-roll equivalent commands.
 <!-- llmlint: ignore-end[agents_md_durable_and_terse] -->
 - **Supply chain.** `deny.toml` (advisories, a license allow-list, bans, sources) is
   enforced by `cargo deny check`, with `cargo machete` for unused dependencies
-  (`rust-workspace:supply-chain`). Every ignored advisory and duplicate-version skip carries its
+  (`rust-supply-chain:supply-chain`). Every ignored advisory and duplicate-version skip carries its
   reason there.
 - The Rust performance suites are informational, not a gate, and each benches its
   binary's pure, network-free surface so the numbers track what that binary
@@ -238,8 +238,9 @@ Use `just`; do not hand-roll equivalent commands.
   restatements). It depends on no consumer.
 - `tools/workspace` (`type:tooling`) holds the repo-level JavaScript checks (the tag-based
   boundary check; the workflow, graph and hook tests) and owns the root `scripts/` and config
-  files. `tools/rust-workspace` holds the workspace-wide Rust checks (`coverage`,
-  `supply-chain`), kept apart so a workflow or hook edit never re-runs every crate's tests.
+  files. `tools/rust-workspace` holds the Rust `coverage` aggregate and
+  `tools/rust-supply-chain` the `supply-chain` gate, each its own project so a workflow, hook or
+  policy edit never re-runs every crate's tests.
 - `crates/allowlister-remote-plugin` is the Rust allowlister dynamic plugin client. It is
   network-free: it hands each request to the daemon over local IPC and never opens a socket
   to the broker itself.
