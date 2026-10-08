@@ -28,7 +28,9 @@
       "{workspaceRoot}/.githooks/**",
       "{workspaceRoot}/llmlint.yml",
       "{workspaceRoot}/oneharness.toml",
-      "{workspaceRoot}/rust-toolchain.toml"
+      "{workspaceRoot}/rust-toolchain.toml",
+      "{workspaceRoot}/screencomp.toml",
+      "{workspaceRoot}/shots/baseline/**"
     ]
   },
   "targets": {

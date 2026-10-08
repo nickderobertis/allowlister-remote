@@ -208,6 +208,12 @@ Use `just`; do not hand-roll equivalent commands.
   live `local_prompt` still reproduces it, so the gallery can never depict a prompt
   the plugin no longer emits. Terminal shots carry only the `theme` toggle (a
   terminal frame is not responsive), so viewport is a screencomp wildcard.
+- **One baseline and one CI lane per architecture.** `[capture].arches` in
+  `screencomp.toml` lists `x86_64` and `arm64`; each has its own committed digest
+  baseline (`shots/baseline/<arch>.json`) and its own `visual-docs / capture (<arch>)`
+  lane (arm64 on `ubuntu-24.04-arm`), and the pre-push guard classifies the host's
+  arch against its own baseline. Regenerate an arch's baseline only on that arch, via
+  the hook's Docker capture.
 - After a release publishes, the `e2e-smoke` workflow re-runs the broker-realtime e2e
   against the plugin package downloaded from the public npm registry (rather than a
   locally built binary), so the published artifact is verified end-to-end. It first

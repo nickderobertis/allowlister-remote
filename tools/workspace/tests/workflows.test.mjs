@@ -202,6 +202,18 @@ describe("fixed status-check contexts", () => {
   }
 });
 
+describe("visual-docs lanes", () => {
+  it("every [capture].arches entry has a committed baseline, x86_64 and arm64 among them", () => {
+    const toml = readFileSync(join(root, "screencomp.toml"), "utf8");
+    const arches = JSON.parse(toml.match(/^arches\s*=\s*(\[.*\])\s*$/m)[1]);
+    assert.deepEqual(arches, ["x86_64", "arm64"]);
+    for (const arch of arches) {
+      const manifest = JSON.parse(readFileSync(join(root, `shots/baseline/${arch}.json`), "utf8"));
+      assert.ok(manifest.shots.length > 0, `${arch} baseline is empty`);
+    }
+  });
+});
+
 describe("llmlint.yml", () => {
   const llmlint = workflow("llmlint.yml");
   const job = llmlint.jobs.llmlint;

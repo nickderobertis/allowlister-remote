@@ -6,7 +6,7 @@
 # (shots/baseline/<arch>.json) and gets a CI capture lane; local commands
 # default to your host arch and require it to be listed here. Add an arch (e.g.
 # "x86_64") to support it — note every entry adds a CI job to each run.
-arches = ["x86_64"]
+arches = ["x86_64", "arm64"]
 
 [comment]
 title = "Visual changes"
