@@ -11,6 +11,16 @@
 # Bypass intentionally:   git push --no-verify
 set -euo pipefail
 
+# A fresh clone has no node_modules — onevcs's publication clone among them, which by
+# its contract installs nothing — so install from the lockfile before the first tool
+# that needs it. A checkout that already has them pays nothing.
+if [ -z "${CI:-}" ] && [ -f package-lock.json ] && [ ! -d node_modules ]; then
+  npm ci --no-audit --no-fund >&2 || {
+    echo "pre-push: npm ci failed, so the hook's tools are not installed; fix the install or bypass with git push --no-verify" >&2
+    exit 1
+  }
+fi
+
 # React Compiler lint (ESLint, compiler-only rules — see apps/web/eslint.config.mjs).
 # Pre-push and CI only, never pre-commit, so commits stay fast on Biome alone. CI
 # runs the same target via `just check`; this is the local half. Skipped under CI
