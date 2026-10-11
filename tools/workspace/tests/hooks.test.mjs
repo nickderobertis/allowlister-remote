@@ -308,14 +308,20 @@ describe("SessionStart hook hands off to setup-llmlint.sh", () => {
 });
 
 describe("pre-push hook installs its own tools in a fresh clone", () => {
-  function prePush({ lockfile, nodeModules, npmFails = false }) {
+  function prePush({ lockfile, nodeModules, npmFails = false, ci }) {
     const dir = scratch();
     const stubs = join(dir, "stubs");
     mkdirSync(stubs);
     const calls = join(dir, "npm-calls");
-    writeExecutable(join(stubs, "npm"), `echo "$*" >> ${JSON.stringify(calls)}\n${npmFails ? "exit 1" : "mkdir -p node_modules"}`);
+    writeExecutable(
+      join(stubs, "npm"),
+      `echo "$*" >> ${JSON.stringify(calls)}\n${npmFails ? "exit 1" : "mkdir -p node_modules"}`,
+    );
     // npx records whether node_modules was there when the lint ran.
-    writeExecutable(join(stubs, "npx"), `[ -d node_modules ] && echo "npx saw node_modules" >&2; exit 0`);
+    writeExecutable(
+      join(stubs, "npx"),
+      `[ -d node_modules ] && echo "npx saw node_modules" >&2; exit 0`,
+    );
     if (lockfile) writeFileSync(join(dir, "package-lock.json"), "{}\n");
     if (nodeModules) mkdirSync(join(dir, "node_modules"));
     const path = [stubs, ...pathWithout(["llmlint", "screencomp", "npm", "npx"])].join(delimiter);
@@ -323,7 +329,7 @@ describe("pre-push hook installs its own tools in a fresh clone", () => {
       cwd: dir,
       encoding: "utf8",
       input: "",
-      env: { PATH: path, HOME: process.env.HOME },
+      env: { PATH: path, HOME: process.env.HOME, ...(ci ? { CI: ci } : {}) },
     });
     return { run, npmCalls: existsSync(calls) ? readFileSync(calls, "utf8") : "" };
   }
@@ -331,8 +337,20 @@ describe("pre-push hook installs its own tools in a fresh clone", () => {
   it("runs npm ci from the lockfile before the lint when node_modules is absent", () => {
     const { run, npmCalls } = prePush({ lockfile: true, nodeModules: false });
     assert.equal(run.status, 0, run.stderr);
-    assert.match(npmCalls, /^ci\b/);
+    assert.equal(npmCalls, "ci --no-audit --no-fund\n");
     assert.match(run.stderr, /npx saw node_modules/);
+  });
+
+  it("installs nothing without a lockfile to install from", () => {
+    const { run, npmCalls } = prePush({ lockfile: false, nodeModules: false });
+    assert.equal(run.status, 0, run.stderr);
+    assert.equal(npmCalls, "");
+  });
+
+  it("installs nothing under CI, where the workflow installs", () => {
+    const { run, npmCalls } = prePush({ lockfile: true, nodeModules: false, ci: "true" });
+    assert.equal(run.status, 0, run.stderr);
+    assert.equal(npmCalls, "");
   });
 
   it("installs nothing when node_modules is already there", () => {
