@@ -307,6 +307,47 @@ describe("SessionStart hook hands off to setup-llmlint.sh", () => {
   });
 });
 
+describe("pre-push hook installs its own tools in a fresh clone", () => {
+  function prePush({ lockfile, nodeModules, npmFails = false }) {
+    const dir = scratch();
+    const stubs = join(dir, "stubs");
+    mkdirSync(stubs);
+    const calls = join(dir, "npm-calls");
+    writeExecutable(join(stubs, "npm"), `echo "$*" >> ${JSON.stringify(calls)}\n${npmFails ? "exit 1" : "mkdir -p node_modules"}`);
+    // npx records whether node_modules was there when the lint ran.
+    writeExecutable(join(stubs, "npx"), `[ -d node_modules ] && echo "npx saw node_modules" >&2; exit 0`);
+    if (lockfile) writeFileSync(join(dir, "package-lock.json"), "{}\n");
+    if (nodeModules) mkdirSync(join(dir, "node_modules"));
+    const path = [stubs, ...pathWithout(["llmlint", "screencomp", "npm", "npx"])].join(delimiter);
+    const run = spawnSync("bash", [join(root, ".githooks/pre-push")], {
+      cwd: dir,
+      encoding: "utf8",
+      input: "",
+      env: { PATH: path, HOME: process.env.HOME },
+    });
+    return { run, npmCalls: existsSync(calls) ? readFileSync(calls, "utf8") : "" };
+  }
+
+  it("runs npm ci from the lockfile before the lint when node_modules is absent", () => {
+    const { run, npmCalls } = prePush({ lockfile: true, nodeModules: false });
+    assert.equal(run.status, 0, run.stderr);
+    assert.match(npmCalls, /^ci\b/);
+    assert.match(run.stderr, /npx saw node_modules/);
+  });
+
+  it("installs nothing when node_modules is already there", () => {
+    const { run, npmCalls } = prePush({ lockfile: true, nodeModules: true });
+    assert.equal(run.status, 0, run.stderr);
+    assert.equal(npmCalls, "");
+  });
+
+  it("blocks the push when the install fails", () => {
+    const { run } = prePush({ lockfile: true, nodeModules: false, npmFails: true });
+    assert.equal(run.status, 1);
+    assert.match(run.stderr, /pre-push: npm ci failed/);
+  });
+});
+
 describe("pre-push hook runs llmlint validate", () => {
   function prePush({ llmlint, config }) {
     const dir = scratch();
