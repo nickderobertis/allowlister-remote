@@ -159,7 +159,7 @@ the mouse follows on hover; the focused card is ringed and marked
   target) runs only the React Compiler rules Biome has no equivalent for: never move general
   linting to it or enable a rule Biome owns — the config disables `react-hooks/rules-of-hooks`
   and `exhaustive-deps` because Biome's `useHookAtTopLevel` and `useExhaustiveDependencies`
-  own them. ESLint runs in CI (`just check`) and the pre-push hook, never pre-commit, so
+  own them. ESLint runs in CI (`just check`), never pre-commit, so
   commits stay on Biome alone.
 
 ## React Compiler

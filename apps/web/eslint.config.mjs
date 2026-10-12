@@ -8,7 +8,7 @@
 // syntax, incompatible libraries, …) — exactly what react-compiler-healthcheck
 // cannot detect. Every one is forced to error so a regression fails CI, and the
 // list is derived from the plugin's recommended set so new compiler rules are
-// adopted automatically. This runs in CI (`just check`) and pre-push, never
+// adopted automatically. This runs in CI (`just check`), never
 // pre-commit.
 //
 // EXCLUDED below are rules that are either owned by Biome (so we never double-lint)

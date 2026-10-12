@@ -102,9 +102,9 @@ Use `just`; do not hand-roll equivalent commands.
 - **One baseline and one CI lane per architecture.** `[capture].arches` in
   `screencomp.toml` lists `x86_64` and `arm64`; each has its own committed digest
   baseline (`shots/baseline/<arch>.json`) and its own `visual-docs / capture (<arch>)`
-  lane (arm64 on `ubuntu-24.04-arm`), and the pre-push guard classifies the host's
-  arch against its own baseline. Regenerate an arch's baseline only on that arch, via
-  the hook's Docker capture.
+  lane (arm64 on `ubuntu-24.04-arm`). CI verifies visual drift; pushes run no
+  checks or captures. Regenerate an arch's baseline only on that arch using the
+  pinned Playwright Docker image from `visual-docs.yml`.
 
 ## Monorepo projects
 
@@ -181,9 +181,7 @@ What is **not** yet done, and what closing each gap entails:
   behind `cfg(windows)` but is only built by `publish.yml`'s release matrix, not
   by any PR check, so it needs verification on a Windows runner before it is
   relied on.
-- **Visual-docs baselines.** The static-export switch dropped the Next image
-  optimizer, so the brand logo now renders via the browser — its bytes shifted in
-  the two logo-bearing shots (`inbox`, `empty-state`). The committed baseline was
-  regenerated for this in the pinned Playwright image via the Docker capture in
-  `.githooks/pre-push` (`screencomp classify` → `manifest`); re-run that flow if a
-  future change drifts the gallery, rather than capturing on the host directly.
+- **Visual-docs baselines.** Regenerate a drifting gallery on its target arch in
+  the pinned Playwright image from `visual-docs.yml`: run `just capture`, then
+  `screencomp classify` → `manifest`. Host captures do not provide the same
+  deterministic bytes as the CI image.

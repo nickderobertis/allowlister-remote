@@ -31,8 +31,8 @@ label = "Theme"
 values = ["dark", "light"]
 
 [guard]
-# Local pre-push guard (.githooks/pre-push): re-capture only when these globs
-# change. Adjust to the files that actually affect your screenshots.
+# Manual screencomp scope/guard commands use these screenshot-relevant paths.
+# CI owns visual verification; ordinary pushes run no capture or checks.
 paths = [
   "apps/web/app/**",
   "apps/web/src/**",

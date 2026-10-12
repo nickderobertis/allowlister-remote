@@ -1,22 +1,23 @@
 // The developer hooks, run for real in scratch copies: the SessionStart hook
 // hands off to setup-llmlint.sh on every path it can exit by and returns at once
-// with exit 0 however that setup goes, and the pre-push hook runs llmlint's
-// validate step — blocking on a failure, skipping when llmlint is absent.
+// with exit 0 however that setup goes. Git pushes leave verification to CI.
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import {
   chmodSync,
   copyFileSync,
+  cpSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
+  statSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { delimiter, join, resolve } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 import { after, describe, it } from "node:test";
 
 const root = resolve(import.meta.dirname, "../../..");
@@ -33,22 +34,31 @@ after(() => {
   for (const dir of scratchDirs) rmSync(dir, { recursive: true, force: true });
 });
 
-function scratch() {
-  const dir = mkdtempSync(join(tmpdir(), "hooks-"));
+function scratch(parent = process.env.ONEPIPELINE_NODE_SCRATCH_DIR ?? tmpdir()) {
+  assert.ok(isAbsolute(parent), "scratch parent must be a nonempty absolute path");
+  assert.ok(statSync(parent).isDirectory(), "scratch parent must be an existing directory");
+  const dir = mkdtempSync(join(parent, "hooks-"));
   scratchDirs.push(dir);
   return dir;
 }
 
+describe("hook fixture scratch directory", () => {
+  it("creates fixtures in the supplied directory and rejects invalid parents", () => {
+    const parent = scratch();
+    assert.equal(resolve(scratch(parent), ".."), parent);
+    for (const invalid of ["", "relative/path"]) {
+      assert.throws(() => scratch(invalid), /scratch parent must be a nonempty absolute path/);
+    }
+    const file = join(parent, "file");
+    writeFileSync(file, "not a directory");
+    assert.throws(() => scratch(file), /scratch parent must be an existing directory/);
+    assert.throws(() => scratch(join(parent, "missing")), { code: "ENOENT" });
+  });
+});
+
 function writeExecutable(path, body) {
   writeFileSync(path, `#!/usr/bin/env bash\n${body}\n`);
   chmodSync(path, 0o755);
-}
-
-// PATH entries from this process minus any directory holding one of `hidden`.
-function pathWithout(hidden) {
-  return (process.env.PATH ?? "")
-    .split(delimiter)
-    .filter((dir) => dir && !hidden.some((tool) => existsSync(join(dir, tool))));
 }
 
 // A directory of symlinks to just the named tools, for a PATH that lacks the rest.
@@ -307,103 +317,92 @@ describe("SessionStart hook hands off to setup-llmlint.sh", () => {
   });
 });
 
-describe("pre-push hook installs its own tools in a fresh clone", () => {
-  function prePush({ lockfile, nodeModules, npmFails = false, ci }) {
+describe("ordinary pushes leave checks to CI", () => {
+  it("pushes first, changed and up-to-date refs after real setup and its rerun", () => {
+    assert.equal(existsSync(join(root, ".githooks/pre-push")), false, "obsolete hook removed");
     const dir = scratch();
-    const stubs = join(dir, "stubs");
-    mkdirSync(stubs);
-    const calls = join(dir, "npm-calls");
-    writeExecutable(
-      join(stubs, "npm"),
-      `echo "$*" >> ${JSON.stringify(calls)}\n${npmFails ? "exit 1" : "mkdir -p node_modules"}`,
-    );
-    // npx records whether node_modules was there when the lint ran.
-    writeExecutable(
-      join(stubs, "npx"),
-      `[ -d node_modules ] && echo "npx saw node_modules" >&2; exit 0`,
-    );
-    if (lockfile) writeFileSync(join(dir, "package-lock.json"), "{}\n");
-    if (nodeModules) mkdirSync(join(dir, "node_modules"));
-    const path = [stubs, ...pathWithout(["llmlint", "screencomp", "npm", "npx"])].join(delimiter);
-    const run = spawnSync("bash", [join(root, ".githooks/pre-push")], {
-      cwd: dir,
-      encoding: "utf8",
-      input: "",
-      env: { PATH: path, HOME: process.env.HOME, ...(ci ? { CI: ci } : {}) },
-    });
-    return { run, npmCalls: existsSync(calls) ? readFileSync(calls, "utf8") : "" };
-  }
-
-  it("runs npm ci from the lockfile before the lint when node_modules is absent", () => {
-    const { run, npmCalls } = prePush({ lockfile: true, nodeModules: false });
-    assert.equal(run.status, 0, run.stderr);
-    assert.equal(npmCalls, "ci --no-audit --no-fund\n");
-    assert.match(run.stderr, /npx saw node_modules/);
-  });
-
-  it("installs nothing without a lockfile to install from", () => {
-    const { run, npmCalls } = prePush({ lockfile: false, nodeModules: false });
-    assert.equal(run.status, 0, run.stderr);
-    assert.equal(npmCalls, "");
-  });
-
-  it("installs nothing under CI, where the workflow installs", () => {
-    const { run, npmCalls } = prePush({ lockfile: true, nodeModules: false, ci: "true" });
-    assert.equal(run.status, 0, run.stderr);
-    assert.equal(npmCalls, "");
-  });
-
-  it("installs nothing when node_modules is already there", () => {
-    const { run, npmCalls } = prePush({ lockfile: true, nodeModules: true });
-    assert.equal(run.status, 0, run.stderr);
-    assert.equal(npmCalls, "");
-  });
-
-  it("blocks the push when the install fails", () => {
-    const { run } = prePush({ lockfile: true, nodeModules: false, npmFails: true });
-    assert.equal(run.status, 1);
-    assert.match(run.stderr, /pre-push: npm ci failed/);
-  });
-});
-
-describe("pre-push hook runs llmlint validate", () => {
-  function prePush({ llmlint, config }) {
-    const dir = scratch();
-    const stubs = join(dir, "stubs");
-    mkdirSync(stubs);
-    // The React Compiler lint is out of scope here; stub npx to pass.
-    writeExecutable(join(stubs, "npx"), "exit 0");
-    if (llmlint) {
-      writeExecutable(
-        join(stubs, "llmlint"),
-        `[ "$1" = validate ] || exit 2\ngrep -q INVALID llmlint.yml && { echo "llmlint: config invalid" >&2; exit 1; }\necho "llmlint: static checks passed"`,
-      );
+    const remote = join(scratch(), "remote.git");
+    function run(command, args, env = {}) {
+      const result = spawnSync(command, args, {
+        cwd: dir,
+        encoding: "utf8",
+        timeout: 300_000,
+        env: { ...process.env, CI: "", ...env },
+      });
+      assert.equal(result.status, 0, result.stderr || result.error?.message);
+      return result.stdout.trim();
     }
-    writeFileSync(join(dir, "llmlint.yml"), config);
-    const path = [stubs, ...pathWithout(["llmlint", "screencomp"])].join(delimiter);
-    return spawnSync("bash", [join(root, ".githooks/pre-push")], {
-      cwd: dir,
+    // Use the finished repository files and its real bootstrap recipe/tools.
+    const files = spawnSync("git", ["ls-files", "-z"], {
+      cwd: root,
       encoding: "utf8",
-      input: "",
-      env: { PATH: path, HOME: process.env.HOME },
     });
-  }
-
-  it("passes a valid config", () => {
-    const run = prePush({ llmlint: true, config: "plugins: []\n" });
-    assert.equal(run.status, 0, run.stderr);
-    assert.match(run.stdout, /static checks passed/);
-  });
-
-  it("blocks the push on an invalid config", () => {
-    const run = prePush({ llmlint: true, config: "INVALID\n" });
-    assert.equal(run.status, 1);
-    assert.match(run.stderr, /pre-push: llmlint validate failed/);
-  });
-
-  it("skips without blocking when llmlint is not installed", () => {
-    const run = prePush({ llmlint: false, config: "INVALID\n" });
-    assert.equal(run.status, 0, run.stderr);
-    assert.match(run.stderr, /llmlint not on PATH; skipping llmlint validate/);
+    assert.equal(files.status, 0, files.stderr);
+    for (const file of files.stdout.split("\0").filter(Boolean)) {
+      if (!existsSync(join(root, file))) continue;
+      mkdirSync(resolve(dir, file, ".."), { recursive: true });
+      cpSync(join(root, file), join(dir, file));
+    }
+    run("git", ["init", "-b", "main"]);
+    run("git", ["config", "user.name", "Hook journey"]);
+    run("git", ["config", "user.email", "hooks@example.invalid"]);
+    run("git", ["init", "--bare", remote]);
+    run("git", ["remote", "add", "origin", remote]);
+    run("git", ["add", "."]);
+    run("git", ["commit", "-m", "test: first authored commit"]);
+    const baseline = readFileSync(join(dir, "shots/baseline/x86_64.json"), "utf8");
+    const armBaseline = readFileSync(join(dir, "shots/baseline/arm64.json"), "utf8");
+    function push(label) {
+      const trace = join(scratch(), "git-trace.json");
+      run("git", ["push", "origin", "main"], { GIT_TRACE2_EVENT: trace });
+      const children = readFileSync(trace, "utf8")
+        .trim()
+        .split("\n")
+        .map((line) => {
+          const event = JSON.parse(line);
+          assert.ok(event !== null && typeof event === "object" && !Array.isArray(event));
+          assert.equal(typeof event.event, "string");
+          return event;
+        })
+        .filter((event) => event.event === "child_start");
+      assert.ok(children.length > 0, "trace records the real Git transport");
+      for (const child of children) {
+        assert.ok(Array.isArray(child.argv));
+        assert.ok(child.argv.every((arg) => typeof arg === "string"));
+        assert.ok(child.hook_name === undefined || typeof child.hook_name === "string");
+        assert.notEqual(child.hook_name, "pre-push", label);
+        assert.doesNotMatch(
+          child.argv.join(" "),
+          /pre-push|npm|npx|llmlint|screencomp|docker/,
+          label,
+        );
+      }
+      assert.equal(
+        run("git", ["--git-dir", remote, "rev-parse", "refs/heads/main"]),
+        run("git", ["rev-parse", "HEAD"]),
+      );
+      assert.equal(readFileSync(join(dir, "shots/baseline/x86_64.json"), "utf8"), baseline);
+      assert.equal(readFileSync(join(dir, "shots/baseline/arm64.json"), "utf8"), armBaseline);
+      for (const artifact of ["shots/current", "shots/review", "shots/verify"]) {
+        assert.equal(existsSync(join(dir, artifact)), false, artifact);
+      }
+      assert.equal(existsSync(join(dir, ".githooks/pre-push")), false);
+    }
+    run("bash", ["scripts/setup.sh"]);
+    push("first push in a fresh clone");
+    // Reproduce an existing clone configured by the previous setup.
+    run("git", ["config", "core.hooksPath", ".githooks"]);
+    mkdirSync(join(dir, ".githooks"), { recursive: true });
+    const preCommit = "#!/bin/sh\nprintf retained > .git/pre-commit-ran\n";
+    writeFileSync(join(dir, ".githooks/pre-commit"), preCommit, { mode: 0o755 });
+    run("bash", ["scripts/setup.sh"]);
+    assert.equal(readFileSync(join(dir, ".githooks/pre-commit"), "utf8"), preCommit);
+    assert.equal(run("git", ["config", "core.hooksPath"]), ".githooks");
+    writeFileSync(join(dir, "apps/web/public/hook-journey.txt"), "guarded change\n");
+    run("git", ["add", "apps/web/public/hook-journey.txt"]);
+    run("git", ["commit", "-m", "test: second authored commit"]);
+    assert.equal(readFileSync(join(dir, ".git/pre-commit-ran"), "utf8"), "retained");
+    push("changed push after setup rerun");
+    push("up-to-date push");
   });
 });
