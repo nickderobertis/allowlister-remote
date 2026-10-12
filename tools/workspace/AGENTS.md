@@ -8,8 +8,9 @@
   edge — Nx does not infer Rust dependencies here, so crates declare
   `implicitDependencies`.
 - `tests/` covers the CI workflow contract, the boundary checker, affected
-  selection and task ordering asked of `nx` itself, and the SessionStart and
-  pre-push hooks in scratch copies. `project.json` lists the test files because
-  CI's Node 20 `--test` does not take a directory.
+  selection and task ordering asked of `nx` itself, the SessionStart hook
+  in scratch copies, and ordinary pushes to a local bare remote. `project.json` lists the test files because
+  CI's Node 20 `--test` does not take a directory. The obsolete pre-push path
+  stays an input so restoring it selects the test that asserts its absence.
 - When a target here starts reading another root file, add it to this project's
   inputs, or a change to that file will skip the check.

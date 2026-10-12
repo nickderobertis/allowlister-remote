@@ -98,6 +98,10 @@ describe("affected selection", () => {
     assert.deepEqual([...affected("deny.toml")], ["rust-supply-chain"]);
   });
 
+  it("restoring the obsolete pre-push hook selects its absence regression", () => {
+    assert.deepEqual([...affected(".githooks/pre-push")], ["workspace"]);
+  });
+
   it("a workflow or hook edit never selects the Rust coverage aggregate", () => {
     for (const file of [".github/workflows/check.yml", "scripts/session-setup.sh", "justfile"]) {
       assertSelection(file, { excludes: ["rust-workspace", ...RUST_CRATES] });

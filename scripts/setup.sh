@@ -88,10 +88,8 @@ ensure_allowlister() {
   fi
 }
 
-# screencomp powers the pre-push visual guard (.githooks/pre-push): it classifies
-# captured screenshots against the committed baseline. Best-effort like the
-# Playwright browsers — a restricted network must not fail setup, since the guard
-# simply skips when the CLI is absent and CI still gates visual drift.
+# screencomp supports manual capture, baseline classification and visual review.
+# Best-effort like the Playwright browsers: CI gates visual drift.
 # Pinned to the same release the visual-docs CI workflow uses, so local captures
 # classify with the identical tool. Pinning also skips the install script's
 # "resolve latest" GitHub API call, which is rate-limited for unauthenticated
@@ -118,21 +116,8 @@ ensure_screencomp() {
   if have screencomp; then
     ok "screencomp installed ($(screencomp --version 2>/dev/null || echo unknown))"
   else
-    printf '! screencomp not installed (the pre-push visual guard will skip); rerun setup with network access.\n'
-  fi
-}
-
-# Activate the repo's git hooks so the pre-push visual guard runs. Idempotent;
-# the guard itself only captures when screenshot-relevant files change and is a
-# no-op under CI. Bypass an individual push with `git push --no-verify`.
-enable_git_hooks() {
-  [ -d .githooks ] || return 0
-  if [ "$(git config core.hooksPath 2>/dev/null || true)" = ".githooks" ]; then
-    ok "git hooks already enabled (core.hooksPath=.githooks)"
-    return
-  fi
-  if git config core.hooksPath .githooks 2>/dev/null; then
-    ok "enabled git hooks (core.hooksPath=.githooks)"
+    # llmlint: ignore[changed_behavior_has_e2e] Only the stale pre-push wording changes here; the best-effort installer branch and exit behavior are unchanged, so this message-only edit needs no new failure-path test.
+    printf '! screencomp not installed (manual visual review unavailable); rerun setup with network access.\n'
   fi
 }
 
@@ -162,11 +147,8 @@ main() {
   # The dynamic-approval host the e2e suite drives the approval flow through.
   ensure_allowlister
 
-  # Visual-regression guard: the screencomp CLI + the git hook that runs it on a
-  # screenshot-relevant push. The hook starts Docker lazily (remote env) only
-  # when a capture is actually needed.
+  # Keep the CLI available for manual capture, baseline and review commands.
   ensure_screencomp
-  enable_git_hooks
 
   _write_stamp
   rm -f .dev/setup.failed 2>/dev/null || true

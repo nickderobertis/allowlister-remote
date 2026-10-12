@@ -25,7 +25,7 @@
       "{workspaceRoot}/justfile",
       "{workspaceRoot}/scripts/session-setup.sh",
       "{workspaceRoot}/scripts/setup-llmlint.sh",
-      "{workspaceRoot}/.githooks/**",
+      "{workspaceRoot}/.githooks/pre-push",
       "{workspaceRoot}/llmlint.yml",
       "{workspaceRoot}/oneharness.toml",
       "{workspaceRoot}/rust-toolchain.toml",
