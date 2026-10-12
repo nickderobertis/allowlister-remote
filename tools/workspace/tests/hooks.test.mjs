@@ -12,11 +12,12 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  statSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 import { after, describe, it } from "node:test";
 
 const root = resolve(import.meta.dirname, "../../..");
@@ -33,11 +34,27 @@ after(() => {
   for (const dir of scratchDirs) rmSync(dir, { recursive: true, force: true });
 });
 
-function scratch() {
-  const dir = mkdtempSync(join(process.env.ONEPIPELINE_NODE_SCRATCH_DIR ?? tmpdir(), "hooks-"));
+function scratch(parent = process.env.ONEPIPELINE_NODE_SCRATCH_DIR ?? tmpdir()) {
+  assert.ok(isAbsolute(parent), "scratch parent must be a nonempty absolute path");
+  assert.ok(statSync(parent).isDirectory(), "scratch parent must be an existing directory");
+  const dir = mkdtempSync(join(parent, "hooks-"));
   scratchDirs.push(dir);
   return dir;
 }
+
+describe("hook fixture scratch directory", () => {
+  it("creates fixtures in the supplied directory and rejects invalid parents", () => {
+    const parent = scratch();
+    assert.equal(resolve(scratch(parent), ".."), parent);
+    for (const invalid of ["", "relative/path"]) {
+      assert.throws(() => scratch(invalid), /scratch parent must be a nonempty absolute path/);
+    }
+    const file = join(parent, "file");
+    writeFileSync(file, "not a directory");
+    assert.throws(() => scratch(file), /scratch parent must be an existing directory/);
+    assert.throws(() => scratch(join(parent, "missing")), { code: "ENOENT" });
+  });
+});
 
 function writeExecutable(path, body) {
   writeFileSync(path, `#!/usr/bin/env bash\n${body}\n`);
