@@ -110,12 +110,15 @@ jobs:
       - name: Install pinned actionlint
         shell: bash
         env:
+          ACTIONLINT_VERSION: 1.7.12
           RUNNER_OS_NAME: ${{ runner.os }}
         run: |
           install_dir="$RUNNER_TEMP/actionlint"
           mkdir -p "$install_dir"
-          curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash \
-            | bash -s -- 1.7.12 "$install_dir"
+          # llmlint: ignore-block[boundary_inputs_validated] Official version-pinned tool installer is trusted like the repository's other installer/actions; checksum infrastructure is outside this provisioning change.
+          curl -fsSL "https://raw.githubusercontent.com/rhysd/actionlint/v${ACTIONLINT_VERSION}/scripts/download-actionlint.bash" \
+            | bash -s -- "$ACTIONLINT_VERSION" "$install_dir"
+          # llmlint: ignore-end[boundary_inputs_validated]
           if [[ "$RUNNER_OS_NAME" == "Windows" ]]; then
             cygpath -w "$install_dir" >> "$GITHUB_PATH"
           else

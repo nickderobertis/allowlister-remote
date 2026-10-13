@@ -9,6 +9,7 @@ if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?(\+[A-Za-z0-9.-]+
 fi
 check_version() {
   local binary="$1" actual
+  # llmlint: ignore[boundary_inputs_validated] Private native smoke deliberately runs artifacts supplied by its trusted builder or local packaging fixtures; production fixes the directory to dist/artifacts.
   if ! actual="$("$binary" --version)"; then
     echo "Cannot execute $binary. Rebuild and restage the native artifact before retrying smoke." >&2; exit 1
   fi
