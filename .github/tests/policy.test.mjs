@@ -38,6 +38,11 @@ write("package-lock.json", {
     "": { name: "example", version: "0.1.0" },
     "apps/web": { name: "web", version: "0.1.0" },
     "node_modules/library": { version: "1.0.0", integrity: "abc" },
+    "node_modules/web": {
+      name: "web",
+      version: "0.1.0",
+      resolved: "https://registry.npmjs.org/web/-/web-0.1.0.tgz",
+    },
   },
 });
 write(".release-please-manifest.json", { ".": "0.1.0" });
@@ -54,6 +59,7 @@ for (const diff of [
   "mixed",
   "lock-version",
   "lock-dependency",
+  "lock-same-named-registry",
   "manifest-version",
   "malformed",
   "empty",
@@ -89,6 +95,7 @@ for (const diff of [
     lock.version = "0.2.0";
     lock.packages[""].version = "0.2.0";
     if (diff === "lock-dependency") lock.packages["node_modules/library"].version = "2.0.0";
+    if (diff === "lock-same-named-registry") lock.packages["node_modules/web"].version = "0.2.0";
     write("package-lock.json", lock);
   }
   if (diff === "added") write("extra.txt", "extra");
