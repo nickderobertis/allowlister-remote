@@ -34,4 +34,5 @@ Windows gets real staging/packing contract coverage. No old assertion is skipped
 retain their existing selection contract, as ruled by the manager. Local Linux execution uses rustc's host
 GNU target; the release matrix's musl/Darwin/Windows target and artifact contracts
 are checked separately. The Darwin release job executes the native smoke on its
-actual Apple Silicon runner before Linux jobs publish anything.
+actual Apple Silicon runner before Linux publishes native artifacts and npm
+carriers. The independent static web package may publish in parallel.
