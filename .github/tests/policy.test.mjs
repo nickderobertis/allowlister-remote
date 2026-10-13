@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, writeFileSync, readFileSync, mkdirSync, rmSync } from "node:fs";
+import { mkdtempSync, writeFileSync, readFileSync, mkdirSync, rmSync, cpSync, symlinkSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 import { after, test } from "node:test";
+import { pathToFileURL } from "node:url";
 import {
   root,
   load,
@@ -725,4 +726,63 @@ test("workspace metadata follows the git manifest instead of a fixed path list",
   );
   assert.equal(result.status, 0, result.stderr);
   assert.equal(JSON.parse(result.stdout).isReleaseOnly, true);
+});
+
+
+test("generated workflow graph expands exclusions and includes and traverses local reusable calls", async () => {
+  const repo = mkdtempSync(join(scratch, "graph-repo-"));
+  const tooling = join(repo, ".github");
+  const workflowDir = join(tooling, "workflows");
+  mkdirSync(workflowDir, { recursive: true });
+  cpSync(join(root, ".github/workflow-graph.mjs"), join(tooling, "workflow-graph.mjs"));
+  symlinkSync(join(root, ".github/node_modules"), join(tooling, "node_modules"), "dir");
+  const graph = await import(pathToFileURL(join(tooling, "workflow-graph.mjs")).href);
+  const event = scenario("generated", "push");
+  const resolveMatrix = (matrix) => {
+    const workflow = { on: { push: null }, jobs: {
+      proof: { "runs-on": "${{ matrix.os }}", strategy: { matrix } },
+    } };
+    writeFileSync(join(workflowDir, "matrix.yml"), JSON.stringify(workflow));
+    return graph.resolveRun(".github/workflows/matrix.yml", workflow, event, () => ({}));
+  };
+  const excluded = resolveMatrix({ os: ["ubuntu-latest", "macos-14"], exclude: [{ os: "macos-14" }] });
+  assert.deepEqual(excluded.map((row) => row.matrix), [{ os: "ubuntu-latest" }]);
+  assert.deepEqual(excluded.filter((row) => row.macos), []);
+  const included = resolveMatrix({
+    os: ["ubuntu-latest"],
+    include: [{ arch: "x86_64" }, { os: "macos-14" }, { os: "macos-14", arch: "arm64" }],
+  });
+  assert.deepEqual(included.map((row) => row.matrix), [
+    { os: "ubuntu-latest", arch: "x86_64" }, { os: "macos-14" }, { os: "macos-14", arch: "arm64" },
+  ]);
+  assert.deepEqual(included.filter((row) => row.macos).map((row) => row.matrix), [
+    { os: "macos-14" }, { os: "macos-14", arch: "arm64" },
+  ]);
+  const restored = resolveMatrix({
+    os: ["ubuntu-latest", "macos-14"], exclude: [{ os: "macos-14" }],
+    include: [{ os: "macos-14", arch: "arm64" }],
+  });
+  assert.deepEqual(restored.map((row) => row.matrix), [
+    { os: "ubuntu-latest" }, { os: "macos-14", arch: "arm64" },
+  ]);
+  assert.deepEqual(restored.filter((row) => row.macos).map((row) => row.runner), ["macos-14"]);
+  const child = { on: { workflow_call: { inputs: { os: { type: "string", default: "macos-14" } } } },
+    jobs: { native: { "runs-on": "${{ inputs.os }}" } } };
+  writeFileSync(join(workflowDir, "child.yml"), JSON.stringify(child));
+  for (const os of ["macos-14", "ubuntu-latest"]) {
+    const caller = { on: { push: null }, jobs: { call: {
+      uses: "./.github/workflows/child.yml", ...(os === "ubuntu-latest" ? { with: { os } } : {}),
+    } } };
+    writeFileSync(join(workflowDir, "caller.yml"), JSON.stringify(caller));
+    const rows = graph.resolveRun(".github/workflows/caller.yml", caller, event, () => ({}));
+    assert.deepEqual(rows.map(({ workflow, job, runner, macos }) => ({ workflow, job, runner, macos })), [
+      { workflow: ".github/workflows/child.yml", job: "native", runner: os, macos: os === "macos-14" },
+    ]);
+  }
+  for (const field of ["branches-ignore", "tags-ignore", "paths", "paths-ignore"]) {
+    const path = join(workflowDir, `${field}.yml`);
+    writeFileSync(path, JSON.stringify({ on: { push: { [field]: ["ignored"] } }, jobs: {} }));
+    const workflow = graph.load(`.github/workflows/${field}.yml`);
+    assert.throws(() => graph.triggered(workflow, event), /Unhandled workflow (ref exclusion|path filter)/);
+  }
 });

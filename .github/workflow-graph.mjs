@@ -104,14 +104,16 @@ function matrixRows(matrix, context) {
     rows = rows.flatMap((row) => list.map((value) => ({ ...row, [key]: value })));
   }
   const keys = Object.keys(resolved).filter((key) => key !== "include" && key !== "exclude");
-  if (!keys.length && resolved.include) {
-    return resolved.include.filter(
-      (row) =>
-        !(resolved.exclude ?? []).some((exclude) =>
-          Object.entries(exclude).every(([key, value]) => row[key] === value),
-        ),
-    );
-  }
+  if (!keys.length && resolved.include) return resolved.include;
+  // GitHub applies exclusions before includes; appended include rows are never
+  // original combinations eligible for later augmentation.
+  // https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax
+  rows = rows.filter(
+    (row) => !(resolved.exclude ?? []).some((exclude) =>
+      Object.entries(exclude).every(([key, value]) => row[key] === value),
+    ),
+  );
+  const additional = [];
   for (const include of resolved.include ?? []) {
     let matched = false;
     rows = rows.map((row) => {
@@ -121,14 +123,9 @@ function matrixRows(matrix, context) {
       }
       return row;
     });
-    if (!matched) rows.push(include);
+    if (!matched) additional.push(include);
   }
-  return rows.filter(
-    (row) =>
-      !(resolved.exclude ?? []).some((exclude) =>
-        Object.entries(exclude).every(([key, value]) => row[key] === value),
-      ),
-  );
+  return [...rows, ...additional];
 }
 export function workflows() {
   return readdirSync(join(root, ".github/workflows"))

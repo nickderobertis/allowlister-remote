@@ -10,11 +10,30 @@ const scratchRoot = process.env.ONEPIPELINE_NODE_SCRATCH_DIR ?? join(root, ".git
 assert.ok(typeof scratchRoot === "string" && isAbsolute(scratchRoot), "scratch directory must be absolute");
 mkdirSync(scratchRoot, { recursive: true });
 const publish = load(".github/workflows/publish.yml");
+function releaseFixture() {
+  const fixture = JSON.parse(readFileSync(join(root, ".github/tests/fixtures/release-platforms.json")));
+  assert.ok(fixture && typeof fixture === "object");
+  assert.equal(fixture.schemaVersion, 1);
+  assert.match(fixture.sourceCommit, /^[a-f0-9]{40}$/);
+  assert.ok(Array.isArray(fixture.platforms) && fixture.platforms.length > 0);
+  for (const row of fixture.platforms) {
+    assert.ok(row && typeof row === "object");
+    assert.ok(publish.jobs["build-binary"].strategy.matrix.include.some(
+      (declared) => row.platform === declared.platform && row.target === declared.target && row.exe === declared.exe,
+    ), "fixture platform/target/suffix must match a declared release target");
+    for (const key of ["artifacts", "npmPayloads"]) {
+      assert.ok(Array.isArray(row[key]) && row[key].length > 0);
+      for (const path of row[key])
+        assert.ok(typeof path === "string" && /^[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)*$/.test(path) &&
+          !path.split("/").includes(".."), "release payload paths must be relative without traversal");
+    }
+  }
+  assert.equal(fixture.webPackage, "@nickderobertis/allowlister-remote-web");
+  return fixture;
+}
 test("all release platforms retain three binaries, npm carriers, checksums and native Mac smoke before native npm publication", () => {
   const build = publish.jobs["build-binary"];
-  const golden = JSON.parse(
-    readFileSync(join(root, ".github/tests/fixtures/release-platforms.json")),
-  );
+  const golden = releaseFixture();
   assert.deepEqual(
     build.strategy.matrix.include.map(({ platform, target, exe }) => ({ platform, target, exe })),
     golden.platforms.map(({ platform, target, exe }) => ({ platform, target, exe })),
@@ -92,6 +111,8 @@ test("pinned reusable workflow fixture has exact source provenance", () => {
   const fixture = JSON.parse(readFileSync(join(root, ".github/tests/fixtures/provenance.json")));
   assert.equal(load(".github/workflows/visual-docs.yml").jobs["visual-docs"].uses, fixture.call);
   assert.equal(fixture.schemaVersion, 1);
+  assert.equal(fixture.sourcePath, ".github/tests/fixtures/visual-docs-source.json");
+  assert.equal(fixture.path, ".github/tests/fixtures/visual-docs-reusable.yml");
   const raw = JSON.parse(readFileSync(join(root, fixture.sourcePath))).source;
   assert.equal(createHash("sha256").update(raw).digest("hex"), fixture.sourceSha256);
   assert.equal(stringify(parse(raw)), readFileSync(join(root, fixture.path), "utf8"));
@@ -156,9 +177,7 @@ test("production staging and npm packing preserve every platform payload and ver
     cpSync(join(root, "packages"), join(scratch, "packages"), { recursive: true });
     const artifacts = join(scratch, "artifacts");
     mkdirSync(artifacts);
-    const golden = JSON.parse(
-      readFileSync(join(root, ".github/tests/fixtures/release-platforms.json")),
-    );
+    const golden = releaseFixture();
     for (const row of golden.platforms)
       for (const name of row.artifacts)
         writeFileSync(join(artifacts, name), `Inert contract payload: ${row.target} / ${name}\n`);
