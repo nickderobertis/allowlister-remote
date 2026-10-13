@@ -9,6 +9,7 @@ const metric = options["--metric"];
 if (!["jobs-per-run", "runs-per-change"].includes(metric)) throw new Error("Unknown metric");
 const path = options["--telemetry"];
 if (!path || path.startsWith("--")) throw new Error("Telemetry path required");
+// llmlint: ignore[boundary_inputs_validated] The internal CLI accepts a recorded telemetry path; schema, source freshness and measured rows are validated after reading, and no path is executed or published.
 const telemetry = JSON.parse(readFileSync(resolve(root, path), "utf8"));
 if (telemetry.schemaVersion !== 1 || telemetry.sourceDigest !== sourceDigest())
   throw new Error("Missing or stale telemetry: run github-workflows:test");

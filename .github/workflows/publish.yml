@@ -63,6 +63,7 @@ jobs:
         if: runner.os == 'macOS'
         with:
           node-version: 20
+      # llmlint: ignore[release_does_not_regate_an_already_swept_commit] Target binaries exist only in this release build; this verifies their native packaging/install before publication, rather than repeating the source sweep.
       - name: Install and run native npm carriers before publication
         if: runner.os == 'macOS'
         shell: bash

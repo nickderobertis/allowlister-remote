@@ -106,7 +106,21 @@ jobs:
       - name: Install coverage and supply-chain tools
         uses: taiki-e/install-action@v2
         with:
-          tool: cargo-llvm-cov,cargo-deny,cargo-machete,actionlint@1.7.12
+          tool: cargo-llvm-cov,cargo-deny,cargo-machete
+      - name: Install pinned actionlint
+        shell: bash
+        env:
+          RUNNER_OS_NAME: ${{ runner.os }}
+        run: |
+          install_dir="$RUNNER_TEMP/actionlint"
+          mkdir -p "$install_dir"
+          curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash \
+            | bash -s -- 1.7.12 "$install_dir"
+          if [[ "$RUNNER_OS_NAME" == "Windows" ]]; then
+            cygpath -w "$install_dir" >> "$GITHUB_PATH"
+          else
+            echo "$install_dir" >> "$GITHUB_PATH"
+          fi
       - run: just bootstrap
       - name: Install Playwright browser (Linux)
         if: runner.os == 'Linux'

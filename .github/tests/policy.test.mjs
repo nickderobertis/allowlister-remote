@@ -22,7 +22,12 @@ git("config", "user.email", "test@example.com");
 git("config", "user.name", "Policy test");
 const write = (path, value) =>
   writeFileSync(join(scratch, path), typeof value === "string" ? value : JSON.stringify(value));
-write("package.json", { name: "example", version: "0.1.0", dependencies: { library: "1.0.0" } });
+write("package.json", {
+  name: "example",
+  version: "0.1.0",
+  dependencies: { library: "1.0.0" },
+  workspaces: ["apps/web"],
+});
 mkdirSync(join(scratch, "apps/web"), { recursive: true });
 write("apps/web/package.json", { name: "web", version: "0.1.0", scripts: { build: "next build" } });
 write("package-lock.json", {
@@ -70,12 +75,14 @@ for (const diff of [
       name: "example",
       version: "0.2.0",
       dependencies: { library: "1.0.0" },
+      workspaces: ["apps/web"],
     });
   if (diff === "dependency")
     write("package.json", {
       name: "example",
       version: "0.2.0",
       dependencies: { library: "2.0.0" },
+      workspaces: ["apps/web"],
     });
   if (diff.startsWith("lock-")) {
     const lock = JSON.parse(readFileSync(join(scratch, "package-lock.json")));
@@ -660,4 +667,49 @@ test("production CLI rejects missing, duplicate, unknown and positional flags", 
       assert.match(result.stderr, /option/i);
     }
   }
+});
+
+test("workspace metadata follows the git manifest instead of a fixed path list", () => {
+  git("checkout", "-q", base);
+  const manifest = JSON.parse(readFileSync(join(scratch, "package.json")));
+  manifest.workspaces = ["apps/moved-web"];
+  git("mv", "apps/web", "apps/moved-web");
+  write("package.json", manifest);
+  const lock = JSON.parse(readFileSync(join(scratch, "package-lock.json")));
+  delete lock.packages["apps/web"];
+  lock.packages["apps/moved-web"] = { name: "web", version: "0.1.0" };
+  write("package-lock.json", lock);
+  git("add", "package.json", "package-lock.json");
+  git("commit", "-qm", "workspace declaration");
+  const movedBase = git("rev-parse", "HEAD");
+  lock.packages["apps/moved-web"].version = "0.2.0";
+  write("package-lock.json", lock);
+  git("add", "package-lock.json");
+  git("commit", "-qm", "workspace metadata version");
+  const movedHead = git("rev-parse", "HEAD");
+  const event = prEvent("version", false, true);
+  event.pull_request.base.sha = movedBase;
+  event.pull_request.head.sha = movedHead;
+  const path = join(scratch, "moved-event.json");
+  writeFileSync(path, JSON.stringify(event));
+  const result = spawnSync(
+    "node",
+    [
+      join(root, ".github/macos-policy.mjs"),
+      "classify",
+      "--event",
+      path,
+      "--base",
+      movedBase,
+      "--head",
+      movedHead,
+    ],
+    {
+      cwd: scratch,
+      encoding: "utf8",
+      env: { ...process.env, GITHUB_EVENT_NAME: "pull_request", GITHUB_OUTPUT: "" },
+    },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(JSON.parse(result.stdout).isReleaseOnly, true);
 });

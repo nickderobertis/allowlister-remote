@@ -9,8 +9,8 @@ const git = (...args) =>
   execFileSync("git", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
 /** @param {string} ref */
 const commit = (ref) => git("rev-parse", "--verify", "--end-of-options", `${ref}^{commit}`).trim();
-/** @param {string} path @param {string} before @param {string} after */
-function jsonVersionsOnly(path, before, after) {
+/** @param {string} path @param {string} before @param {string} after @param {string[]} workspaces */
+function jsonVersionsOnly(path, before, after, workspaces) {
   /** @param {unknown} value @returns {value is Record<string, unknown>} */
   function isRecord(value) {
     return !!value && typeof value === "object" && !Array.isArray(value);
@@ -40,11 +40,7 @@ function jsonVersionsOnly(path, before, after) {
         throw new Error("invalid lock packages");
       for (const [key, entry] of Object.entries(copy.packages)) {
         // Dependency versions are content, only workspace versions are metadata.
-        if (
-          key === "" ||
-          /^(apps\/web|apps\/web-e2e|packages\/allowlister-remote-plugin)$/.test(key)
-        )
-          removeVersion(entry);
+        if (key === "" || workspaces.includes(key)) removeVersion(entry);
       }
     } else removeVersion(copy);
     return copy;
@@ -57,6 +53,24 @@ function jsonVersionsOnly(path, before, after) {
 function versionDiffOnly(base, head) {
   const files = git("diff", "--name-status", "--no-renames", base, head).trim().split("\n");
   if (!files[0]) return false;
+  /** @param {string} ref @returns {string[]} */
+  const workspacePaths = (ref) => {
+    const paths = JSON.parse(git("show", `${ref}:package.json`)).workspaces ?? [];
+    if (
+      !Array.isArray(paths) ||
+      !paths.every(
+        (path) =>
+          typeof path === "string" &&
+          /^[\w.-]+(?:\/[\w.-]+)*$/.test(path) &&
+          !path.split("/").includes(".."),
+      )
+    )
+      throw new Error("Unsupported workspace declaration");
+    return paths;
+  };
+  const workspaces = workspacePaths(base);
+  if (!isDeepStrictEqual(workspaces, workspacePaths(head))) return false;
+
   return files.every((line) => {
     const [status, path] = line.split("\t");
     if (status !== "M") return false;
@@ -68,9 +82,10 @@ function versionDiffOnly(base, head) {
       path === ".release-please-manifest.json" ||
       path === "package.json" ||
       path === "package-lock.json" ||
-      /^(apps\/(web|web-e2e)|packages\/allowlister-remote-[\w-]+)\/package.json$/.test(path)
+      workspaces.some((workspace) => path === `${workspace}/package.json`) ||
+      /^packages\/allowlister-remote-[\w-]+\/package.json$/.test(path)
     )
-      return jsonVersionsOnly(path, before, after);
+      return jsonVersionsOnly(path, before, after, workspaces);
     return false;
   });
 }
@@ -96,6 +111,7 @@ export function classify(eventPath, base, head, eventName = process.env.GITHUB_E
   if (eventName && eventName !== "pull_request")
     return { isReleaseOnly: false, macosRequired: true, reason: "unknown event classification" };
   try {
+    // llmlint: ignore[boundary_inputs_validated] The internal CLI intentionally accepts an event fixture path; GitHub supplies GITHUB_EVENT_PATH in production, and unreadable/malformed content requires Mac coverage.
     const event = JSON.parse(readFileSync(eventPath, "utf8"));
     if (!event.pull_request) throw new Error("missing PR");
     const pr = event.pull_request;
