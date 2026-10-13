@@ -72,8 +72,13 @@ test("all release platforms retain three binaries, npm carriers, checksums and n
       ),
     );
   }
-  const buildStep = build.steps.find((step) => step.run?.includes("build-release-binaries.sh"));
-  const nativeSmoke = build.steps.find((step) => step.run?.includes("smoke-native-release.sh"));
+  const buildStep = build.steps.find((step) => step.run?.includes("npm run release:build-binaries --"));
+  const nativeSmoke = build.steps.find((step) => step.run?.includes("npm run release:smoke-native --"));
+  assert.ok(buildStep, "release builder must use the npm release command surface");
+  assert.ok(nativeSmoke, "native smoke must use the npm release command surface");
+  const scripts = JSON.parse(readFileSync(join(root, "package.json"))).scripts;
+  assert.equal(scripts["release:build-binaries"], "bash packages/allowlister-remote-plugin/scripts/build-release-binaries.sh");
+  assert.equal(scripts["release:smoke-native"], "bash packages/allowlister-remote-plugin/scripts/smoke-native-release.sh");
   assert.ok(build.steps.indexOf(nativeSmoke) > build.steps.indexOf(buildStep));
   assert.ok(
     build.steps.indexOf(nativeSmoke) <

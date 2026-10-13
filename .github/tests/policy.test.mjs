@@ -576,6 +576,56 @@ test("budget reporter consumes recorded rows and refuses stale or missing teleme
   synthetic.scenarios[0].rows[0].macos = "false";
   writeFileSync(path, JSON.stringify(synthetic));
   assert.match(run(path, "jobs-per-run").stderr, /Malformed telemetry job row/);
+  for (const field of ["scenarios", "lifecycles"]) {
+    for (const value of [undefined, [], {}]) {
+      const invalid = JSON.parse(recorded);
+      invalid[field] = value;
+      writeFileSync(path, JSON.stringify(invalid));
+      const result = run(path, "jobs-per-run");
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, /Missing telemetry workload/);
+    }
+  }
+  for (const invalidRun of [null, {}, { workflow: 1, scenario: "x", rows: [] },
+    { workflow: "x", scenario: 1, rows: [] }, { workflow: "x", scenario: "x", rows: {} }]) {
+    for (const location of ["scenario", "lifecycle"]) {
+      const invalid = JSON.parse(recorded);
+      if (location === "scenario") invalid.scenarios = [invalidRun];
+      else invalid.lifecycles = [{ runs: [invalidRun] }];
+      writeFileSync(path, JSON.stringify(invalid));
+      const result = run(path, "runs-per-change");
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, /Malformed telemetry run/);
+    }
+  }
+  for (const lifecycle of [null, {}, { runs: {} }]) {
+    const invalid = JSON.parse(recorded);
+    invalid.lifecycles = [lifecycle];
+    writeFileSync(path, JSON.stringify(invalid));
+    const result = run(path, "runs-per-change");
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /Malformed telemetry lifecycle/);
+  }
+  const detailed = JSON.parse(recorded);
+  const native = { ...row, event: "opened/source/same/extra", macos: true };
+  const linux = { ...row, event: "linux", macos: false };
+  detailed.scenarios = [{ workflow: row.workflow, scenario: "proof", rows: [native, native, linux] }];
+  detailed.lifecycles = [{ diff: "source", fork: false, publish: true, pages: false, runs: [
+    { workflow: row.workflow, scenario: "native-release", rows: [native, linux] },
+    { workflow: row.workflow, scenario: "linux-only", rows: [linux] },
+  ] }];
+  writeFileSync(path, JSON.stringify(detailed));
+  for (const metric of ["jobs-per-run", "runs-per-change"]) {
+    const result = run(path, metric);
+    assert.equal(result.status, 0, result.stderr);
+    const detail = JSON.parse(JSON.parse(readFileSync(join(scratch, "result.json"))).detail);
+    assert.deepEqual(detail, {
+      sourceDigest: detailed.sourceDigest, metric,
+      macJobs: [{ ...native, event: "opened/source/same" }],
+      lifecycles: [{ diff: "source", fork: false, publish: true, pages: false,
+        macRuns: [{ workflow: row.workflow, event: "native-release", jobs: [native] }] }],
+    });
+  }
   const stale = JSON.parse(recorded);
   stale.sourceDigest = "old";
   writeFileSync(path, JSON.stringify(stale));
@@ -745,6 +795,19 @@ test("generated workflow graph expands exclusions and includes and traverses loc
     writeFileSync(join(workflowDir, "matrix.yml"), JSON.stringify(workflow));
     return graph.resolveRun(".github/workflows/matrix.yml", workflow, event, () => ({}));
   };
+  assert.throws(() => resolveMatrix({ os: "macos-14" }), /Unresolved matrix os/);
+  const invalidJobs = (jobs) => graph.resolveRun(".github/workflows/invalid.yml",
+    { on: { push: null }, jobs }, event, () => ({}));
+  assert.throws(() => invalidJobs({ proof: { "runs-on": "ubuntu-latest", needs: "absent" } }), /Missing prerequisite/);
+  assert.throws(() => invalidJobs({
+    first: { "runs-on": "ubuntu-latest", needs: "second" },
+    second: { "runs-on": "ubuntu-latest", needs: "first" },
+  }), /Dependency cycle/);
+  const recursive = { on: { workflow_call: {} }, jobs: {
+    call: { uses: "./.github/workflows/recursive.yml" },
+  } };
+  writeFileSync(join(workflowDir, "recursive.yml"), JSON.stringify(recursive));
+  assert.throws(() => graph.resolveRun(".github/workflows/recursive.yml", recursive, event, () => ({})), /Recursive workflow call/);
   const excluded = resolveMatrix({ os: ["ubuntu-latest", "macos-14"], exclude: [{ os: "macos-14" }] });
   assert.deepEqual(excluded.map((row) => row.matrix), [{ os: "ubuntu-latest" }]);
   assert.deepEqual(excluded.filter((row) => row.macos), []);
@@ -784,5 +847,66 @@ test("generated workflow graph expands exclusions and includes and traverses loc
     writeFileSync(path, JSON.stringify({ on: { push: { [field]: ["ignored"] } }, jobs: {} }));
     const workflow = graph.load(`.github/workflows/${field}.yml`);
     assert.throws(() => graph.triggered(workflow, event), /Unhandled workflow (ref exclusion|path filter)/);
+  }
+});
+
+
+test("classifier CLI rejects malformed semantic metadata and preserves reason contracts", () => {
+  const releaseReason = "same-repository release-please version/changelog-only diff";
+  const ordinaryReason = "ordinary or unverified PR";
+  const unreadableReason = "unknown or unreadable PR classification";
+  assert.deepEqual(classify(prEvent("version", false, true), heads.version),
+    { isReleaseOnly: true, macosRequired: false, reason: releaseReason });
+  assert.deepEqual(classify(prEvent("source", false, false), heads.source),
+    { isReleaseOnly: false, macosRequired: true, reason: ordinaryReason });
+  assert.deepEqual(classify("{", base),
+    { isReleaseOnly: false, macosRequired: true, reason: unreadableReason });
+  assert.deepEqual(classify({}, base, "unknown"),
+    { isReleaseOnly: false, macosRequired: true, reason: "unknown event classification" });
+  assert.deepEqual(classify("{", "unreadable", "workflow_call"),
+    { isReleaseOnly: false, macosRequired: false, reason: "non-PR event" });
+  const cases = [
+    ["package.json", { name: "example", version: {}, workspaces: ["apps/web"] }, unreadableReason],
+    ["package.json", { name: "example", version: "bad", workspaces: ["apps/web"] }, unreadableReason],
+    [".release-please-manifest.json", { ".": "0.2.0", extra: "0.2.0" }, ordinaryReason],
+    [".release-please-manifest.json", { ".": "bad" }, ordinaryReason],
+    ["package-lock.json", { version: "0.2.0", packages: [] }, unreadableReason],
+    ["package-lock.json", { version: "0.2.0", packages: { "": null } }, unreadableReason],
+    ["package-lock.json", { version: "0.2.0", packages: { "": { version: "bad" } } }, unreadableReason],
+    ["package.json", { version: "0.2.0", workspaces: {} }, unreadableReason],
+    ["package.json", { version: "0.2.0", workspaces: ["apps/*"] }, unreadableReason],
+    ["package.json", { name: "example", version: "0.2.0", dependencies: { library: "1.0.0" }, workspaces: [] }, ordinaryReason],
+  ];
+  for (const [path, value, reason] of cases) {
+    git("checkout", "-q", base);
+    write(path, value);
+    git("add", path);
+    git("commit", "-qm", `invalid metadata ${path}`);
+    const head = git("rev-parse", "HEAD");
+    assert.deepEqual(classify(prEvent("version", false, true), head),
+      { isReleaseOnly: false, macosRequired: true, reason }, JSON.stringify(value));
+  }
+  git("checkout", "-q", base);
+  mkdirSync(join(scratch, "packages/allowlister-remote-plugin-darwin-arm64"), { recursive: true });
+  const platformPath = "packages/allowlister-remote-plugin-darwin-arm64/package.json";
+  const manifest = { name: "@nickderobertis/allowlister-remote-plugin-darwin-arm64", version: "0.1.0", os: ["darwin"], cpu: ["arm64"] };
+  write(platformPath, manifest);
+  git("add", platformPath);
+  git("commit", "-qm", "platform carrier base");
+  const platformBase = git("rev-parse", "HEAD");
+  for (const contentChange of [false, true]) {
+    git("checkout", "-q", platformBase);
+    write(platformPath, { ...manifest, version: "0.2.0", ...(contentChange ? { cpu: ["x64"] } : {}) });
+    git("add", platformPath);
+    git("commit", "-qm", "platform carrier change");
+    const eventPath = join(scratch, "platform-event.json");
+    writeFileSync(eventPath, JSON.stringify(prEvent("version", false, true)));
+    const result = spawnSync("node", [join(root, ".github/macos-policy.mjs"), "classify", "--event", eventPath,
+      "--base", platformBase, "--head", git("rev-parse", "HEAD")], {
+      cwd: scratch, encoding: "utf8", env: { ...process.env, GITHUB_EVENT_NAME: "pull_request", GITHUB_OUTPUT: "" },
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(JSON.parse(result.stdout), { isReleaseOnly: !contentChange, macosRequired: contentChange,
+      reason: contentChange ? ordinaryReason : releaseReason });
   }
 });

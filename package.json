@@ -24,7 +24,9 @@
     "release:stage-web": "node scripts/stage-web-package.mjs",
     "release:smoke-npm": "bash scripts/smoke-npm-package.sh",
     "release:smoke-web": "bash scripts/smoke-web-package.sh",
-    "release:smoke-e2e": "bash scripts/smoke-e2e-published.sh"
+    "release:smoke-e2e": "bash scripts/smoke-e2e-published.sh",
+    "release:build-binaries": "bash packages/allowlister-remote-plugin/scripts/build-release-binaries.sh",
+    "release:smoke-native": "bash packages/allowlister-remote-plugin/scripts/smoke-native-release.sh"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.0",

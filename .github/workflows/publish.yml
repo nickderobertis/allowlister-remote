@@ -51,6 +51,9 @@ jobs:
         # musl libc. No-op for the macOS/Windows matrix legs.
         if: matrix.target == 'x86_64-unknown-linux-musl'
         run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
       - name: Build and stage release binaries
         shell: bash
         env:
@@ -58,16 +61,12 @@ jobs:
           RELEASE_TARGET: ${{ matrix.target }}
           RELEASE_PLATFORM: ${{ matrix.platform }}
           RELEASE_EXE: ${{ matrix.exe }}
-        run: bash packages/allowlister-remote-plugin/scripts/build-release-binaries.sh "$RELEASE_TARGET" "$RELEASE_PLATFORM" "$RELEASE_EXE"
-      - uses: actions/setup-node@v6
-        if: runner.os == 'macOS'
-        with:
-          node-version: 20
+        run: npm run release:build-binaries -- "$RELEASE_TARGET" "$RELEASE_PLATFORM" "$RELEASE_EXE"
       # llmlint: ignore[release_does_not_regate_an_already_swept_commit] Target binaries exist only in this release build; this verifies their native packaging/install before publication, rather than repeating the source sweep.
       - name: Install and run native npm carriers before publication
         if: runner.os == 'macOS'
         shell: bash
-        run: bash packages/allowlister-remote-plugin/scripts/smoke-native-release.sh dist/artifacts
+        run: npm run release:smoke-native -- dist/artifacts
       - uses: actions/upload-artifact@v7
         with:
           name: binaries-${{ matrix.platform }}

@@ -18,7 +18,7 @@ mkdirSync(scratchRoot, { recursive: true });
 // llmlint: ignore-end[boundary_inputs_validated]
 const env = { ...process.env, TMPDIR: scratchRoot, ALLOWLISTER_REMOTE_PLUGIN_VERSION: version };
 const run = (script, args = [], cwd = root) =>
-  spawnSync("bash", [join(root, script), ...args], { cwd, env, encoding: "utf8", timeout: 600000 });
+  spawnSync("npm", ["run", script, "--", ...args], { cwd, env, encoding: "utf8", timeout: 600000 });
 const hash = (path) => createHash("sha256").update(readFileSync(path)).digest("hex");
 test("production builder -> identical artifact/carrier bytes -> real native install and launcher; missing broker fails", {
   skip:
@@ -26,11 +26,7 @@ test("production builder -> identical artifact/carrier bytes -> real native inst
       ? "Linux-only local native journey: Darwin smoke runs on the real Mac release builder before publication; Windows is covered by real staging/packing. No pre-existing assertion is skipped."
       : false,
 }, () => {
-  const build = run("packages/allowlister-remote-plugin/scripts/build-release-binaries.sh", [
-    host,
-    platform,
-    "",
-  ]);
+  const build = run("release:build-binaries", [host, platform, ""]);
   assert.equal(build.status, 0, build.stderr);
   const scratch = mkdtempSync(join(scratchRoot, "release-"));
   try {
@@ -44,27 +40,22 @@ test("production builder -> identical artifact/carrier bytes -> real native inst
         hash(join(artifacts, `${name}-${platform}`)),
       );
     }
-    const smokeScript = join(
-      root,
-      "packages/allowlister-remote-plugin/scripts/smoke-native-release.sh",
-    );
-    const invalidVersion = spawnSync("bash", [smokeScript, artifacts], {
+    const smokeArgs = ["run", "release:smoke-native", "--", artifacts];
+    const invalidVersion = spawnSync("npm", smokeArgs, {
       cwd: root,
       encoding: "utf8",
       env: { ...env, ALLOWLISTER_REMOTE_PLUGIN_VERSION: "invalid" },
     });
     assert.notEqual(invalidVersion.status, 0);
     assert.match(invalidVersion.stderr, /Invalid release version/);
-    const wrongVersion = spawnSync("bash", [smokeScript, artifacts], {
+    const wrongVersion = spawnSync("npm", smokeArgs, {
       cwd: root,
       encoding: "utf8",
       env: { ...env, ALLOWLISTER_REMOTE_PLUGIN_VERSION: "9.9.9" },
     });
     assert.notEqual(wrongVersion.status, 0);
     assert.match(wrongVersion.stderr, /differs.*Rebuild/);
-    const smoke = run("packages/allowlister-remote-plugin/scripts/smoke-native-release.sh", [
-      artifacts,
-    ]);
+    const smoke = run("release:smoke-native", [artifacts]);
     assert.equal(smoke.status, 0, smoke.stderr);
     const partial = join(scratch, "partial");
     mkdirSync(partial);
@@ -73,9 +64,7 @@ test("production builder -> identical artifact/carrier bytes -> real native inst
         join(artifacts, `allowlister-remote-${name}-${platform}`),
         join(partial, `allowlister-remote-${name}-${platform}`),
       );
-    const missing = run("packages/allowlister-remote-plugin/scripts/smoke-native-release.sh", [
-      partial,
-    ]);
+    const missing = run("release:smoke-native", [partial]);
     assert.notEqual(missing.status, 0);
     assert.match(missing.stderr, /broker/);
     // llmlint: ignore[boundary_inputs_validated] Trusted repository fixture manifest; npm pack validates the copied package, and no external manifest input is accepted by this test.
@@ -152,14 +141,11 @@ test("production builder -> identical artifact/carrier bytes -> real native inst
 });
 
 test("native smoke refuses an empty release version before using artifacts", () => {
-  const result = spawnSync(
-    "bash",
-    [
-      join(root, "packages/allowlister-remote-plugin/scripts/smoke-native-release.sh"),
-      "missing-artifacts",
-    ],
-    { cwd: root, encoding: "utf8", env: { ...process.env, ALLOWLISTER_REMOTE_PLUGIN_VERSION: "" } },
-  );
+  const result = spawnSync("npm", ["run", "release:smoke-native", "--", "missing-artifacts"], {
+    cwd: root,
+    encoding: "utf8",
+    env: { ...process.env, ALLOWLISTER_REMOTE_PLUGIN_VERSION: "" },
+  });
   assert.notEqual(result.status, 0);
   assert.match(
     result.stderr,
