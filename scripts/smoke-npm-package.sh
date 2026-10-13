@@ -44,10 +44,25 @@ node -e '
 
 parent_tgz="$(cd "$tmp_dir/parent" && npm pack --silent --pack-destination "$tmp_dir")"
 
+# Exercise the fallback users get with install scripts disabled first.
+npm install --ignore-scripts --prefix "$tmp_dir/fallback" -g "$tmp_dir/$parent_tgz" --silent
+fallback="$tmp_dir/fallback/bin/allowlister-remote-plugin"
+"$fallback" --version >/dev/null
+fallback_result="$(printf '{"current_verdict":"allow","command":"git status","cwd":"/tmp"}' | "$fallback")"
+# llmlint: ignore[changed_behavior_has_e2e] The genuine Rust static-allow path always returns defer; an alternate result requires a fake launcher/binary. Native install/output and real carrier-version recovery are exercised end to end.
+if ! grep -q '"verdict":"defer"' <<<"$fallback_result"; then
+  echo "Fallback returned '$fallback_result', expected defer. Restage the platform binary and repack." >&2; exit 1
+fi
+
 npm install --prefix "$tmp_dir/prefix" -g "$tmp_dir/$parent_tgz" --silent
 
 cmd="$tmp_dir/prefix/bin/allowlister-remote-plugin"
-"$cmd" --version >/dev/null
+installed_version="$("$cmd" --version)"
+if [[ -n "${ALLOWLISTER_REMOTE_PLUGIN_VERSION:-}" ]]; then
+  if [[ "$installed_version" != "$ALLOWLISTER_REMOTE_PLUGIN_VERSION" ]]; then
+    echo "Installed plugin version '$installed_version' != '$ALLOWLISTER_REMOTE_PLUGIN_VERSION'. Restage binaries built from the release tag." >&2; exit 1
+  fi
+fi
 # A static allow defers without any transport, so this needs no daemon or broker.
 printf '{"current_verdict":"allow","command":"git status","cwd":"/tmp"}' \
   | "$cmd" \
@@ -70,7 +85,16 @@ if [[ "$platform" != win32-* ]]; then
     echo "npm package smoke: daemon binary missing next to the plugin on PATH" >&2
     exit 1
   fi
-  "$daemon" --version >/dev/null
+  daemon_version="$("$daemon" --version)"
+  if [[ "$daemon_version" != "$installed_version" ]]; then
+    echo "Daemon version '$daemon_version' != plugin '$installed_version'. Rebuild and stage both from the same tag." >&2; exit 1
+  fi
+  for binary in allowlister-remote-plugin allowlister-remote-daemon; do
+    # llmlint: ignore[changed_behavior_has_e2e] Installed/carrier bytes and compiled/packed hashes are checked by real journeys; isolating this failure requires replacing or mutating the real postinstall layer.
+    if ! cmp -s "$(dirname "$target")/$binary" "$packages_root/$plat_pkg/bin/$binary"; then
+      echo "Installed $binary differs from the staged carrier. Restage and repack $plat_pkg." >&2; exit 1
+    fi
+  done
 fi
 
 echo "npm package smoke: ok (native plugin and daemon binaries on PATH)"

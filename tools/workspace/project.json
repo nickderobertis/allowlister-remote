@@ -30,7 +30,8 @@
       "{workspaceRoot}/oneharness.toml",
       "{workspaceRoot}/rust-toolchain.toml",
       "{workspaceRoot}/screencomp.toml",
-      "{workspaceRoot}/shots/baseline/**"
+      "{workspaceRoot}/shots/baseline/**",
+      "{workspaceRoot}/.github/**/*.mjs"
     ]
   },
   "targets": {

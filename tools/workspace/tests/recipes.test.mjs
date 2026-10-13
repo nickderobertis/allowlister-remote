@@ -9,6 +9,7 @@ import { tmpdir } from "node:os";
 import { delimiter, join, resolve } from "node:path";
 import { after, describe, it } from "node:test";
 
+const justBin = spawnSync("bash", ["-c", "command -v just"], { encoding: "utf8" }).stdout.trim();
 const root = resolve(import.meta.dirname, "../../..");
 const stubs = mkdtempSync(join(tmpdir(), "recipe-stubs-"));
 after(() => rmSync(stubs, { recursive: true, force: true }));
@@ -31,7 +32,7 @@ const systemPath = (process.env.PATH ?? "")
 function just(args, { exit = 0, withLlmlint = true } = {}) {
   for (const tool of ["llmlint", "npx"]) rmSync(join(stubs, `${tool}.args`), { force: true });
   const dirs = withLlmlint ? [stubs, ...systemPath] : systemPath;
-  const run = spawnSync("just", ["--justfile", join(root, "justfile"), ...args], {
+  const run = spawnSync(justBin, ["--justfile", join(root, "justfile"), ...args], {
     cwd: root,
     encoding: "utf8",
     env: { PATH: dirs.join(delimiter), HOME: process.env.HOME, STUB_EXIT: String(exit) },
@@ -105,6 +106,19 @@ describe("test-e2e-web", () => {
         "--project",
         "chromium-desktop",
       ],
+    ]);
+  });
+});
+
+describe("workflow budget merge path", () => {
+  it("keeps budgets behind Nx affected and the broader release tier", () => {
+    const affected = just(["test"]);
+    assert.equal(affected.status, 0, affected.stderr);
+    assert.deepEqual(affected.calls("npx"), [
+      ["nx", "affected", "--base=origin/main", "-t", "test", "coverage", "budgets", "test-release"],
+    ]);
+    assert.deepEqual(just(["test", "all"]).calls("npx"), [
+      ["nx", "run-many", "-t", "test", "coverage", "budgets", "test-release"],
     ]);
   });
 });

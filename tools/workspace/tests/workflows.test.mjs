@@ -23,6 +23,8 @@ const CONTRACT = [
   { file: "check.yml", job: "check-required", context: "check" },
   { file: "check.yml", job: "install-smoke", context: "install-smoke" },
   { file: "pr-title.yml", job: "pr-title", context: "pr-title" },
+  { file: "llmlint.yml", job: "llmlint", context: "llmlint" },
+  { file: "visual-docs.yml", job: "visual-docs", context: "visual-docs / capture (arm64)" },
   { file: "visual-docs.yml", job: "visual-docs", context: "visual-docs / capture (x86_64)" },
 ];
 
@@ -63,7 +65,11 @@ const RELEASE_BRANCH = "release-please--branches--main--components--allowlister-
 
 describe("check.yml gate routing", () => {
   it("runs the full sweep on release-please's release PR", () => {
-    const out = pickTier({ EVENT_NAME: "pull_request", HEAD_REF: RELEASE_BRANCH });
+    const out = pickTier({
+      EVENT_NAME: "pull_request",
+      HEAD_REF: RELEASE_BRANCH,
+      MACOS_REQUIRED: "false",
+    });
     assert.equal(out.tier, "all");
     assert.equal(out.os, '["ubuntu-latest"]');
   });
@@ -74,10 +80,10 @@ describe("check.yml gate routing", () => {
     }
   });
 
-  it("runs the affected tier on a push to main, across the OS matrix", () => {
+  it("runs the affected tier on a push to main, across Linux and Windows", () => {
     const out = pickTier({ EVENT_NAME: "push", HEAD_REF: "" });
     assert.equal(out.tier, "affected");
-    assert.equal(out.os, '["ubuntu-latest","macos-14","windows-latest"]');
+    assert.equal(out.os, '["ubuntu-latest","windows-latest"]');
   });
 
   it("hands the tier to `just check`, which maps it to run-many or affected", () => {
@@ -140,16 +146,26 @@ describe("check.yml gate routing", () => {
   it("fails the `check` context when any matrix leg (the sweep included) fails", () => {
     const aggregate = check.jobs["check-required"];
     assert.equal(aggregate.name, "check");
-    assert.equal(aggregate.needs, "check");
+    assert.deepEqual(aggregate.needs, ["setup", "check"]);
     assert.equal(aggregate.if, "always()");
-    const verify = aggregate.steps[0];
+    const verify = aggregate.steps.find((s) => s.run);
     for (const [result, ok] of [
       ["success", true],
       ["failure", false],
       ["cancelled", false],
       ["skipped", false],
     ]) {
-      assert.equal(runScript(verify.run, { CHECK_RESULT: result }).status === 0, ok, result);
+      assert.equal(
+        runScript(verify.run, {
+          CHECK_RESULT: result,
+          SETUP_RESULT: "success",
+          MACOS_REQUIRED: "true",
+          EVENT_NAME: "pull_request",
+          OS_MATRIX: '["ubuntu-latest","macos-14"]',
+        }).status === 0,
+        ok,
+        result,
+      );
     }
   });
 });
@@ -221,7 +237,7 @@ describe("fixed status-check contexts", () => {
       if (file === "visual-docs.yml") {
         // The reusable workflow's `capture` job (per arch) reports under this caller.
         assert.match(definition.uses, /^nickderobertis\/screencomp\/\.github\/workflows\//);
-        assert.equal(`${job} / capture (x86_64)`, context);
+        assert.match(context, /^visual-docs \/ capture \((x86_64|arm64)\)$/);
       } else {
         assert.equal(definition.name ?? job, context);
       }

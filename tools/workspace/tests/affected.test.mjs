@@ -65,8 +65,11 @@ describe("affected selection", () => {
     });
   });
 
-  it("a workflow read by one project selects only that project", () => {
-    assert.deepEqual([...affected(".github/workflows/notignored.yml")], ["workspace"]);
+  it("a workflow selects its workspace and graph proof readers", () => {
+    assert.deepEqual([...affected(".github/workflows/notignored.yml")].sort(), [
+      "github-workflows",
+      "workspace",
+    ]);
     assertSelection(".github/workflows/bench.yml", {
       includes: [
         "web",
