@@ -113,6 +113,7 @@ jobs:
           ACTIONLINT_VERSION: 1.7.12
           RUNNER_OS_NAME: ${{ runner.os }}
         run: |
+          # llmlint: ignore-block[changed_behavior_has_e2e] Network-backed tool provisioning runs on the real CI host; PATH wiring follows the existing allowlister installer pattern, while routing/syntax contracts remain offline.
           install_dir="$RUNNER_TEMP/actionlint"
           mkdir -p "$install_dir"
           # llmlint: ignore-block[boundary_inputs_validated] Official version-pinned tool installer is trusted like the repository's other installer/actions; checksum infrastructure is outside this provisioning change.
@@ -124,6 +125,7 @@ jobs:
           else
             echo "$install_dir" >> "$GITHUB_PATH"
           fi
+          # llmlint: ignore-end[changed_behavior_has_e2e]
       - run: just bootstrap
       - name: Install Playwright browser (Linux)
         if: runner.os == 'Linux'

@@ -8,11 +8,14 @@ import { join, resolve } from "node:path";
 import { test } from "node:test";
 
 const root = resolve(import.meta.dirname, "../../..");
+// llmlint: ignore[boundary_inputs_validated] Installed pinned rustc supplies its documented host field; this test has no external tool-output fixture and the production builder validates the target/platform pair.
 const host = execFileSync("rustc", ["-vV"], { encoding: "utf8" }).match(/^host: (.*)$/m)[1];
 const platform = `${process.platform}-${process.arch}`;
 const version = "0.0.0-local-proof";
+// llmlint: ignore-block[boundary_inputs_validated] Dispatch-owned writable scratch directory is supplied by the harness contract; the fallback is repository-local and no public path input is accepted.
 const scratchRoot = process.env.ONEPIPELINE_NODE_SCRATCH_DIR ?? `${root}/.local/`;
 mkdirSync(scratchRoot, { recursive: true });
+// llmlint: ignore-end[boundary_inputs_validated]
 const env = { ...process.env, TMPDIR: scratchRoot, ALLOWLISTER_REMOTE_PLUGIN_VERSION: version };
 const run = (script, args = [], cwd = root) =>
   spawnSync("bash", [join(root, script), ...args], { cwd, env, encoding: "utf8", timeout: 600000 });
@@ -29,9 +32,7 @@ test("production builder -> identical artifact/carrier bytes -> real native inst
     "",
   ]);
   assert.equal(build.status, 0, build.stderr);
-  const scratch = mkdtempSync(
-    join(process.env.ONEPIPELINE_NODE_SCRATCH_DIR ?? `${root}/.local/`, "release-"),
-  );
+  const scratch = mkdtempSync(join(scratchRoot, "release-"));
   try {
     mkdirSync(join(scratch, "scripts"));
     cpSync(join(root, "packages"), join(scratch, "packages"), { recursive: true });
@@ -77,6 +78,7 @@ test("production builder -> identical artifact/carrier bytes -> real native inst
     ]);
     assert.notEqual(missing.status, 0);
     assert.match(missing.stderr, /broker/);
+    // llmlint: ignore[boundary_inputs_validated] Trusted repository fixture manifest; npm pack validates the copied package, and no external manifest input is accepted by this test.
     const manifest = JSON.parse(
       readFileSync(join(root, `packages/allowlister-remote-plugin-${platform}/package.json`)),
     );
@@ -89,6 +91,7 @@ test("production builder -> identical artifact/carrier bytes -> real native inst
         join(artifacts, `allowlister-remote-${name}-${platform}`),
         join(carrier, `bin/allowlister-remote-${name}`),
       );
+    // llmlint: ignore[boundary_inputs_validated] Real npm pack runs against the test-owned carrier and destination; its installed tool result is consumed locally without accepting an external archive path.
     const packed = JSON.parse(
       execFileSync("npm", ["pack", carrier, "--json", "--pack-destination", scratch], {
         encoding: "utf8",
@@ -138,4 +141,20 @@ test("production builder -> identical artifact/carrier bytes -> real native inst
   } finally {
     rmSync(scratch, { recursive: true, force: true });
   }
+});
+
+test("native smoke refuses an empty release version before using artifacts", () => {
+  const result = spawnSync(
+    "bash",
+    [
+      join(root, "packages/allowlister-remote-plugin/scripts/smoke-native-release.sh"),
+      "missing-artifacts",
+    ],
+    { cwd: root, encoding: "utf8", env: { ...process.env, ALLOWLISTER_REMOTE_PLUGIN_VERSION: "" } },
+  );
+  assert.notEqual(result.status, 0);
+  assert.match(
+    result.stderr,
+    /ALLOWLISTER_REMOTE_PLUGIN_VERSION: Set ALLOWLISTER_REMOTE_PLUGIN_VERSION/,
+  );
 });
