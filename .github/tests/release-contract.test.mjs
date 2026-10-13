@@ -2,10 +2,13 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync, rmSync, mkdtempSync, cpSync, mkdirSync } from "node:fs";
 import { spawnSync, execFileSync } from "node:child_process";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { test } from "node:test";
 import { parse, stringify } from "yaml";
 import { load, root, evaluate } from "../workflow-graph.mjs";
+const scratchRoot = process.env.ONEPIPELINE_NODE_SCRATCH_DIR ?? join(root, ".github/.telemetry");
+assert.ok(typeof scratchRoot === "string" && isAbsolute(scratchRoot), "scratch directory must be absolute");
+mkdirSync(scratchRoot, { recursive: true });
 const publish = load(".github/workflows/publish.yml");
 test("all release platforms retain three binaries, npm carriers, checksums and native Mac smoke before native npm publication", () => {
   const build = publish.jobs["build-binary"];
@@ -120,7 +123,7 @@ test("downstream smoke follows the exact release tag and refuses failed publicat
   const output = join(
     mkdtempSync(
       join(
-        process.env.ONEPIPELINE_NODE_SCRATCH_DIR ?? join(root, ".github/.telemetry"),
+        scratchRoot,
         "smoke-tag-",
       ),
     ),
@@ -145,7 +148,7 @@ test("production staging and npm packing preserve every platform payload and ver
   // staging and carrier compatibility using distinguishable inert payloads.
   const scratch = mkdtempSync(
     join(
-      process.env.ONEPIPELINE_NODE_SCRATCH_DIR ?? join(root, ".github/.telemetry"),
+      scratchRoot,
       "carrier-contract-",
     ),
   );

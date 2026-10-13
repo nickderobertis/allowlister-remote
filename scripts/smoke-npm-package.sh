@@ -47,8 +47,13 @@ parent_tgz="$(cd "$tmp_dir/parent" && npm pack --silent --pack-destination "$tmp
 # Exercise the fallback users get with install scripts disabled first.
 npm install --ignore-scripts --prefix "$tmp_dir/fallback" -g "$tmp_dir/$parent_tgz" --silent
 fallback="$tmp_dir/fallback/bin/allowlister-remote-plugin"
-"$fallback" --version >/dev/null
-fallback_result="$(printf '{"current_verdict":"allow","command":"git status","cwd":"/tmp"}' | "$fallback")"
+if ! "$fallback" --version >/dev/null; then
+  echo "Fallback plugin cannot execute. Restage the native platform carrier and repack before retrying smoke." >&2; exit 1
+fi
+# llmlint: ignore[changed_behavior_has_e2e] This wraps OS execution failure with recovery advice; the real Rust static-allow request always succeeds, and carrier removal/recovery is exercised through actual npm installation.
+if ! fallback_result="$(printf '{"current_verdict":"allow","command":"git status","cwd":"/tmp"}' | "$fallback")"; then
+  echo "Fallback request cannot execute. Restage the native plugin carrier and retry smoke." >&2; exit 1
+fi
 # llmlint: ignore[changed_behavior_has_e2e] The genuine Rust static-allow path always returns defer; an alternate result requires a fake launcher/binary. Native install/output and real carrier-version recovery are exercised end to end.
 if ! grep -q '"verdict":"defer"' <<<"$fallback_result"; then
   echo "Fallback returned '$fallback_result', expected defer. Restage the platform binary and repack." >&2; exit 1
@@ -57,7 +62,10 @@ fi
 npm install --prefix "$tmp_dir/prefix" -g "$tmp_dir/$parent_tgz" --silent
 
 cmd="$tmp_dir/prefix/bin/allowlister-remote-plugin"
-installed_version="$("$cmd" --version)"
+# llmlint: ignore[changed_behavior_has_e2e] This adds recovery advice for an OS execution failure after successful fallback execution; real install/version mismatch/recovery journeys remain, without mutating npm postinstall or replacing native binaries.
+if ! installed_version="$("$cmd" --version)"; then
+  echo "Installed plugin cannot execute. Rebuild the native target and restage its carrier, then retry smoke." >&2; exit 1
+fi
 if [[ -n "${ALLOWLISTER_REMOTE_PLUGIN_VERSION:-}" ]]; then
   if [[ "$installed_version" != "$ALLOWLISTER_REMOTE_PLUGIN_VERSION" ]]; then
     echo "Installed plugin version '$installed_version' != '$ALLOWLISTER_REMOTE_PLUGIN_VERSION'. Restage binaries built from the release tag." >&2; exit 1
@@ -85,7 +93,10 @@ if [[ "$platform" != win32-* ]]; then
     echo "npm package smoke: daemon binary missing next to the plugin on PATH" >&2
     exit 1
   fi
-  daemon_version="$("$daemon" --version)"
+  # llmlint: ignore[changed_behavior_has_e2e] This wraps OS execution failure with recovery advice; the real daemon --version always succeeds, and genuine rebuilt daemon version mismatch and restoration exercise the native installed carrier.
+  if ! daemon_version="$("$daemon" --version)"; then
+    echo "Installed daemon cannot execute. Rebuild and restage plugin and daemon from the same tag, then retry smoke." >&2; exit 1
+  fi
   if [[ "$daemon_version" != "$installed_version" ]]; then
     echo "Daemon version '$daemon_version' != plugin '$installed_version'. Rebuild and stage both from the same tag." >&2; exit 1
   fi

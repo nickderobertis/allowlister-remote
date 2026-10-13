@@ -9,7 +9,10 @@ import { tmpdir } from "node:os";
 import { delimiter, join, resolve } from "node:path";
 import { after, describe, it } from "node:test";
 
-const justBin = spawnSync("bash", ["-c", "command -v just"], { encoding: "utf8" }).stdout.trim();
+const justDiscovery = spawnSync("bash", ["-c", "command -v just"], { encoding: "utf8" });
+assert.equal(justDiscovery.status, 0, "Install just before running recipe contracts");
+const justBin = justDiscovery.stdout.trim();
+assert.ok(justBin.startsWith("/"), "just discovery must return an absolute executable path");
 const root = resolve(import.meta.dirname, "../../..");
 const stubs = mkdtempSync(join(tmpdir(), "recipe-stubs-"));
 after(() => rmSync(stubs, { recursive: true, force: true }));

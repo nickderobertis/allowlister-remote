@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, writeFileSync, readFileSync, mkdirSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { after, test } from "node:test";
 import {
   root,
@@ -13,6 +13,7 @@ import {
   evaluate,
 } from "../workflow-graph.mjs";
 const scratchRoot = process.env.ONEPIPELINE_NODE_SCRATCH_DIR ?? join(root, ".github/.telemetry");
+assert.ok(typeof scratchRoot === "string" && isAbsolute(scratchRoot), "scratch directory must be absolute");
 mkdirSync(scratchRoot, { recursive: true });
 const scratch = mkdtempSync(join(scratchRoot, "policy-"));
 after(() => rmSync(scratch, { recursive: true, force: true }));
@@ -248,6 +249,11 @@ test("real classifier over git histories: automation branch and semantic diff, n
 });
 const arches = JSON.parse(
   readFileSync(join(root, "screencomp.toml"), "utf8").match(/^arches\s*=\s*(\[.*\])/m)[1],
+);
+assert.ok(
+  Array.isArray(arches) && arches.length > 0 &&
+    arches.every((arch) => ["x86_64", "arm64"].includes(arch)),
+  "capture architectures must be a nonempty array of supported strings",
 );
 function outputFor(file, id, scenario) {
   if (file.endsWith("/check.yml") && id === "setup") return route(scenario);

@@ -14,7 +14,10 @@ if [[ -n "${4:-}" ]]; then echo 'Unexpected builder argument. Use --validate for
 for binary in allowlister-remote-plugin allowlister-remote-daemon allowlister-remote-broker; do
   # llmlint: ignore[code_lands_in_the_domain_that_owns_it] The manager requires these release helpers to remain in the npm domain under this task, including the GitHub-only broker artifact they build; moving aggregate composition is outside this change.
   cargo build --locked --release --target "$target" -p "$binary"
-  mkdir -p dist/artifacts
+  # llmlint: ignore[changed_behavior_has_e2e] Only adds recovery advice for runner filesystem failure; real build/staging is exercised with genuine binaries, without injecting workspace permission or disk failures.
+  if ! mkdir -p dist/artifacts; then
+    echo "Cannot create dist/artifacts. Restore workspace permissions or free disk space, then rerun this builder." >&2; exit 1
+  fi
   # llmlint: ignore[changed_behavior_has_e2e] Only wraps cp's own failure with a recovery message; real build/staging and missing-artifact recovery are covered without filesystem fault injection.
   if ! cp "target/$target/release/$binary$exe" "dist/artifacts/$binary-$platform$exe"; then
     echo "Cannot stage $binary for $target. Restore build output and workspace permissions, then rerun this builder." >&2; exit 1

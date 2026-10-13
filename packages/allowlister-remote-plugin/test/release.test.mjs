@@ -111,6 +111,14 @@ test("production builder -> identical artifact/carrier bytes -> real native inst
         encoding: "utf8",
         env: { ...env, ALLOWLISTER_REMOTE_PLUGIN_VERSION: expectedVersion },
       });
+    rmSync(join(carrier, "bin/allowlister-remote-plugin"));
+    const missingInstalledPlugin = npmSmoke(version);
+    assert.notEqual(missingInstalledPlugin.status, 0);
+    assert.match(missingInstalledPlugin.stderr, /Fallback plugin cannot execute.*Restage/);
+    cpSync(
+      join(artifacts, `allowlister-remote-plugin-${platform}`),
+      join(carrier, "bin/allowlister-remote-plugin"),
+    );
     const wrongInstalledVersion = npmSmoke("9.9.9");
     assert.notEqual(wrongInstalledVersion.status, 0);
     assert.match(wrongInstalledVersion.stderr, /Installed plugin version.*9\.9\.9/);
