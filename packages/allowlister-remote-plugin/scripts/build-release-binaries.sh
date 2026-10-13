@@ -12,6 +12,7 @@ esac
 if [[ "${4:-}" == --validate ]]; then exit 0; fi
 if [[ -n "${4:-}" ]]; then echo 'Unexpected builder argument. Use --validate for preflight only.' >&2; exit 2; fi
 for binary in allowlister-remote-plugin allowlister-remote-daemon allowlister-remote-broker; do
+  # llmlint: ignore[code_lands_in_the_domain_that_owns_it] The manager requires these release helpers to remain in the npm domain under this task, including the GitHub-only broker artifact they build; moving aggregate composition is outside this change.
   cargo build --locked --release --target "$target" -p "$binary"
   mkdir -p dist/artifacts
   # llmlint: ignore[changed_behavior_has_e2e] Only wraps cp's own failure with a recovery message; real build/staging and missing-artifact recovery are covered without filesystem fault injection.

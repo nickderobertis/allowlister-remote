@@ -7,7 +7,7 @@ import { test } from "node:test";
 import { parse, stringify } from "yaml";
 import { load, root, evaluate } from "../workflow-graph.mjs";
 const publish = load(".github/workflows/publish.yml");
-test("all release platforms retain three binaries, npm carriers, checksums and native Mac smoke before Linux publication", () => {
+test("all release platforms retain three binaries, npm carriers, checksums and native Mac smoke before native npm publication", () => {
   const build = publish.jobs["build-binary"];
   const golden = JSON.parse(
     readFileSync(join(root, ".github/tests/fixtures/release-platforms.json")),
@@ -179,11 +179,26 @@ test("production staging and npm packing preserve every platform payload and ver
       );
       assert.equal(validate.status, 0, validate.stderr);
       const carrier = join(scratch, `packages/allowlister-remote-plugin-${row.platform}`);
-      const packed = JSON.parse(
+      const response = JSON.parse(
         execFileSync("npm", ["pack", carrier, "--json", "--pack-destination", scratch], {
           encoding: "utf8",
         }),
-      )[0];
+      );
+      assert.ok(Array.isArray(response) && response.length === 1, "npm pack must return one archive");
+      const packed = response[0];
+      assert.ok(packed && typeof packed === "object", "npm pack archive must be a record");
+      assert.ok(
+        typeof packed.filename === "string" && /^[A-Za-z0-9_.-]+\.tgz$/.test(packed.filename),
+        "npm pack archive must be a local tarball filename",
+      );
+      assert.ok(Array.isArray(packed.files), "npm pack must list archive entries");
+      for (const file of packed.files)
+        assert.ok(
+          file && typeof file === "object" && typeof file.path === "string" &&
+            /^[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)*$/.test(file.path) &&
+            !file.path.split("/").includes(".."),
+          "npm pack entries must be relative paths without traversal",
+        );
       const unpacked = join(scratch, row.platform);
       mkdirSync(unpacked);
       execFileSync("tar", ["xf", join(scratch, packed.filename), "-C", unpacked]);

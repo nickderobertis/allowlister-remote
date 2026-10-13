@@ -32,6 +32,7 @@ for binary in allowlister-remote-plugin allowlister-remote-daemon; do
   fi
   check_version "$artifacts/$binary-$platform"
 done
+# llmlint: ignore[code_lands_in_the_domain_that_owns_it] The manager requires these release build/smoke helpers to remain in the npm domain under this task, including verifying the GitHub-only broker artifact before publication.
 check_version "$artifacts/allowlister-remote-broker-$platform"
 node - "$task_dir/packages" "$version" <<'JS'
 const fs = require('node:fs');
