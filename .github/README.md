@@ -5,7 +5,7 @@ production classifier. Only a same-repository `release-please--branches--main`
 head with a parsed version/changelog-only diff may omit PR Mac coverage. Author
 and title are deliberately irrelevant: automation uses a personal access token.
 Unreadable events, refs and manifests require Mac coverage on PRs. A literal-true
-`draft` PR defers its Mac lane to `ready_for_review` (see `AGENTS.md`). Known non-PR
+`draft` PR defers its Mac lane to `ready_for_review`. Known non-PR
 GitHub events never require it. The check workflow offers a separate manual
 `macos` diagnostic input, default false.
 
