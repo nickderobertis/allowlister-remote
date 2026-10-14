@@ -2,6 +2,9 @@ name: check
 
 on:
   pull_request:
+    # ready_for_review re-reports the required contexts when a draft is lifted;
+    # the Mac lane waits for it, so a draft-then-ready PR spends one Mac run.
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
     inputs:
       macos:
@@ -26,6 +29,7 @@ jobs:
       os: ${{ steps.pick.outputs.os }}
       tier: ${{ steps.pick.outputs.tier }}
       macosRequired: ${{ steps.policy.outputs.macosRequired }}
+      macosDeferred: ${{ steps.pick.outputs.macosDeferred }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -43,11 +47,15 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           HEAD_REF: ${{ github.head_ref }}
           MACOS_REQUIRED: ${{ steps.policy.outputs.macosRequired }}
+          DRAFT: ${{ github.event.pull_request.draft }}
           DIAGNOSTIC: ${{ inputs.macos }}
         run: |
           if [[ "$EVENT_NAME" == "pull_request" ]]; then
             if [[ "$MACOS_REQUIRED" == "false" ]]; then
               echo 'os=["ubuntu-latest"]' >> "$GITHUB_OUTPUT"
+            elif [[ "$DRAFT" == "true" ]]; then
+              echo 'os=["ubuntu-latest"]' >> "$GITHUB_OUTPUT"
+              echo 'macosDeferred=true' >> "$GITHUB_OUTPUT"
             else
               echo 'os=["ubuntu-latest","macos-14"]' >> "$GITHUB_OUTPUT"
             fi
@@ -180,6 +188,7 @@ jobs:
           SETUP_RESULT: ${{ needs.setup.result }}
           CHECK_RESULT: ${{ needs.check.result }}
           MACOS_REQUIRED: ${{ needs.setup.outputs.macosRequired }}
+          MACOS_DEFERRED: ${{ needs.setup.outputs.macosDeferred }}
           OS_MATRIX: ${{ needs.setup.outputs.os }}
           EVENT_NAME: ${{ github.event_name }}
           DIAGNOSTIC: ${{ inputs.macos }}

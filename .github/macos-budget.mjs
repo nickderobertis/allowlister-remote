@@ -11,7 +11,7 @@ const path = options["--telemetry"];
 if (!path || path.startsWith("--")) throw new Error("Telemetry path required");
 // llmlint: ignore[boundary_inputs_validated] The internal CLI accepts a recorded telemetry path; schema, source freshness and measured rows are validated after reading, and no path is executed or published.
 const telemetry = JSON.parse(readFileSync(resolve(root, path), "utf8"));
-if (telemetry.schemaVersion !== 1 || telemetry.sourceDigest !== sourceDigest())
+if (telemetry.schemaVersion !== 2 || telemetry.sourceDigest !== sourceDigest())
   throw new Error("Missing or stale telemetry: run github-workflows:test");
 if (
   !Array.isArray(telemetry.scenarios) ||
@@ -67,12 +67,13 @@ const detail = JSON.stringify({
   macJobs: [...uniqueMacJobs.values()],
   lifecycles: telemetry.lifecycles.map((lifecycle) => {
     // llmlint: ignore[boundary_inputs_validated] Recorder-owned descriptive labels are forwarded as JSON detail; the cost computation uses validated run/job rows.
-    const { diff, fork, publish, pages } = lifecycle;
+    const { diff, fork, publish, pages, draft } = lifecycle;
     return {
       diff,
       fork,
       publish,
       pages,
+      draft,
       macRuns: lifecycle.runs
         .filter((run) => run.rows.some((row) => row.macos))
         .map((run) => ({

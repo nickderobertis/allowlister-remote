@@ -125,6 +125,7 @@ export function prEvent(diff = "source", fork = false, release = false) {
     repository: { full_name: repo },
     pull_request: {
       title: "chore(main): release",
+      draft: false,
       user: { login: "nickderobertis" },
       base: { sha: base, ref: "main", repo: { full_name: repo } },
       head: {
@@ -180,6 +181,7 @@ function route(scenario) {
       EVENT_NAME: scenario.eventName,
       HEAD_REF: scenario.event.pull_request?.head?.ref ?? "",
       MACOS_REQUIRED: String(policy.macosRequired),
+      DRAFT: String(scenario.event.pull_request?.draft ?? ""),
       DIAGNOSTIC: String(scenario.event.inputs?.macos ?? false),
       GITHUB_OUTPUT: output,
     },
@@ -286,6 +288,10 @@ function runs(scenario) {
       ),
     }));
 }
+const draftEvent = (event, draft) => ({
+  ...event,
+  pull_request: { ...event.pull_request, draft },
+});
 const scenario = (id, eventName, event = {}, ref = "refs/heads/main") => ({
   id,
   eventName,
@@ -312,11 +318,13 @@ test("actual workflow graph, reusable call and event fan-out record telemetry", 
   for (const diff of ["source", "version", "dependency"])
     for (const fork of [false, true])
       for (const publish of [false, true])
-        for (const pages of [false, true]) {
+        for (const pages of [false, true])
+          for (const draft of [false, true]) {
           for (const [id, name, action, ref] of events) {
+            if (draft && id !== "pr-opened") continue;
             const event =
               name === "pull_request"
-                ? { ...prEvent(diff, fork, diff === "version"), action }
+                ? draftEvent({ ...prEvent(diff, fork, diff === "version"), action }, draft)
                 : name === "workflow_run"
                   ? {
                       workflow_run: {
@@ -329,7 +337,7 @@ test("actual workflow graph, reusable call and event fan-out record telemetry", 
                     }
                   : { action, inputs: { macos: id === "manual-opt-in" } };
             const current = {
-              ...scenario(`${id}/${diff}/${fork}/${publish}/${pages}`, name, event, ref),
+              ...scenario(`${id}/${diff}/${fork}/${publish}/${pages}${draft ? "/draft" : ""}`, name, event, ref),
               optionalPublish: { publish, pages },
             };
             const resolved = runs(current);
@@ -337,14 +345,14 @@ test("actual workflow graph, reusable call and event fan-out record telemetry", 
             const hasMac = resolved.flatMap((run) => run.rows).some((row) => row.macos);
             const expectedMac =
               name === "pull_request"
-                ? !(diff === "version" && !fork)
+                ? !(diff === "version" && !fork) && !draft
                 : id === "tag-push" || id === "manual-opt-in";
             assert.equal(hasMac, expectedMac, current.id);
 
             for (const run of resolved)
               for (const row of run.rows.filter((row) => row.macos)) {
                 assert.ok(
-                  (name === "pull_request" && !(diff === "version" && !fork)) ||
+                  (name === "pull_request" && !(diff === "version" && !fork) && !draft) ||
                     (name === "push" && ref?.startsWith("refs/tags/")) ||
                     id === "manual-opt-in",
                   JSON.stringify(row),
@@ -363,6 +371,7 @@ test("actual workflow graph, reusable call and event fan-out record telemetry", 
                 assert.equal(names.filter((name) => name === required).length, 1, required);
             }
           }
+          if (!draft) {
           for (const releaseDiff of ["source", "dependency", "mixed"]) {
             const forged = scenario(`forged-release/${releaseDiff}/${fork}`, "pull_request", {
               ...prEvent(releaseDiff, fork, true),
@@ -383,11 +392,20 @@ test("actual workflow graph, reusable call and event fan-out record telemetry", 
           const unknownRuns = runs(unknown);
           recorded.push(...unknownRuns);
           assert.ok(unknownRuns.flatMap((run) => run.rows).some((row) => row.macos));
+          }
           const stages = [
-            scenario("ordinary-pr", "pull_request", {
+            scenario("ordinary-pr", "pull_request", draftEvent({
               ...prEvent(diff, fork),
               action: "synchronize",
-            }),
+            }, draft)),
+            ...(draft
+              ? [
+                  scenario("ordinary-pr-ready", "pull_request", {
+                    ...prEvent(diff, fork),
+                    action: "ready_for_review",
+                  }),
+                ]
+              : []),
             scenario("base-merge", "push"),
             scenario("ordinary-pr-closed", "pull_request", {
               ...prEvent(diff, fork),
@@ -442,7 +460,7 @@ test("actual workflow graph, reusable call and event fan-out record telemetry", 
               }
             }
           }
-          lifecycles.push({ diff, fork, publish, pages, runs: lifecycleRuns });
+          lifecycles.push({ diff, fork, publish, pages, draft, runs: lifecycleRuns });
           recorded.push(...lifecycleRuns);
         }
   const maxJobs = Math.max(...recorded.map((run) => run.rows.filter((row) => row.macos).length));
@@ -456,7 +474,7 @@ test("actual workflow graph, reusable call and event fan-out record telemetry", 
     join(root, ".github/.telemetry/macos-policy.json"),
     JSON.stringify(
       {
-        schemaVersion: 1,
+        schemaVersion: 2,
         sourceDigest: sourceDigest(),
         events,
         scenarios: recorded,
@@ -527,7 +545,78 @@ test("real carrier command handles required work and authorized omissions", () =
     },
   });
   assert.notEqual(run.status, 0);
-  assert.match(run.stderr, /omission/);
+  assert.match(run.stderr, /omission/);  const deferred = spawnSync("node", [join(root, ".github/check-results.mjs")], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      SETUP_RESULT: "success",
+      CHECK_RESULT: "success",
+      MACOS_REQUIRED: "",
+      MACOS_DEFERRED: "true",
+      EVENT_NAME: "pull_request",
+      OS_MATRIX: '["ubuntu-latest"]',
+    },
+  });
+  assert.notEqual(deferred.status, 0);
+  assert.match(deferred.stderr, /deferred/);
+});
+
+test("draft PRs defer the Mac lane to ready_for_review and every required context re-reports", () => {
+  const carrier = (setup, macos) =>
+    spawnSync("node", [join(root, ".github/check-results.mjs")], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        SETUP_RESULT: "success",
+        CHECK_RESULT: "success",
+        EVENT_NAME: "pull_request",
+        MACOS_REQUIRED: setup.macosRequired,
+        MACOS_DEFERRED: setup.macosDeferred ?? "",
+        OS_MATRIX: setup.os,
+        DIAGNOSTIC: "",
+      },
+    });
+  for (const fork of [false, true])
+    for (const [action, draft, macos] of [
+      ["opened", true, false],
+      ["synchronize", true, false],
+      ["reopened", true, false],
+      ["ready_for_review", false, true],
+    ]) {
+      const current = scenario(
+        `draft-route/${action}/${fork}`,
+        "pull_request",
+        draftEvent({ ...prEvent("source", fork), action }, draft),
+      );
+      const resolved = runs(current);
+      const rows = resolved.flatMap((run) => run.rows);
+      assert.equal(rows.some((row) => row.macos), macos, current.id);
+      for (const required of [
+        "check",
+        "install-smoke",
+        "llmlint",
+        "pr-title",
+        ...arches.map((arch) => `visual-docs / capture (${arch})`),
+      ])
+        assert.equal(rows.filter((row) => row.display === required).length, 1, `${current.id} ${required}`);
+      const setup = route(current);
+      assert.equal(setup.macosRequired, "true");
+      const result = carrier(setup);
+      if (macos) assert.equal(result.status, 0, result.stderr);
+      else {
+        assert.equal(setup.macosDeferred, "true");
+        assert.notEqual(result.status, 0);
+        assert.match(result.stderr, /deferred while the pull request is a draft/);
+      }
+    }
+  const releaseDraft = scenario(
+    "draft-route/release",
+    "pull_request",
+    draftEvent({ ...prEvent("version", false, true), action: "opened" }, true),
+  );
+  const setup = route(releaseDraft);
+  assert.equal(setup.macosDeferred, undefined);
+  assert.equal(carrier(setup).status, 0);
 });
 
 test("budget reporter consumes recorded rows and refuses stale or missing telemetry", () => {

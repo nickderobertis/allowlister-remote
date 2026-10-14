@@ -80,6 +80,16 @@ describe("check.yml gate routing", () => {
     }
   });
 
+  it("defers an ordinary draft PR's Mac lane until it is ready for review", () => {
+    const base = { EVENT_NAME: "pull_request", HEAD_REF: "feature/x", MACOS_REQUIRED: "true" };
+    const draft = pickTier({ ...base, DRAFT: "true" });
+    assert.equal(draft.os, '["ubuntu-latest"]');
+    assert.equal(draft.macosDeferred, "true");
+    const ready = pickTier({ ...base, DRAFT: "false" });
+    assert.equal(ready.os, '["ubuntu-latest","macos-14"]');
+    assert.equal(ready.macosDeferred, undefined);
+  });
+
   it("runs the affected tier on a push to main, across Linux and Windows", () => {
     const out = pickTier({ EVENT_NAME: "push", HEAD_REF: "" });
     assert.equal(out.tier, "affected");
@@ -215,6 +225,13 @@ function reportedOnEveryPullRequest(file, jobId) {
     assert.equal(trigger?.[filter], undefined, `${file}: pull_request.${filter}`);
   }
   if (trigger?.branches) assert.ok(trigger.branches.includes("main"), `${file}: branches`);
+  // A draft lift must re-report the context, so an explicit types list keeps
+  // the default actions and adds ready_for_review.
+  if (trigger?.types) {
+    for (const action of ["opened", "synchronize", "reopened", "ready_for_review"]) {
+      assert.ok(trigger.types.includes(action), `${file}: pull_request.types lacks ${action}`);
+    }
+  }
   const seen = new Set();
   const visit = (id, isRoot) => {
     if (seen.has(id)) return;

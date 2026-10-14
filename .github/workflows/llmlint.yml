@@ -5,6 +5,8 @@ name: llmlint
 
 on:
   pull_request:
+    # ready_for_review re-reports this required context when a draft is lifted.
+    types: [opened, synchronize, reopened, ready_for_review]
 
 permissions:
   contents: read
