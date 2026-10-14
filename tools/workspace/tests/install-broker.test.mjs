@@ -12,12 +12,10 @@ const root = resolve(import.meta.dirname, "../../..");
 const stubs = mkdtempSync(join(tmpdir(), "install-broker-stubs-"));
 after(() => rmSync(stubs, { recursive: true, force: true }));
 
-// `uname -s` / `uname -m` answer from STUB_OS / STUB_ARCH.
 writeFileSync(
   join(stubs, "uname"),
   '#!/usr/bin/env bash\ncase "$1" in -s) echo "$STUB_OS" ;; -m) echo "$STUB_ARCH" ;; *) exit 2 ;; esac\n',
 );
-// `curl` records its argv and fails like an unreachable download.
 writeFileSync(
   join(stubs, "curl"),
   `#!/usr/bin/env bash\nprintf '%s\\n' "$@" >> "${stubs}/curl.args"\nexit 22\n`,

@@ -23,6 +23,11 @@ task_dir="$(mktemp -d)"
 trap 'rm -rf "$task_dir"' EXIT
 cp -R packages "$task_dir/packages"
 # llmlint: ignore-end[tool_output_is_signal]
+case "$platform" in
+  linux-x64 | darwin-arm64 | win32-x64) ;;
+  *)
+    echo "No native carrier is published for '$platform'; run native smoke on a linux-x64, darwin-arm64 or win32-x64 host." >&2; exit 2 ;;
+esac
 for binary in allowlister-remote-plugin allowlister-remote-daemon; do
   # llmlint: ignore[tool_output_is_signal] mkdir already identifies the failing runner path; permission/space remediation belongs to runner provisioning.
   mkdir -p "$task_dir/packages/allowlister-remote-plugin-$platform/bin"

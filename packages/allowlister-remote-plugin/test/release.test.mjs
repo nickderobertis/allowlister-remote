@@ -152,3 +152,26 @@ test("native smoke refuses an empty release version before using artifacts", () 
     /ALLOWLISTER_REMOTE_PLUGIN_VERSION: Set ALLOWLISTER_REMOTE_PLUGIN_VERSION/,
   );
 });
+
+test("native smoke refuses a host with no published carrier before using artifacts", () => {
+  const bin = mkdtempSync(join(scratchRoot, "intel-node-"));
+  const preload =
+    'data:text/javascript,Object.defineProperty(process,"platform",{value:"darwin"});Object.defineProperty(process,"arch",{value:"x64"});';
+  writeFileSync(
+    join(bin, "node"),
+    `#!/usr/bin/env bash\nexec ${JSON.stringify(process.execPath)} --import '${preload}' "$@"\n`,
+    { mode: 0o755 },
+  );
+  try {
+    const result = spawnSync(
+      "bash",
+      ["packages/allowlister-remote-plugin/scripts/smoke-native-release.sh", "missing-artifacts"],
+      { cwd: root, encoding: "utf8", env: { ...env, PATH: `${bin}:${process.env.PATH}` } },
+    );
+    assert.equal(result.status, 2, result.stderr);
+    assert.match(result.stderr, /No native carrier is published for 'darwin-x64'/);
+    assert.doesNotMatch(result.stderr, /Cannot stage native carrier/);
+  } finally {
+    rmSync(bin, { recursive: true, force: true });
+  }
+});
