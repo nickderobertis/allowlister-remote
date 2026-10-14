@@ -1,5 +1,4 @@
-{
-  "//": "llmlint: ignore[projects_stay_in_one_js_workspace] The task explicitly requires an isolated private locked workflow tooling package; this strict checkJs project checks its classifier and carrier in that same lock domain, while application projects retain the root workspace.",
+{ "//": "llmlint: ignore[projects_stay_in_one_js_workspace] The task explicitly requires an isolated private locked workflow tooling package; this strict checkJs project checks its classifier and carrier in that same lock domain, while application projects retain the root workspace.",
   "compilerOptions": {
     "allowJs": true,
     "checkJs": true,
