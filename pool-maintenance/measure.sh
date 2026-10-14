@@ -18,25 +18,35 @@
 # anything (b) did not create, or left any ordinary entry missing.
 #
 # Entry listings (one path per line, named by metadata hash) are kept in
-# $POOL_MAINTENANCE_WORK_DIR when it is set, else in a temporary directory.
+# $POOL_MAINTENANCE_WORK_DIR, an absolute path, when it is set, else in a
+# temporary directory. Run outside `onebudgetspec check`, it prints the result.
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$root"
 
 if [[ -n "${POOL_MAINTENANCE_WORK_DIR:-}" ]]; then
+  if [[ "$POOL_MAINTENANCE_WORK_DIR" != /* ]]; then
+    echo "POOL_MAINTENANCE_WORK_DIR must be an absolute path; got: $POOL_MAINTENANCE_WORK_DIR" >&2
+    exit 2
+  fi
   work="$POOL_MAINTENANCE_WORK_DIR"
   mkdir -p "$work"
 else
   work="$(mktemp -d)"
   trap 'rm -rf "$work"' EXIT
 fi
+if [[ -n "${ONEBUDGETSPEC_RESULT:-}" && ! -f "$ONEBUDGETSPEC_RESULT" ]]; then
+  echo "ONEBUDGETSPEC_RESULT must name the file onebudgetspec created; got: $ONEBUDGETSPEC_RESULT" >&2
+  exit 2
+fi
 result="${ONEBUDGETSPEC_RESULT:-$work/result.json}"
 
 # Every build entry the pruner groups: the children of deps/, .fingerprint/,
 # build/ and incremental/ in each profile directory under target/.
 entries() {
-  find target -type d -name .fingerprint -prune -print 2>/dev/null |
+  [[ -d target ]] || return 0
+  find target -type d -name .fingerprint -prune -print |
     while read -r fingerprint; do
       profile="$(dirname "$fingerprint")"
       for container in deps .fingerprint build incremental; do
@@ -50,63 +60,58 @@ entries() {
 # `cargo llvm-cov --no-report -p <crate>`; `--list` builds the test binaries
 # and lists their tests instead of running them.
 mapfile -t crates < <(
-  cargo metadata --no-deps --format-version 1 |
-    node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{for(const p of JSON.parse(s).packages)console.log(p.name)})'
+  cargo metadata --no-deps --format-version 1 | node "$root/pool-maintenance/result.mjs" crates
 )
 gate_build() {
   for crate in "${crates[@]}"; do
-    cargo llvm-cov --no-report -p "$crate" -- --list >&2
+    cargo llvm-cov --no-report -p "$crate" -- --list >/dev/null
   done
 }
 
 prune() {
-  ONEBUDGETSPEC_RESULT="$1" just pool-maintenance >&2
+  ONEBUDGETSPEC_RESULT="$1" just pool-maintenance >/dev/null
 }
 
-echo "(a) untimed backlog pass" >&2
+# (a)
 prune "$work/backlog.json"
 
-echo "(b) alternative-configuration build, backdated past the window" >&2
+# (b)
 entries >"$work/before-alt.txt"
 CARGO_PROFILE_DEV_DEBUG_ASSERTIONS=false gate_build
 entries >"$work/after-alt.txt"
 LC_ALL=C comm -13 "$work/before-alt.txt" "$work/after-alt.txt" >"$work/alt.txt"
 if [[ ! -s "$work/alt.txt" ]]; then
-  echo "the alternative build created no entries; nothing stands in for a superseded run" >&2
+  echo "the alternative build created no new entries under target/, so nothing stands in for a superseded run;" \
+    "check that CARGO_PROFILE_DEV_DEBUG_ASSERTIONS=false still changes the units' metadata hashes" >&2
   exit 1
 fi
 while read -r entry; do
   find "$entry" -exec touch -h -d '3 days ago' {} +
 done <"$work/alt.txt"
 
-echo "(c) ordinary gate build" >&2
+# (c)
 gate_build
 entries >"$work/before-timed.txt"
 LC_ALL=C comm -23 "$work/before-timed.txt" "$work/alt.txt" >"$work/ordinary.txt"
 
-echo "(d) timed pass" >&2
+# (d)
 prune "$work/timed.json"
 entries >"$work/after-timed.txt"
 LC_ALL=C comm -23 "$work/before-timed.txt" "$work/after-timed.txt" >"$work/removed.txt"
 LC_ALL=C comm -23 "$work/ordinary.txt" "$work/after-timed.txt" >"$work/ordinary-missing.txt"
 LC_ALL=C comm -23 "$work/removed.txt" "$work/alt.txt" >"$work/removed-not-alt.txt"
 if [[ ! -s "$work/removed.txt" ]]; then
-  echo "the timed pass removed no entries" >&2
+  echo "the timed pass removed no entries; set POOL_MAINTENANCE_WORK_DIR and compare" \
+    "alt.txt with after-timed.txt to see which backdated builds it kept" >&2
   exit 1
 fi
 if [[ -s "$work/ordinary-missing.txt" || -s "$work/removed-not-alt.txt" ]]; then
-  echo "the timed pass removed entries the alternative build did not create:" >&2
+  echo "the timed pass removed entries the alternative build did not create" \
+    "(re-run after \`cargo clean\` if target/ held stale builds):" >&2
   cat "$work/ordinary-missing.txt" "$work/removed-not-alt.txt" >&2
   exit 1
 fi
 
-node -e '
-const fs = require("node:fs");
-const [timedFile, backlogFile, out, alt, removed] = process.argv.slice(1);
-const timed = JSON.parse(fs.readFileSync(timedFile, "utf8"));
-const backlog = JSON.parse(fs.readFileSync(backlogFile, "utf8"));
-const detail = `${timed.detail}; alternative entries created: ${alt}; entries removed: ${removed}; untimed backlog pass (not in the figure): ${backlog.value} seconds`;
-fs.writeFileSync(out, JSON.stringify({ value: timed.value, detail }));
-' "$work/timed.json" "$work/backlog.json" "$result" \
+node "$root/pool-maintenance/result.mjs" merge "$work/timed.json" "$work/backlog.json" "$result" \
   "$(wc -l <"$work/alt.txt")" "$(wc -l <"$work/removed.txt")"
 [[ -n "${ONEBUDGETSPEC_RESULT:-}" ]] || cat "$result"
