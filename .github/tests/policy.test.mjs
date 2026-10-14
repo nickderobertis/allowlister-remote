@@ -861,8 +861,10 @@ test("classifier CLI rejects malformed semantic metadata and preserves reason co
     { isReleaseOnly: false, macosRequired: true, reason: ordinaryReason });
   assert.deepEqual(classify("{", base),
     { isReleaseOnly: false, macosRequired: true, reason: unreadableReason });
-  assert.deepEqual(classify({}, base, "unknown"),
-    { isReleaseOnly: false, macosRequired: true, reason: "unknown event classification" });
+  const unrecognised = classify({}, base, "merge_group_probe_7f3a");
+  assert.equal(unrecognised.isReleaseOnly, false);
+  assert.equal(unrecognised.macosRequired, true);
+  assert.match(unrecognised.reason, /"merge_group_probe_7f3a"/);
   assert.deepEqual(classify("{", "unreadable", "workflow_call"),
     { isReleaseOnly: false, macosRequired: false, reason: "non-PR event" });
   const cases = [

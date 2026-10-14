@@ -109,7 +109,11 @@ export function classify(eventPath, base, head, eventName = process.env.GITHUB_E
   if (eventName && nonPrEvents.has(eventName))
     return { isReleaseOnly: false, macosRequired: false, reason: "non-PR event" };
   if (eventName && eventName !== "pull_request")
-    return { isReleaseOnly: false, macosRequired: true, reason: "unknown event classification" };
+    return {
+      isReleaseOnly: false,
+      macosRequired: true,
+      reason: `unrecognised event ${JSON.stringify(eventName)}: failing closed to macOS`,
+    };
   try {
     // llmlint: ignore[boundary_inputs_validated] The internal CLI intentionally accepts an event fixture path; GitHub supplies GITHUB_EVENT_PATH in production, and unreadable/malformed content requires Mac coverage.
     const event = JSON.parse(readFileSync(eventPath, "utf8"));
