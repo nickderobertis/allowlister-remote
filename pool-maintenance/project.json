@@ -40,7 +40,7 @@
     "test": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "node --test pool-maintenance/tests/measure.test.mjs",
+        "command": "node --test pool-maintenance/tests/measure.test.mjs pool-maintenance/tests/result.test.mjs",
         "cwd": "."
       },
       "inputs": ["measurement"],
