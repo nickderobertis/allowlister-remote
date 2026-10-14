@@ -45,9 +45,9 @@ test("all release platforms retain three binaries, npm carriers, checksums and n
     (match) => match[1],
   );
   assert.deepEqual(build.strategy.matrix.include.map((row) => row.target).sort(), targets.sort());
-  // Darwin/Windows execution belongs to their native release runners. The
-  // carrier journey below exercises real staging/packing with inert foreign
-  // payloads; the separate Linux builder journey runs genuine native binaries.
+  // Only Darwin binaries run natively in the release (the macOS builder's smoke);
+  // Windows is proved by real staging/packing of inert payloads in the carrier
+  // journey below, and the separate Linux builder journey runs genuine binaries.
   const builder = readFileSync(
     join(root, "packages/allowlister-remote-plugin/scripts/build-release-binaries.sh"),
     "utf8",

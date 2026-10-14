@@ -169,7 +169,7 @@ test("native smoke refuses a host with no published carrier before using artifac
       { cwd: root, encoding: "utf8", env: { ...env, PATH: `${bin}:${process.env.PATH}` } },
     );
     assert.equal(result.status, 2, result.stderr);
-    assert.match(result.stderr, /No native carrier is published for 'darwin-x64'/);
+    assert.match(result.stderr, /Native smoke has no carrier for 'darwin-x64'/);
     assert.doesNotMatch(result.stderr, /Cannot stage native carrier/);
   } finally {
     rmSync(bin, { recursive: true, force: true });
