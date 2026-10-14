@@ -127,7 +127,22 @@ export function classify(eventPath, base, head, eventName = process.env.GITHUB_E
       pr.base?.repo?.full_name === repo &&
       typeof pr.head?.ref === "string" &&
       /^release-please--branches--main(?:--|$)/.test(pr.head?.ref ?? "");
-    const release = authorized && versionDiffOnly(commit(base), commit(head));
+    // A literal-true draft defers its Mac lane to ready_for_review, which
+    // re-runs every required context; any other draft value fails closed.
+    const draft = pr.draft === true;
+    let release;
+    try {
+      release = authorized && versionDiffOnly(commit(base), commit(head));
+    } catch (error) {
+      if (!draft) throw error;
+      release = false;
+    }
+    if (!release && draft)
+      return {
+        isReleaseOnly: false,
+        macosRequired: false,
+        reason: "draft pull request: Mac lane deferred to ready_for_review",
+      };
     return {
       isReleaseOnly: release,
       macosRequired: !release,
@@ -153,6 +168,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   if (process.env.GITHUB_OUTPUT)
     appendFileSync(
       process.env.GITHUB_OUTPUT,
-      `macosRequired=${result.macosRequired}\nisReleaseOnly=${result.isReleaseOnly}\n`,
+      `macosRequired=${result.macosRequired}\nisReleaseOnly=${result.isReleaseOnly}\nreason=${result.reason}\n`,
     );
 }

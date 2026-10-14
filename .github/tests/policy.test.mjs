@@ -181,7 +181,6 @@ function route(scenario) {
       EVENT_NAME: scenario.eventName,
       HEAD_REF: scenario.event.pull_request?.head?.ref ?? "",
       MACOS_REQUIRED: String(policy.macosRequired),
-      DRAFT: String(scenario.event.pull_request?.draft ?? ""),
       DIAGNOSTIC: String(scenario.event.inputs?.macos ?? false),
       GITHUB_OUTPUT: output,
     },
@@ -195,6 +194,7 @@ function route(scenario) {
         .map((line) => line.split(/=(.*)/s).slice(0, 2)),
     ),
     macosRequired: String(policy.macosRequired),
+    reason: policy.reason,
   };
   routes.set(key, result);
   return result;
@@ -224,7 +224,7 @@ test("real classifier over git histories: automation branch and semantic diff, n
   const release = classify(prEvent("version", false, true), heads.version, "pull_request", output);
   assert.equal(
     readFileSync(output, "utf8"),
-    `macosRequired=${release.macosRequired}\nisReleaseOnly=${release.isReleaseOnly}\n`,
+    `macosRequired=${release.macosRequired}\nisReleaseOnly=${release.isReleaseOnly}\nreason=${release.reason}\n`,
   );
   assert.equal(classify("{", "bad", "typo").macosRequired, true);
   const emptyRepo = prEvent("version", false, true);
@@ -545,24 +545,12 @@ test("real carrier command handles required work and authorized omissions", () =
     },
   });
   assert.notEqual(run.status, 0);
-  assert.match(run.stderr, /omission/);  const deferred = spawnSync("node", [join(root, ".github/check-results.mjs")], {
-    encoding: "utf8",
-    env: {
-      ...process.env,
-      SETUP_RESULT: "success",
-      CHECK_RESULT: "success",
-      MACOS_REQUIRED: "",
-      MACOS_DEFERRED: "true",
-      EVENT_NAME: "pull_request",
-      OS_MATRIX: '["ubuntu-latest"]',
-    },
-  });
-  assert.notEqual(deferred.status, 0);
-  assert.match(deferred.stderr, /deferred/);
+  assert.match(run.stderr, /omission/);
 });
 
-test("draft PRs defer the Mac lane to ready_for_review and every required context re-reports", () => {
-  const carrier = (setup, macos) =>
+test("draft PRs defer the Mac lane to ready_for_review through the classifier", () => {
+  const reason = "draft pull request: Mac lane deferred to ready_for_review";
+  const carrier = (setup) =>
     spawnSync("node", [join(root, ".github/check-results.mjs")], {
       encoding: "utf8",
       env: {
@@ -571,52 +559,61 @@ test("draft PRs defer the Mac lane to ready_for_review and every required contex
         CHECK_RESULT: "success",
         EVENT_NAME: "pull_request",
         MACOS_REQUIRED: setup.macosRequired,
-        MACOS_DEFERRED: setup.macosDeferred ?? "",
+        MACOS_REASON: setup.reason,
         OS_MATRIX: setup.os,
         DIAGNOSTIC: "",
       },
     });
-  for (const fork of [false, true])
-    for (const [action, draft, macos] of [
-      ["opened", true, false],
-      ["synchronize", true, false],
-      ["reopened", true, false],
-      ["ready_for_review", false, true],
-    ]) {
-      const current = scenario(
+  const journey = (id, event) => {
+    const current = scenario(id, "pull_request", event);
+    const rows = runs(current).flatMap((run) => run.rows);
+    for (const required of [
+      "check",
+      "install-smoke",
+      "llmlint",
+      "pr-title",
+      ...arches.map((arch) => `visual-docs / capture (${arch})`),
+    ])
+      assert.equal(rows.filter((row) => row.display === required).length, 1, `${id} ${required}`);
+    const setup = route(current);
+    const result = carrier(setup);
+    assert.equal(result.status, 0, result.stderr);
+    return { macJobs: rows.filter((row) => row.macos).length, setup, result };
+  };
+  for (const fork of [false, true]) {
+    for (const action of ["opened", "synchronize", "reopened"]) {
+      const draft = journey(
         `draft-route/${action}/${fork}`,
-        "pull_request",
-        draftEvent({ ...prEvent("source", fork), action }, draft),
+        draftEvent({ ...prEvent("source", fork), action }, true),
       );
-      const resolved = runs(current);
-      const rows = resolved.flatMap((run) => run.rows);
-      assert.equal(rows.some((row) => row.macos), macos, current.id);
-      for (const required of [
-        "check",
-        "install-smoke",
-        "llmlint",
-        "pr-title",
-        ...arches.map((arch) => `visual-docs / capture (${arch})`),
-      ])
-        assert.equal(rows.filter((row) => row.display === required).length, 1, `${current.id} ${required}`);
-      const setup = route(current);
-      assert.equal(setup.macosRequired, "true");
-      const result = carrier(setup);
-      if (macos) assert.equal(result.status, 0, result.stderr);
-      else {
-        assert.equal(setup.macosDeferred, "true");
-        assert.notEqual(result.status, 0);
-        assert.match(result.stderr, /deferred while the pull request is a draft/);
-      }
+      assert.equal(draft.macJobs, 0);
+      assert.equal(draft.setup.macosRequired, "false");
+      assert.equal(draft.setup.reason, reason);
+      assert.match(draft.result.stdout, /Mac lane intentionally omitted by policy \(draft pull request/);
     }
-  const releaseDraft = scenario(
-    "draft-route/release",
-    "pull_request",
-    draftEvent({ ...prEvent("version", false, true), action: "opened" }, true),
-  );
-  const setup = route(releaseDraft);
-  assert.equal(setup.macosDeferred, undefined);
-  assert.equal(carrier(setup).status, 0);
+    for (const action of ["ready_for_review", "synchronize"]) {
+      const ready = journey(
+        `ready-route/${action}/${fork}`,
+        draftEvent({ ...prEvent("source", fork), action }, false),
+      );
+      assert.equal(ready.macJobs, 1);
+      assert.equal(ready.setup.macosRequired, "true");
+      assert.doesNotMatch(ready.result.stdout, /omitted/);
+    }
+  }
+  for (const flag of [undefined, null, "true", 1, false]) {
+    const event = { ...prEvent("source"), action: "opened" };
+    if (flag === undefined) delete event.pull_request.draft;
+    else event.pull_request.draft = flag;
+    const result = classify(event, heads.source);
+    assert.equal(result.macosRequired, true, JSON.stringify(flag));
+    assert.notEqual(result.reason, reason);
+  }
+  const unreadableDiff = classify(draftEvent({ ...prEvent("source"), action: "opened" }, true), "missing-ref");
+  assert.deepEqual(unreadableDiff, { isReleaseOnly: false, macosRequired: false, reason });
+  const releaseDraft = classify(draftEvent(prEvent("version", false, true), true), heads.version);
+  assert.equal(releaseDraft.isReleaseOnly, true);
+  assert.equal(releaseDraft.macosRequired, false);
 });
 
 test("budget reporter consumes recorded rows and refuses stale or missing telemetry", () => {
