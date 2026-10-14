@@ -10,9 +10,17 @@
 
 import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
-import { binarySpecifier } from "../lib/platform.mjs";
+import { binarySpecifier, platformPackage } from "../lib/platform.mjs";
 
 const require = createRequire(import.meta.url);
+
+try {
+  platformPackage();
+} catch (error) {
+  // An unpublished platform (including Intel macOS) has no binary to look for.
+  console.error(`allowlister-remote-plugin: ${error instanceof Error ? error.message : error}`);
+  process.exit(1);
+}
 
 let binary;
 try {
