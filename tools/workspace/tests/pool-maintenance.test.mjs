@@ -1,14 +1,12 @@
 // Pool maintenance: onevcs.toml names the `pool-maintenance` recipe, the recipe
 // prunes every target dir .cargo/config.toml sets, the real pruner removes only
 // superseded builds older than the window, `bootstrap` installs the pinned pruner
-// once, measure.sh reports one steady-state pass and refuses a run that does not
-// stand for one, and the pool-maintenance budget is reached by the release PR
-// alone — never by a per-change task graph, which nx itself is asked for.
+// once, and the pool-maintenance budget check is reached by the release PR alone
+// — never by a per-change task graph, which nx itself is asked for.
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import {
   chmodSync,
-  copyFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -161,112 +159,6 @@ describe("bootstrap", () => {
   });
 });
 
-// measure.sh, copied into a scratch tree and run through the real `onebudgetspec
-// check`, the real recipe and the real pruner. Only cargo is a stub — its builds
-// are the two minutes this unit tier cannot spend: `llvm-cov` writes one unit's
-// entries, under a hash that depends on CARGO_PROFILE_DEV_DEBUG_ASSERTIONS like
-// a real build's. STUB_ALT=none and STUB_ORDINARY=none|stale break a step.
-describe("measure.sh", () => {
-  const tree = join(scratch, "measure");
-  const stubs = join(scratch, "measure-stubs");
-  const realJust = run("bash", ["-c", "command -v just"]).stdout.trim();
-  mkdirSync(join(tree, "pool-maintenance"), { recursive: true });
-  mkdirSync(stubs, { recursive: true });
-  for (const file of ["measure.sh", "result.mjs", "budgets.yaml"]) {
-    copyFileSync(join(root, "pool-maintenance", file), join(tree, "pool-maintenance", file));
-  }
-  chmodSync(join(tree, "pool-maintenance", "measure.sh"), 0o755);
-  const stub = (name, body) => {
-    writeFileSync(join(stubs, name), `#!/usr/bin/env bash\n${body}`);
-    chmodSync(join(stubs, name), 0o755);
-  };
-  stub(
-    "just",
-    `exec "${realJust}" --justfile "${join(root, "justfile")}" --working-directory "$PWD" "$@"\n`,
-  );
-  stub(
-    "cargo",
-    `case "$1" in
-  metadata) echo '{"packages":[{"name":"demo"}]}' ;;
-  llvm-cov)
-    if [[ "\${CARGO_PROFILE_DEV_DEBUG_ASSERTIONS:-}" == false ]]; then
-      [[ "\${STUB_ALT:-}" == none ]] && exit 0
-      hash=00000000000000a1
-    else
-      [[ "\${STUB_ORDINARY:-}" == none ]] && exit 0
-      hash=00000000000000b1
-    fi
-    mkdir -p "target/debug/.fingerprint/demo-$hash" target/debug/deps
-    touch "target/debug/.fingerprint/demo-$hash/lib" "target/debug/deps/libdemo-$hash.rlib"
-    if [[ "$hash" == 00000000000000b1 && "\${STUB_ORDINARY:-}" == stale ]]; then
-      touch -d '5 days ago' "target/debug/.fingerprint/demo-$hash/lib" \\
-        "target/debug/.fingerprint/demo-$hash" "target/debug/deps/libdemo-$hash.rlib"
-    fi ;;
-  *) exit 64 ;;
-esac
-`,
-  );
-
-  function measure(env = {}, args = []) {
-    rmSync(join(tree, "target"), { recursive: true, force: true });
-    return run(
-      join(root, "node_modules", ".bin", "onebudgetspec"),
-      ["check", "--output", "json", ...args],
-      {
-        cwd: join(tree, "pool-maintenance"),
-        env: {
-          PATH: `${stubs}${delimiter}${process.env.PATH}`,
-          HOME: process.env.HOME,
-          ...env,
-        },
-      },
-    );
-  }
-  const resultOf = (checked) => {
-    const [result] = JSON.parse(checked.stdout).results;
-    return result;
-  };
-  const deps = () => readdirSync(join(tree, "target", "debug", "deps")).sort();
-
-  it("reports the timed pass that removes the backdated alternative build", () => {
-    const checked = measure();
-    const result = resultOf(checked);
-    assert.equal(result.verdict, "within", checked.stdout);
-    assert.ok(Number.isFinite(result.actual) && result.actual >= 0, checked.stdout);
-    assert.match(result.detail, /builds removed: 1;/);
-    assert.match(result.detail, /alternative entries created: 2; entries removed: 2;/);
-    assert.match(result.detail, /untimed backlog pass \(not in the figure\): [\d.e-]+ seconds$/);
-    assert.deepEqual(deps(), ["libdemo-00000000000000b1.rlib"]);
-  });
-
-  it("fails when the alternative build creates nothing to supersede", () => {
-    const result = resultOf(measure({ STUB_ALT: "none" }));
-    assert.equal(result.verdict, "error");
-    assert.match(result.error, /alternative build created no new entries/);
-  });
-
-  it("fails when the timed pass removes nothing", () => {
-    const result = resultOf(measure({ STUB_ORDINARY: "none" }));
-    assert.equal(result.verdict, "error");
-    assert.match(result.error, /timed pass removed no entries/);
-    assert.deepEqual(deps(), ["libdemo-00000000000000a1.rlib"]);
-  });
-
-  it("fails, naming them, when the timed pass removes ordinary entries", () => {
-    const result = resultOf(measure({ STUB_ORDINARY: "stale" }));
-    assert.equal(result.verdict, "error");
-    assert.match(result.error, /removed entries the alternative build did not create/);
-    assert.match(result.error, /libdemo-00000000000000b1\.rlib/);
-  });
-
-  it("refuses a relative listing directory before building anything", () => {
-    const result = resultOf(measure({ POOL_MAINTENANCE_WORK_DIR: "listings" }));
-    assert.equal(result.verdict, "error");
-    assert.match(result.error, /POOL_MAINTENANCE_WORK_DIR must be an absolute path/);
-    assert.equal(existsSync(join(tree, "target")), false);
-  });
-});
-
 describe("pool-maintenance budget selection", () => {
   const nx = (args) => {
     const ran = run("npx", ["nx", ...args]);
@@ -284,7 +176,9 @@ describe("pool-maintenance budget selection", () => {
   const gateTargets = dryRuns.flatMap((dryRun) =>
     [...dryRun.stderr.matchAll(/^npx nx run-many -t (.+)$/gm)].flatMap((m) => m[1].split(" ")),
   );
-  const ownTasks = (ids) => ids.filter((id) => id.startsWith("pool-maintenance:"));
+  // The tasks that measure: any budget target of the project. Its cheap
+  // fmt-check/lint/typecheck/test targets belong in the gate like any project's.
+  const measuring = (ids) => ids.filter((id) => /^pool-maintenance:budgets/.test(id));
 
   it("the gate's targets include the budget targets", () => {
     for (const dryRun of dryRuns) assert.equal(dryRun.status, 0, dryRun.stderr);
@@ -293,13 +187,15 @@ describe("pool-maintenance budget selection", () => {
     }
   });
 
-  it("no gate task graph over every project holds a pool-maintenance task", () => {
+  it("the gate over every project lints and tests pool-maintenance but never measures", () => {
     const ids = taskIds(["run-many", "-t", ...gateTargets]);
-    assert.ok(ids.length > 0);
-    assert.deepEqual(ownTasks(ids), []);
+    for (const target of ["fmt-check", "lint", "typecheck", "test"]) {
+      assert.ok(ids.includes(`pool-maintenance:${target}`), `pool-maintenance:${target}`);
+    }
+    assert.deepEqual(measuring(ids), []);
   });
 
-  it("no affected task graph holds one, whatever the change", () => {
+  it("no affected task graph measures, whatever the change", () => {
     const changes = [
       "crates/allowlister-remote-plugin/src/lib.rs",
       "pool-maintenance/measure.sh",
@@ -310,13 +206,11 @@ describe("pool-maintenance budget selection", () => {
     ];
     for (const file of changes) {
       const ids = taskIds(["affected", `--files=${file}`, "-t", ...gateTargets]);
-      assert.deepEqual(ownTasks(ids), [], file);
+      assert.deepEqual(measuring(ids), [], file);
     }
-    // The project is reached by its own files; it simply has no gate target.
-    const projects = JSON.parse(
-      nx(["show", "projects", "--affected", "--files=pool-maintenance/measure.sh", "--json"]),
-    );
-    assert.ok(projects.includes("pool-maintenance"), projects);
+    // A change to the measurement does reach the project's own cheap checks.
+    const ids = taskIds(["affected", "--files=pool-maintenance/measure.sh", "-t", ...gateTargets]);
+    assert.ok(ids.includes("pool-maintenance:test"), ids);
   });
 
   it("the release PR runs the budget check after its gate passes", () => {

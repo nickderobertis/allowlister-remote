@@ -5,7 +5,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 
 function fail(message) {
-  console.error(`result.mjs: ${message}`);
+  process.stderr.write(`result.mjs: ${message}\n`);
   process.exit(2);
 }
 
@@ -24,7 +24,7 @@ function crates() {
     if (typeof pkg?.name !== "string" || !/^[A-Za-z0-9_-]+$/.test(pkg.name)) {
       fail(`cargo metadata listed a package without a plain name: ${JSON.stringify(pkg?.name)}`);
     }
-    console.log(pkg.name);
+    process.stdout.write(`${pkg.name}\n`);
   }
 }
 

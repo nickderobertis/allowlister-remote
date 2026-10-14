@@ -29,7 +29,6 @@
       "{workspaceRoot}/llmlint.yml",
       "{workspaceRoot}/oneharness.toml",
       "{workspaceRoot}/onevcs.toml",
-      "{workspaceRoot}/pool-maintenance/**/*",
       "{workspaceRoot}/.cargo/config.toml",
       "{workspaceRoot}/rust-toolchain.toml",
       "{workspaceRoot}/screencomp.toml",

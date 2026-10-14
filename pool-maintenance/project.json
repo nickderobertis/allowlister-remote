@@ -3,24 +3,56 @@
   "projectType": "library",
   "root": "pool-maintenance",
   "sourceRoot": "pool-maintenance",
-  "tags": ["scope:workspace", "type:tooling", "lang:shell"],
+  "tags": ["scope:workspace", "type:tooling", "lang:javascript"],
   "namedInputs": {
-    "default": [
-      "{projectRoot}/**/*",
-      "sharedGlobals",
-      "rust",
-      "{workspaceRoot}/justfile",
-      "{workspaceRoot}/onevcs.toml"
-    ]
+    "default": ["{projectRoot}/**/*", "sharedGlobals", "node", "biome"],
+    "measurement": ["default", "rust", "{workspaceRoot}/justfile"]
   },
   "targets": {
+    "format": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "npx biome check --write pool-maintenance",
+        "cwd": "."
+      }
+    },
+    "fmt-check": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "npx biome check --formatter-enabled=true --linter-enabled=false pool-maintenance",
+        "cwd": "."
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "npx biome lint pool-maintenance",
+        "cwd": "."
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node --check pool-maintenance/result.mjs",
+        "cwd": "."
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node --test pool-maintenance/tests/measure.test.mjs",
+        "cwd": "."
+      },
+      "inputs": ["measurement"],
+      "cache": false
+    },
     "budgets-release": {
       "executor": "nx:run-commands",
       "options": {
         "command": "npx onebudgetspec check pool-maintenance/budgets.yaml --label host",
         "cwd": "."
       },
-      "inputs": ["default"],
+      "inputs": ["measurement"],
       "cache": false
     }
   }
