@@ -3,15 +3,27 @@ set shell := ["bash", "-eu", "-o", "pipefail", "-c"]
 default:
     @just --list
 
+# The cargo-prune-superseded release `bootstrap` installs for `pool-maintenance`.
+prune_superseded_version := "0.1.1"
+
 bootstrap:
     npm ci
     cargo fetch
+    @[ "$(cargo-prune-superseded --version 2>/dev/null)" = "cargo-prune-superseded {{prune_superseded_version}}" ] || cargo install --locked cargo-prune-superseded --version {{prune_superseded_version}}
 
 setup:
     @bash scripts/setup.sh
 
 setup-check:
     @bash scripts/setup-check.sh
+
+# Warm-pool maintenance onevcs runs in this repository's idle slots (onevcs.toml):
+# remove each unit's superseded cargo builds older than 2 days, keeping its newest
+# build and everything modified within the window. `target` is the only target dir
+# (.cargo/config.toml's `target-dir`); cargo-llvm-cov's `target/llvm-cov-target`
+# nests inside it. pool-maintenance/measure.sh budgets one pass of this recipe.
+pool-maintenance:
+    cargo-prune-superseded --keep-within 2d target
 
 # The merge base the affected tier keys off. CI exports NX_BASE/NX_HEAD (derived
 # explicitly in check.yml); locally NX_BASE defaults to origin/main, and nx

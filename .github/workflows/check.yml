@@ -48,10 +48,10 @@ jobs:
       matrix:
         os: ${{ fromJSON(needs.setup.outputs.os) }}
     # The affected lanes finish well inside ~20 min and the release PR's full
-    # sweep (every project, Rust coverage included) inside ~35; cap the job so a
-    # wedged test or runner fails fast and is retryable instead of sitting for the
-    # default 6h.
-    timeout-minutes: 45
+    # sweep (every project, Rust coverage included) plus its ~10 min pool
+    # maintenance budget inside ~45; cap the job so a wedged test or runner fails
+    # fast and is retryable instead of sitting for the default 6h.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v6
         with:
@@ -120,6 +120,12 @@ jobs:
         env:
           TIER: ${{ needs.setup.outputs.tier }}
         run: just check "$TIER"
+      # The release PR also measures the one budget no per-change path reaches:
+      # a steady-state pass of the declared pool maintenance (onevcs.toml), whose
+      # measurement builds the workspace twice. It runs only after the sweep passes.
+      - name: Pool maintenance budget (release PR only)
+        if: needs.setup.outputs.tier == 'all'
+        run: npx nx run pool-maintenance:budgets-release
 
   # Aggregate context so branch protection can require a single "check" status
   # regardless of the matrix legs — including the release PR's full sweep.

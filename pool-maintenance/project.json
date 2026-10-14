@@ -1,0 +1,27 @@
+{
+  "name": "pool-maintenance",
+  "projectType": "library",
+  "root": "pool-maintenance",
+  "sourceRoot": "pool-maintenance",
+  "tags": ["scope:workspace", "type:tooling", "lang:shell"],
+  "namedInputs": {
+    "default": [
+      "{projectRoot}/**/*",
+      "sharedGlobals",
+      "rust",
+      "{workspaceRoot}/justfile",
+      "{workspaceRoot}/onevcs.toml"
+    ]
+  },
+  "targets": {
+    "budgets-release": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "npx onebudgetspec check pool-maintenance/budgets.yaml --label host",
+        "cwd": "."
+      },
+      "inputs": ["default"],
+      "cache": false
+    }
+  }
+}
