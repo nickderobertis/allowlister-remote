@@ -775,6 +775,23 @@ test("Actions status functions describe real outcome classes", () => {
   assert.equal(evaluate("success()", {}, "skipped"), false);
 });
 
+test("workflow discovery reads both GitHub workflow extensions and nothing else", () => {
+  const dir = mkdtempSync(join(root, ".github/.telemetry/discovery-"));
+  try {
+    const body = "on:\n  push:\njobs:\n  test:\n    runs-on: ubuntu-latest\n";
+    for (const file of ["a.yml", "b.yaml", "notes.txt"]) writeFileSync(join(dir, file), body);
+    const relative = dir.slice(root.length + 1);
+    assert.deepEqual(
+      workflows(relative)
+        .map(({ file }) => file)
+        .sort(),
+      [`${relative}/a.yml`, `${relative}/b.yaml`],
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("unsupported workflow trigger structures fail before routing can count zero", () => {
   const dir = mkdtempSync(join(root, ".github/.telemetry/schema-"));
   try {

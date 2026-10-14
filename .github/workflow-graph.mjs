@@ -127,12 +127,12 @@ function matrixRows(matrix, context) {
   }
   return [...rows, ...additional];
 }
-export function workflows() {
-  return readdirSync(join(root, ".github/workflows"))
-    .filter((file) => file.endsWith(".yml"))
+export function workflows(dir = ".github/workflows") {
+  return readdirSync(join(root, dir))
+    .filter((file) => file.endsWith(".yml") || file.endsWith(".yaml"))
     .map((file) => ({
-      file: `.github/workflows/${file}`,
-      workflow: load(`.github/workflows/${file}`),
+      file: `${dir}/${file}`,
+      workflow: load(`${dir}/${file}`),
     }));
 }
 export function triggered(workflow, scenario) {
