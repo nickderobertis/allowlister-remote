@@ -140,7 +140,6 @@ test("macOS releases target Apple Silicon only, with no Intel target or Rosetta 
     darwinPackages.map(({ name, cpu }) => ({ name, cpu })),
     [{ name: "@nickderobertis/allowlister-remote-plugin-darwin-arm64", cpu: ["arm64"] }],
   );
-  // The launcher's platform map refuses Intel Macs by name rather than resolving a package.
   const { platformPackage } = await import(
     pathToFileURL(join(root, "packages/allowlister-remote-plugin/lib/platform.mjs")).href
   );
