@@ -63,7 +63,7 @@ describe("install-broker.sh macOS architectures", () => {
       run.curlArgs,
       /releases\/download\/v9\.9\.9\/allowlister-remote-broker-darwin-arm64$/m,
     );
-    // The doubled transport fails, so the installer reports it and installs nothing.
+    // Stopping at the doubled download keeps this test offline; reaching it is the proof.
     assert.equal(run.status, 1);
     assert.match(run.stderr, /failed to download allowlister-remote-broker-darwin-arm64/);
     assert.equal(run.installed, false);
