@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { readFileSync, writeFileSync, rmSync, mkdtempSync, cpSync, mkdirSync } from "node:fs";
+import { readFileSync, readdirSync, writeFileSync, rmSync, mkdtempSync, cpSync, mkdirSync } from "node:fs";
 import { spawnSync, execFileSync } from "node:child_process";
 import { isAbsolute, join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { test } from "node:test";
 import { parse, stringify } from "yaml";
 import { load, root, evaluate } from "../workflow-graph.mjs";
@@ -111,6 +112,40 @@ test("all release platforms retain three binaries, npm carriers, checksums and n
     ),
   );
   assert.ok(smoke.jobs["e2e-smoke"].steps.some((step) => step.run?.includes("release:smoke-e2e")));
+});
+test("macOS releases target Apple Silicon only, with no Intel target or Rosetta step", async () => {
+  const intelMac = /x86_64-apple-darwin|darwin-x64|macos-13|macos-[0-9]+-(?:large|intel)|rosetta|arch -x86_64/i;
+  const darwin = publish.jobs["build-binary"].strategy.matrix.include.filter((row) =>
+    row.target.endsWith("-apple-darwin"),
+  );
+  assert.deepEqual(
+    darwin.map(({ platform, target }) => ({ platform, target })),
+    [{ platform: "darwin-arm64", target: "aarch64-apple-darwin" }],
+  );
+  for (const workflow of readdirSync(join(root, ".github/workflows")))
+    assert.doesNotMatch(readFileSync(join(root, ".github/workflows", workflow), "utf8"), intelMac, workflow);
+  for (const declaration of [
+    "rust-toolchain.toml",
+    "scripts/install-broker.sh",
+    "packages/allowlister-remote-plugin/scripts/build-release-binaries.sh",
+    "packages/allowlister-remote-plugin/scripts/smoke-native-release.sh",
+    ".github/tests/fixtures/release-platforms.json",
+  ])
+    assert.doesNotMatch(readFileSync(join(root, declaration), "utf8"), intelMac, declaration);
+  const darwinPackages = readdirSync(join(root, "packages"))
+    .filter((dir) => dir.startsWith("allowlister-remote-plugin-"))
+    .map((dir) => JSON.parse(readFileSync(join(root, "packages", dir, "package.json"), "utf8")))
+    .filter((manifest) => manifest.os.includes("darwin"));
+  assert.deepEqual(
+    darwinPackages.map(({ name, cpu }) => ({ name, cpu })),
+    [{ name: "@nickderobertis/allowlister-remote-plugin-darwin-arm64", cpu: ["arm64"] }],
+  );
+  // The launcher's platform map refuses Intel Macs by name rather than resolving a package.
+  const { platformPackage } = await import(
+    pathToFileURL(join(root, "packages/allowlister-remote-plugin/lib/platform.mjs")).href
+  );
+  assert.throws(() => platformPackage("darwin", "x64"), /Intel macOS \(darwin-x64\) is no longer supported/);
+  assert.equal(platformPackage("darwin", "arm64").name, darwinPackages[0].name);
 });
 test("pinned reusable workflow fixture has exact source provenance", () => {
   const fixture = JSON.parse(readFileSync(join(root, ".github/tests/fixtures/provenance.json")));
