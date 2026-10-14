@@ -62,6 +62,8 @@ detect_platform() {
       echo "linux-x64"
       ;;
     Darwin)
+      # Releases target Apple Silicon only; refuse Intel before any download.
+      [[ "$arch" != "x86_64" ]] || die "Intel macOS (x86_64) is no longer supported: releases ship Apple Silicon (arm64) macOS binaries only"
       [[ "$arch" == "arm64" || "$arch" == "aarch64" ]] || die "unsupported macOS arch: $arch (only arm64 is published)"
       echo "darwin-arm64"
       ;;
