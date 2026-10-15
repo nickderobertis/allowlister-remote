@@ -184,6 +184,22 @@ test("native smoke refuses surplus arguments and unstaged artifacts before stagi
     assert.equal(missing.status, 2, missing.stderr);
     assert.match(missing.stderr, new RegExp(`allowlister-remote-broker-${platform}' is missing`));
     assert.doesNotMatch(missing.stderr, /Cannot (stage|execute)/);
+    for (const name of ["plugin", "daemon", "broker"]) {
+      writeFileSync(
+        join(partial, `allowlister-remote-${name}-${platform}`),
+        "#!/bin/sh\necho 'exec format error' >&2\nexit 126\n",
+        { mode: 0o755 },
+      );
+    }
+    const broken = smoke(partial);
+    assert.equal(broken.status, 1, broken.stderr);
+    assert.match(
+      broken.stderr,
+      new RegExp(
+        `Cannot execute .*allowlister-remote-plugin-${platform}\\. Rebuild and restage the native artifact`,
+      ),
+    );
+    assert.doesNotMatch(broken.stderr, /differs from|release:smoke-npm/);
   } finally {
     rmSync(partial, { recursive: true, force: true });
   }
