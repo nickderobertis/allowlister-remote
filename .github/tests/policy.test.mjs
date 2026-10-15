@@ -612,8 +612,27 @@ test("draft PRs defer the Mac lane to ready_for_review through the classifier", 
   const unreadableDiff = classify(draftEvent({ ...prEvent("source"), action: "opened" }, true), "missing-ref");
   assert.deepEqual(unreadableDiff, { isReleaseOnly: false, macosRequired: false, reason });
   const releaseDraft = classify(draftEvent(prEvent("version", false, true), true), heads.version);
-  assert.equal(releaseDraft.isReleaseOnly, true);
-  assert.equal(releaseDraft.macosRequired, false);
+  assert.deepEqual(releaseDraft, { isReleaseOnly: true, macosRequired: false, reason });
+  const unreadable = { ...prEvent("source"), action: "opened" };
+  unreadable.pull_request.head = { ...unreadable.pull_request.head, sha: "missing-ref" };
+  const malformed = { ...prEvent("version", false, true), action: "opened", repository: null };
+  malformed.pull_request.head = { ...malformed.pull_request.head, ref: 42, repo: "not-an-object" };
+  for (const [id, event] of [
+    ["release-only", prEvent("version", false, true)],
+    ["unreadable", unreadable],
+    ["malformed", malformed],
+  ]) {
+    const draft = journey(`draft-route/${id}`, draftEvent({ ...event, action: "opened" }, true));
+    assert.equal(draft.macJobs, 0, id);
+    assert.equal(draft.setup.os, '["ubuntu-latest"]', id);
+    assert.equal(draft.setup.macosRequired, "false", id);
+    assert.equal(draft.setup.reason, reason, id);
+    assert.match(
+      draft.result.stdout,
+      /Required proofs succeeded on: ubuntu-latest; Mac lane intentionally omitted by policy \(draft pull request: Mac lane deferred to ready_for_review\)/,
+      id,
+    );
+  }
 });
 
 test("budget reporter consumes recorded rows and refuses stale or missing telemetry", () => {

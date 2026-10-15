@@ -129,6 +129,7 @@ export function classify(eventPath, base, head, eventName = process.env.GITHUB_E
       /^release-please--branches--main(?:--|$)/.test(pr.head?.ref ?? "");
     // A literal-true draft defers its Mac lane to ready_for_review, which
     // re-runs every required context; any other draft value fails closed.
+    // isReleaseOnly stays the semantic verdict, but never routes a draft.
     const draft = pr.draft === true;
     let release;
     try {
@@ -137,9 +138,9 @@ export function classify(eventPath, base, head, eventName = process.env.GITHUB_E
       if (!draft) throw error;
       release = false;
     }
-    if (!release && draft)
+    if (draft)
       return {
-        isReleaseOnly: false,
+        isReleaseOnly: release,
         macosRequired: false,
         reason: "draft pull request: Mac lane deferred to ready_for_review",
       };
