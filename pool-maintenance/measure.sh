@@ -59,9 +59,13 @@ entries() {
 # The gate's test build: each workspace crate's `test` target runs
 # `cargo llvm-cov --no-report -p <crate>`; `--list` builds the test binaries
 # and lists their tests instead of running them.
-mapfile -t crates < <(
-  cargo metadata --no-deps --format-version 1 | node "$root/pool-maintenance/result.mjs" crates
-)
+# Captured first rather than read from a process substitution, whose failure
+# `set -e` never sees.
+crate_list="$(cargo metadata --no-deps --format-version 1 | node "$root/pool-maintenance/result.mjs" crates)" || {
+  echo "could not list the workspace crates (\`cargo metadata\` above failed); fix that, then re-run" >&2
+  exit 1
+}
+mapfile -t crates <<<"$crate_list"
 gate_build() {
   for crate in "${crates[@]}"; do
     cargo llvm-cov --no-report -p "$crate" -- --list >/dev/null

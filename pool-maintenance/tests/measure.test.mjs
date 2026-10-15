@@ -29,7 +29,7 @@ function run(command, args, options = {}) {
 // check`, the real recipe and the real pruner. Only cargo is a stub — its builds
 // are the two minutes this unit tier cannot spend: `llvm-cov` writes one unit's
 // entries, under a hash that depends on CARGO_PROFILE_DEV_DEBUG_ASSERTIONS like
-// a real build's. STUB_ALT=none and STUB_ORDINARY=none|stale break a step.
+// a real build's. STUB_ALT=none, STUB_ORDINARY=none|stale and STUB_METADATA=fail break a step.
 describe("measure.sh", () => {
   const tree = join(scratch, "measure");
   const stubs = join(scratch, "measure-stubs");
@@ -51,7 +51,9 @@ describe("measure.sh", () => {
   stub(
     "cargo",
     `case "$1" in
-  metadata) echo '{"packages":[{"name":"demo"}]}' ;;
+  metadata)
+    [[ "\${STUB_METADATA:-}" == fail ]] && { echo "error: stub metadata failure" >&2; exit 101; }
+    echo '{"packages":[{"name":"demo"}]}' ;;
   llvm-cov)
     if [[ "\${CARGO_PROFILE_DEV_DEBUG_ASSERTIONS:-}" == false ]]; then
       [[ "\${STUB_ALT:-}" == none ]] && exit 0
@@ -124,6 +126,13 @@ esac
     assert.equal(result.verdict, "error");
     assert.match(result.error, /removed entries the alternative build did not create/);
     assert.match(result.error, /libdemo-00000000000000b1\.rlib/);
+  });
+
+  it("fails, saying so, when the workspace crates cannot be listed", () => {
+    const result = resultOf(measure({ STUB_METADATA: "fail" }));
+    assert.equal(result.verdict, "error");
+    assert.match(result.error, /could not list the workspace crates/);
+    assert.doesNotMatch(result.error, /alternative build created no new entries/);
   });
 
   it("refuses a relative listing directory before building anything", () => {
