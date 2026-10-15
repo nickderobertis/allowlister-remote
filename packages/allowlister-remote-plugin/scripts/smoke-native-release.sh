@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Run on the native build host, before any publication. No registry transport.
 set -euo pipefail
-# llmlint: ignore[boundary_inputs_validated, changed_behavior_has_e2e] Private workflow and packaging callers pass one trusted artifact directory; surplus arguments do not affect publication, and the literal default is only a convenience alias.
+if (( $# > 1 )); then
+  echo "Usage: smoke-native-release.sh [artifact-dir]; got $# arguments. Pass only the staged artifact directory (default dist/artifacts)." >&2; exit 2
+fi
 artifacts="${1:-dist/artifacts}"
 version="${ALLOWLISTER_REMOTE_PLUGIN_VERSION:?Set ALLOWLISTER_REMOTE_PLUGIN_VERSION to the release tag without v}"
 if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?(\+[A-Za-z0-9.-]+)?$ ]]; then
@@ -28,6 +30,14 @@ case "$platform" in
   *)
     echo "Native smoke has no carrier for '$platform'; run it on a linux-x64 or darwin-arm64 host." >&2; exit 2 ;;
 esac
+if [[ ! -d "$artifacts" ]]; then
+  echo "Artifact directory '$artifacts' does not exist. Build and stage the $platform release binaries there before retrying smoke." >&2; exit 2
+fi
+for binary in allowlister-remote-plugin allowlister-remote-daemon allowlister-remote-broker; do
+  if [[ ! -f "$artifacts/$binary-$platform" ]]; then
+    echo "Artifact '$artifacts/$binary-$platform' is missing. Build and stage every $platform release binary before retrying smoke." >&2; exit 2
+  fi
+done
 for binary in allowlister-remote-plugin allowlister-remote-daemon; do
   # llmlint: ignore[tool_output_is_signal] mkdir already identifies the failing runner path; permission/space remediation belongs to runner provisioning.
   mkdir -p "$task_dir/packages/allowlister-remote-plugin-$platform/bin"

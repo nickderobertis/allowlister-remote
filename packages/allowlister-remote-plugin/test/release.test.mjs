@@ -153,6 +153,42 @@ test("native smoke refuses an empty release version before using artifacts", () 
   );
 });
 
+test("native smoke refuses surplus arguments and unstaged artifacts before staging", {
+  skip:
+    platform !== "linux-x64"
+      ? "Artifact-directory refusals are reached only on a host with a native carrier; Darwin runs them on the Mac release builder."
+      : false,
+}, () => {
+  const smoke = (...args) =>
+    spawnSync(
+      "bash",
+      ["packages/allowlister-remote-plugin/scripts/smoke-native-release.sh", ...args],
+      {
+        cwd: root,
+        encoding: "utf8",
+        env,
+      },
+    );
+  const surplus = smoke("dist/artifacts", "extra");
+  assert.equal(surplus.status, 2, surplus.stderr);
+  assert.match(surplus.stderr, /got 2 arguments\. Pass only the staged artifact directory/);
+  const absent = smoke(join(scratchRoot, "no-such-artifacts"));
+  assert.equal(absent.status, 2, absent.stderr);
+  assert.match(absent.stderr, /Artifact directory '.*no-such-artifacts' does not exist/);
+  const partial = mkdtempSync(join(scratchRoot, "partial-artifacts-"));
+  try {
+    for (const name of ["plugin", "daemon"]) {
+      writeFileSync(join(partial, `allowlister-remote-${name}-${platform}`), "", { mode: 0o755 });
+    }
+    const missing = smoke(partial);
+    assert.equal(missing.status, 2, missing.stderr);
+    assert.match(missing.stderr, new RegExp(`allowlister-remote-broker-${platform}' is missing`));
+    assert.doesNotMatch(missing.stderr, /Cannot (stage|execute)/);
+  } finally {
+    rmSync(partial, { recursive: true, force: true });
+  }
+});
+
 test("native smoke refuses a host with no published carrier before using artifacts", () => {
   const bin = mkdtempSync(join(scratchRoot, "intel-node-"));
   const preload =
