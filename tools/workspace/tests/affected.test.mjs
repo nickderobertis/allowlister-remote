@@ -91,7 +91,9 @@ describe("affected selection", () => {
       includes: ["workspace"],
       excludes: ["web", "web-e2e", ...RUST_CRATES],
     });
-    assert.deepEqual([...affected("justfile")], ["workspace"]);
+    // pool-maintenance's budget runs the `pool-maintenance` recipe, but it has no
+    // per-change target (pool-maintenance.test.mjs), so this selects no task of it.
+    assert.deepEqual(affected("justfile"), new Set(["workspace", "pool-maintenance"]));
   });
 
   it("a supply-chain policy edit selects only the supply-chain gate", () => {

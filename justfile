@@ -3,15 +3,27 @@ set shell := ["bash", "-eu", "-o", "pipefail", "-c"]
 default:
     @just --list
 
+# The cargo-prune-superseded release `bootstrap` installs for `pool-maintenance`.
+prune_superseded_version := "0.1.1"
+
 bootstrap:
     npm ci
     cargo fetch
+    @[ "$(cargo-prune-superseded --version 2>/dev/null)" = "cargo-prune-superseded {{prune_superseded_version}}" ] || cargo install --locked cargo-prune-superseded --version {{prune_superseded_version}}
 
 setup:
     @bash scripts/setup.sh
 
 setup-check:
     @bash scripts/setup-check.sh
+
+# Warm-pool maintenance onevcs runs in this repository's idle slots (onevcs.toml):
+# remove each unit's superseded cargo builds older than 2 days, keeping its newest
+# build and everything modified within the window. `target` is the only target dir
+# (.cargo/config.toml's `target-dir`); cargo-llvm-cov's `target/llvm-cov-target`
+# nests inside it. pool-maintenance/measure.sh budgets one pass of this recipe.
+pool-maintenance:
+    cargo-prune-superseded --keep-within 2d target
 
 # The merge base the affected tier keys off. CI exports NX_BASE/NX_HEAD (derived
 # explicitly in check.yml); locally NX_BASE defaults to origin/main, and nx
@@ -31,7 +43,7 @@ _affected := "npx nx affected --base=" + base + _head_flag
 # release-please's release PR, so CI runs the sweep on that PR (check.yml) and the
 # affected tier everywhere else. The tier is a flag on this one recipe, never a
 # second gate; a mistyped tier aborts instead of quietly buying the weaker one.
-check tier="affected":
+check tier="affected": (budgets tier)
     @just test {{ if tier == "all" { "all" } else if tier == "affected" { "affected" } else { error("unknown tier '" + tier + "' — use 'affected' (the default) or 'all'") } }}
     {{ if tier == "all" { "npx nx run-many" } else if tier == "affected" { _affected } else { error("unknown tier '" + tier + "' — use 'affected' (the default) or 'all'") } }} -t fmt-check lint lint-compiler typecheck build supply-chain test-e2e
     @echo "check: ok"
@@ -217,3 +229,9 @@ lint-llm-diff base="origin/main" *args:
 lint-llm-validate *args:
     @command -v llmlint >/dev/null 2>&1 || { echo "llmlint not installed — run 'just setup-llmlint'"; exit 1; }
     llmlint validate "$@"
+
+# The onebudgetspec budgets `check` runs at its tier: every domain's budget
+# targets, then the root `budgets.yaml` (references/tools/onebudgetspec.md).
+budgets tier="affected":
+    {{ if tier == "all" { "npx nx run-many" } else if tier == "affected" { _affected } else { error("unknown tier '" + tier + "' — use 'affected' (the default) or 'all'") } }} -t budgets budgets-host
+    [ ! -f budgets.yaml ] || npx onebudgetspec check budgets.yaml
