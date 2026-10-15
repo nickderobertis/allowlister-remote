@@ -1,5 +1,8 @@
 schema_version: 1
 budgets:
+  # Exception kept separate on purpose: the brief explicitly requests both the jobs/run and
+  # the Mac-spending runs/change bounds, and the manager approved separate budgets for these
+  # two scheduling constraints.
   - id: allowlister-remote-macos-jobs-per-run
     description: >-
       Maximum resolved Mac job instances per workflow run, including matrices and
@@ -15,6 +18,9 @@ budgets:
     direction: max
     threshold: 1
     labels: [github-workflows]
+  # Exception kept separate on purpose: the brief explicitly requests both the jobs/run and
+  # the Mac-spending runs/change bounds, and the manager approved separate budgets for these
+  # two scheduling constraints.
   - id: allowlister-remote-macos-runs-per-change
     description: >-
       Maximum distinct Mac-spending workflow runs in the complete single-push
