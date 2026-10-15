@@ -28,6 +28,8 @@
       "{workspaceRoot}/.githooks/pre-push",
       "{workspaceRoot}/llmlint.yml",
       "{workspaceRoot}/oneharness.toml",
+      "{workspaceRoot}/onevcs.toml",
+      "{workspaceRoot}/.cargo/config.toml",
       "{workspaceRoot}/rust-toolchain.toml",
       "{workspaceRoot}/screencomp.toml",
       "{workspaceRoot}/shots/baseline/**",
@@ -65,7 +67,7 @@
     "test": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "node --test tools/workspace/tests/affected.test.mjs tools/workspace/tests/boundaries.test.mjs tools/workspace/tests/hooks.test.mjs tools/workspace/tests/install-broker.test.mjs tools/workspace/tests/recipes.test.mjs tools/workspace/tests/workflows.test.mjs",
+        "command": "node --test tools/workspace/tests/affected.test.mjs tools/workspace/tests/boundaries.test.mjs tools/workspace/tests/hooks.test.mjs tools/workspace/tests/install-broker.test.mjs tools/workspace/tests/pool-maintenance.test.mjs tools/workspace/tests/recipes.test.mjs tools/workspace/tests/workflows.test.mjs",
         "cwd": "."
       },
       "inputs": ["default", "graph", "repoConfig"],

@@ -11,6 +11,7 @@
       "apps/web/**/*.{ts,tsx,js,jsx,json,jsonc,css}",
       "apps/web-e2e/**/*.{ts,json}",
       "tools/**/*.{mjs,json}",
+      "pool-maintenance/**/*.{mjs,json}",
       "packages/allowlister-remote-plugin/**/*.{js,mjs,json}",
       "packages/allowlister-remote-plugin-*/package.json",
       "scripts/**/*.mjs",
