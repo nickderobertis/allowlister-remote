@@ -609,6 +609,16 @@ test("draft PRs defer the Mac lane to ready_for_review through the classifier", 
     assert.equal(result.macosRequired, true, JSON.stringify(flag));
     assert.notEqual(result.reason, reason);
   }
+  // A malformed draft flag cannot authorize omission even on a genuine
+  // version-only release PR.
+  for (const flag of [undefined, null, "false", 0]) {
+    const event = { ...prEvent("version", false, true), action: "opened" };
+    if (flag === undefined) delete event.pull_request.draft;
+    else event.pull_request.draft = flag;
+    const result = classify(event, heads.version);
+    assert.equal(result.macosRequired, true, `draft: ${JSON.stringify(flag)}`);
+    assert.match(result.reason, /draft flag is not a boolean/, `draft: ${JSON.stringify(flag)}`);
+  }
   const unreadableDiff = classify(draftEvent({ ...prEvent("source"), action: "opened" }, true), "missing-ref");
   assert.deepEqual(unreadableDiff, { isReleaseOnly: false, macosRequired: false, reason });
   const releaseDraft = classify(draftEvent(prEvent("version", false, true), true), heads.version);

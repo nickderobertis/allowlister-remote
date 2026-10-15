@@ -144,6 +144,14 @@ export function classify(eventPath, base, head, eventName = process.env.GITHUB_E
         macosRequired: false,
         reason: "draft pull request: Mac lane deferred to ready_for_review",
       };
+    // GitHub always sends a boolean draft flag; any other value is not a payload
+    // this route can trust to omit macOS.
+    if (typeof pr.draft !== "boolean")
+      return {
+        isReleaseOnly: release,
+        macosRequired: true,
+        reason: "draft flag is not a boolean: failing closed to macOS",
+      };
     return {
       isReleaseOnly: release,
       macosRequired: !release,

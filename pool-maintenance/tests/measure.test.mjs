@@ -11,10 +11,11 @@ import {
   mkdtempSync,
   readdirSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { delimiter, join, resolve } from "node:path";
+import { delimiter, isAbsolute, join, resolve } from "node:path";
 import { after, describe, it } from "node:test";
 
 const root = resolve(import.meta.dirname, "../..");
@@ -51,8 +52,11 @@ describe("measure.sh", () => {
     chmodSync(join(stubs, name), 0o755);
   };
   if (requestedBash) {
-    writeFileSync(join(stubs, "bash"), `#!/bin/sh\nexec "${requestedBash}" "$@"\n`);
-    chmodSync(join(stubs, "bash"), 0o755);
+    assert.ok(
+      isAbsolute(requestedBash) && existsSync(requestedBash),
+      `POOL_MAINTENANCE_TEST_BASH must name an existing interpreter by absolute path; got: ${requestedBash}`,
+    );
+    symlinkSync(requestedBash, join(stubs, "bash"));
   }
   stub(
     "just",
