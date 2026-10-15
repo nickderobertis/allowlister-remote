@@ -16,12 +16,20 @@ const PLATFORM_PACKAGES = new Map([
 
 const SCOPE = "@nickderobertis";
 
+// macOS releases target Apple Silicon only; say so instead of reporting Intel
+// Macs as an unknown platform or a missing binary.
+export const INTEL_MACOS_UNSUPPORTED =
+  "Intel macOS (darwin-x64) is no longer supported: allowlister-remote ships Apple Silicon (arm64) macOS binaries only.";
+
 /**
  * Describe the platform package for a given platform/arch, throwing for any
  * combination we do not publish a binary for. `file` is the plugin binary's
  * name (with the platform's `.exe` suffix); `daemonFile` is the daemon's.
  */
 export function platformPackage(platform = process.platform, arch = process.arch) {
+  if (platform === "darwin" && arch === "x64") {
+    throw new Error(INTEL_MACOS_UNSUPPORTED);
+  }
   const entry = PLATFORM_PACKAGES.get(`${platform}-${arch}`);
   if (!entry) {
     throw new Error(`Unsupported platform: ${platform}-${arch}`);

@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "call": "nickderobertis/screencomp/.github/workflows/visual-docs-reusable.yml@v0.4.2",
+  "url": "https://raw.githubusercontent.com/nickderobertis/screencomp/v0.4.2/.github/workflows/visual-docs-reusable.yml",
+  "path": ".github/tests/fixtures/visual-docs-reusable.yml",
+  "sha256": "5557a4e6ad4df7cd946053d18de38942a04a8b5d41623e38658514c681028a4f",
+  "sourceSha256": "8a719d9ea54a946399e5839f4decc5893347249c6ce429850b0d16bd33a759b3",
+  "transform": "YAML parse/stringify: retain workflow declarations and remove third-party comments",
+  "sourcePath": ".github/tests/fixtures/visual-docs-source.json"
+}

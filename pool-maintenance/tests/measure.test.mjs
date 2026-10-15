@@ -11,10 +11,11 @@ import {
   mkdtempSync,
   readdirSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { delimiter, join, resolve } from "node:path";
+import { delimiter, isAbsolute, join, resolve } from "node:path";
 import { after, describe, it } from "node:test";
 
 const root = resolve(import.meta.dirname, "../..");
@@ -30,6 +31,12 @@ function run(command, args, options = {}) {
 // are the two minutes this unit tier cannot spend: `llvm-cov` writes one unit's
 // entries, under a hash that depends on CARGO_PROFILE_DEV_DEBUG_ASSERTIONS like
 // a real build's. STUB_ALT=none, STUB_ORDINARY=none|stale and STUB_METADATA=fail break a step.
+// The script runs on the macOS lane, whose system bash is 3.2 (no `mapfile`), so
+// there every case runs under /bin/bash; POOL_MAINTENANCE_TEST_BASH names a 3.2
+// interpreter to do the same on another host.
+const requestedBash =
+  process.env.POOL_MAINTENANCE_TEST_BASH || (process.platform === "darwin" ? "/bin/bash" : "");
+
 describe("measure.sh", () => {
   const tree = join(scratch, "measure");
   const stubs = join(scratch, "measure-stubs");
@@ -44,6 +51,13 @@ describe("measure.sh", () => {
     writeFileSync(join(stubs, name), `#!/usr/bin/env bash\n${body}`);
     chmodSync(join(stubs, name), 0o755);
   };
+  if (requestedBash) {
+    assert.ok(
+      isAbsolute(requestedBash) && existsSync(requestedBash),
+      `POOL_MAINTENANCE_TEST_BASH must name an existing interpreter by absolute path; got: ${requestedBash}`,
+    );
+    symlinkSync(requestedBash, join(stubs, "bash"));
+  }
   stub(
     "just",
     `exec "${realJust}" --justfile "${join(root, "justfile")}" --working-directory "$PWD" "$@"\n`,
@@ -65,7 +79,9 @@ describe("measure.sh", () => {
     mkdir -p "target/debug/.fingerprint/demo-$hash" target/debug/deps
     touch "target/debug/.fingerprint/demo-$hash/lib" "target/debug/deps/libdemo-$hash.rlib"
     if [[ "$hash" == 00000000000000b1 && "\${STUB_ORDINARY:-}" == stale ]]; then
-      touch -d '5 days ago' "target/debug/.fingerprint/demo-$hash/lib" \\
+      touch -t "$(node -e 'const d = new Date(Date.now() - 5 * 864e5), p = (n) => String(n).padStart(2, "0");
+        console.log(\`\${d.getFullYear()}\${p(d.getMonth() + 1)}\${p(d.getDate())}\${p(d.getHours())}\${p(d.getMinutes())}\`)')" \\
+        "target/debug/.fingerprint/demo-$hash/lib" \\
         "target/debug/.fingerprint/demo-$hash" "target/debug/deps/libdemo-$hash.rlib"
     fi ;;
   *) exit 64 ;;
@@ -93,6 +109,15 @@ esac
     return result;
   };
   const deps = () => readdirSync(join(tree, "target", "debug", "deps")).sort();
+
+  it("runs every case under the requested bash", {
+    skip: !requestedBash && "no bash 3.2 requested on this host",
+  }, () => {
+    const version = run("bash", ["-c", 'echo "$BASH_VERSION"'], {
+      env: { PATH: `${stubs}${delimiter}${process.env.PATH}` },
+    });
+    assert.match(version.stdout, /^3\.2\./, version.stderr);
+  });
 
   it("reports the timed pass that removes the backdated alternative build", () => {
     const checked = measure();

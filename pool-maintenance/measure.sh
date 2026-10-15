@@ -65,7 +65,11 @@ crate_list="$(cargo metadata --no-deps --format-version 1 | node "$root/pool-mai
   echo "could not list the workspace crates (\`cargo metadata\` above failed); fix that, then re-run" >&2
   exit 1
 }
-mapfile -t crates <<<"$crate_list"
+# A read loop rather than `mapfile`, which macOS's system bash (3.2) lacks.
+crates=()
+while IFS= read -r crate; do
+  crates+=("$crate")
+done <<<"$crate_list"
 gate_build() {
   for crate in "${crates[@]}"; do
     cargo llvm-cov --no-report -p "$crate" -- --list >/dev/null
@@ -89,8 +93,11 @@ if [[ ! -s "$work/alt.txt" ]]; then
     "check that CARGO_PROFILE_DEV_DEBUG_ASSERTIONS=false still changes the units' metadata hashes" >&2
   exit 1
 fi
+# `touch -t` (local [CC]YYMMDDhhmm) is the one form GNU and BSD touch share.
+three_days_ago="$(node -e 'const d = new Date(Date.now() - 3 * 864e5), p = (n) => String(n).padStart(2, "0");
+console.log(`${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}${p(d.getHours())}${p(d.getMinutes())}`)')"
 while read -r entry; do
-  find "$entry" -exec touch -h -d '3 days ago' {} +
+  find "$entry" -exec touch -h -t "$three_days_ago" {} +
 done <"$work/alt.txt"
 
 # (c)

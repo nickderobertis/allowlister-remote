@@ -10,4 +10,6 @@
   fmt-check, lint, typecheck and test targets are cheap and run per change like any project's.
 - `result.mjs` validates the JSON `measure.sh` reads and writes (`tests/result.test.mjs`). `POOL_MAINTENANCE_WORK_DIR`
   keeps the before/after entry listings for inspection. `tests/measure.test.mjs`
-  runs `measure.sh` with only cargo's builds stubbed.
+  runs `measure.sh` with only cargo's builds stubbed; it runs on the macOS lane, so the script
+  stays bash 3.2 and BSD-tool compatible (no `mapfile`, `touch -t` not `-d`). On macOS the
+  suite runs under `/bin/bash` (3.2); `POOL_MAINTENANCE_TEST_BASH=<bash 3.2>` does the same elsewhere.

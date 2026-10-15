@@ -61,6 +61,10 @@ function writeExecutable(path, body) {
   chmodSync(path, 0o755);
 }
 
+function hostHas(tool) {
+  return spawnSync("bash", ["-c", `command -v ${tool}`]).status === 0;
+}
+
 // A directory of symlinks to just the named tools, for a PATH that lacks the rest.
 function curatedBin(dir, tools) {
   const bin = join(dir, "bin");
@@ -214,7 +218,11 @@ describe("SessionStart hook hands off to setup-llmlint.sh", () => {
     assert.ok(!waitFor(blocked.marker, 1_000));
   });
 
-  it("runs one install when two sessions start at once (flock)", () => {
+  // macOS ships no util-linux flock, and without it the hook runs unlocked by design
+  // (covered by "runs without flock" above), so there is no serialization to prove.
+  it("runs one install when two sessions start at once (flock)", {
+    skip: hostHas("flock") ? false : "host has no flock to serialize with",
+  }, () => {
     const { dir } = sessionRepo('echo run >> "$(dirname "$0")/../runs"\nsleep 2');
     assert.equal(runSessionHook(dir, {}).status, 0);
     assert.equal(runSessionHook(dir, {}).status, 0);
@@ -293,7 +301,8 @@ describe("SessionStart hook hands off to setup-llmlint.sh", () => {
 
   it("runs without the lock, saying so, when flock itself fails", () => {
     const { dir, marker } = sessionRepo("exit 0");
-    const bin = curatedBin(dir, [...CORE, "setsid"]);
+    // nohup stands in where the host has no setsid (macOS), so a launcher always runs.
+    const bin = curatedBin(dir, [...CORE, "setsid", "nohup"]);
     writeExecutable(join(bin, "flock"), "exit 71");
     assert.equal(runSessionHook(dir, {}, bin).status, 0);
     assert.ok(waitFor(marker));

@@ -5,7 +5,21 @@
   "sourceRoot": "packages/allowlister-remote-plugin/bin",
   "tags": ["scope:plugin", "type:npm-package", "lang:javascript"],
   "namedInputs": {
-    "default": ["{projectRoot}/**/*", "sharedGlobals", "node", "biome"]
+    "default": [
+      "{projectRoot}/**/*",
+      "sharedGlobals",
+      "node",
+      "biome",
+      "{workspaceRoot}/packages/allowlister-remote-plugin/scripts/build-release-binaries.sh",
+      "{workspaceRoot}/packages/allowlister-remote-plugin/scripts/smoke-native-release.sh",
+      "{workspaceRoot}/scripts/smoke-npm-package.sh"
+    ],
+    "release": [
+      "default",
+      "{workspaceRoot}/packages/allowlister-remote-plugin/scripts/build-release-binaries.sh",
+      "{workspaceRoot}/packages/allowlister-remote-plugin/scripts/smoke-native-release.sh",
+      "{workspaceRoot}/scripts/smoke-npm-package.sh"
+    ]
   },
   "targets": {
     "format": {
@@ -36,7 +50,8 @@
           "node --check packages/allowlister-remote-plugin/lib/platform.mjs",
           "node --check packages/allowlister-remote-plugin/install.mjs",
           "node --check packages/allowlister-remote-plugin/bin/allowlister-remote-plugin",
-          "node --check packages/allowlister-remote-plugin/test/install.test.mjs"
+          "node --check packages/allowlister-remote-plugin/test/install.test.mjs",
+          "node --check packages/allowlister-remote-plugin/test/release.test.mjs"
         ],
         "cwd": ".",
         "parallel": false
@@ -60,6 +75,15 @@
         "cwd": "."
       },
       "cache": false
+    },
+    "test-release": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "inputs": ["release"],
+      "options": {
+        "command": "node --test packages/allowlister-remote-plugin/test/release.test.mjs",
+        "cwd": "."
+      }
     }
   }
 }

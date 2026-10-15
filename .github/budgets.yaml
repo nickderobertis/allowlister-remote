@@ -1,0 +1,36 @@
+schema_version: 1
+budgets:
+  # Exception kept separate on purpose: the brief explicitly requests both the jobs/run and
+  # the Mac-spending runs/change bounds, and the manager approved separate budgets for these
+  # two scheduling constraints.
+  - id: allowlister-remote-macos-jobs-per-run
+    description: >-
+      Maximum resolved Mac job instances per workflow run, including matrices and
+      reusable workflows. inner_measure_reason: one run can occupy several shared
+      Mac slots even when the lifecycle run count stays within its bound.
+      No application data or paid scenarios are added. Telemetry covers 12 event
+      classes, three diff classes, same-repository/fork PRs, every release target
+      and manual diagnostic opt-in.
+    measure: reported
+    command: [node, macos-budget.mjs, --metric, jobs-per-run, --telemetry, .github/.telemetry/macos-policy.json]
+    unit: jobs/run
+    direction: max
+    threshold: 1
+    labels: [github-workflows]
+  # Exception kept separate on purpose: the brief explicitly requests both the jobs/run and
+  # the Mac-spending runs/change bounds, and the manager approved separate budgets for these
+  # two scheduling constraints.
+  - id: allowlister-remote-macos-runs-per-change
+    description: >-
+      Maximum distinct Mac-spending workflow runs in the complete single-push
+      automatic lifecycle: ordinary PR, base merge, version-only release PR and
+      merge, release build, downstream smoke. Manual diagnostics are excluded.
+      No application data or paid scenarios are added. Telemetry covers 12 event
+      classes, three diff classes, same-repository/fork PRs and every release
+      target.
+    measure: reported
+    command: [node, macos-budget.mjs, --metric, runs-per-change, --telemetry, .github/.telemetry/macos-policy.json]
+    unit: runs/change
+    direction: max
+    threshold: 2
+    labels: [github-workflows]

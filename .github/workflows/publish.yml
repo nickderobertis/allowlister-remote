@@ -51,34 +51,22 @@ jobs:
         # musl libc. No-op for the macOS/Windows matrix legs.
         if: matrix.target == 'x86_64-unknown-linux-musl'
         run: sudo apt-get update && sudo apt-get install -y musl-tools
-      - name: Build release binaries
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+      - name: Build and stage release binaries
         shell: bash
-        # Build the plugin, the daemon it auto-starts, and the broker for every
-        # target. The daemon is the plugin's only transport to the broker on every
-        # OS (a Unix socket on Unix, a named pipe on Windows), so it ships
-        # everywhere; the broker is the WebSocket relay, shipped as a standalone
-        # CLI via GitHub Releases (see scripts/install-broker.sh) rather than npm.
-        # `CC_<target>` points `ring`'s `cc` build at musl-gcc when cross-building
-        # the musl target; unused on the other targets.
         env:
           CC_x86_64_unknown_linux_musl: musl-gcc
-        run: |
-          cargo build --release --target "${{ matrix.target }}" -p allowlister-remote-plugin
-          cargo build --release --target "${{ matrix.target }}" -p allowlister-remote-daemon
-          cargo build --release --target "${{ matrix.target }}" -p allowlister-remote-broker
-      - name: Stage artifacts
+          RELEASE_TARGET: ${{ matrix.target }}
+          RELEASE_PLATFORM: ${{ matrix.platform }}
+          RELEASE_EXE: ${{ matrix.exe }}
+        run: npm run release:build-binaries -- "$RELEASE_TARGET" "$RELEASE_PLATFORM" "$RELEASE_EXE"
+      # llmlint: ignore[release_does_not_regate_an_already_swept_commit] Target binaries exist only in this release build; this verifies their native packaging/install before publication, rather than repeating the source sweep.
+      - name: Install and run native npm carriers before publication
+        if: runner.os == 'macOS'
         shell: bash
-        # Name each artifact `<binary>-<platform>[.exe]` so release:stage-npm can
-        # pick the plugin and daemon up by binary and platform. The broker is
-        # staged the same way for the GitHub Release; stage-npm ignores it.
-        run: |
-          mkdir -p dist/artifacts
-          binaries=(allowlister-remote-plugin allowlister-remote-daemon allowlister-remote-broker)
-          for binary in "${binaries[@]}"; do
-            artifact="${binary}-${{ matrix.platform }}${{ matrix.exe }}"
-            cp "target/${{ matrix.target }}/release/${binary}${{ matrix.exe }}" "dist/artifacts/${artifact}"
-            if [[ "${{ matrix.os }}" != windows-* ]]; then chmod +x "dist/artifacts/${artifact}"; fi
-          done
+        run: npm run release:smoke-native -- dist/artifacts
       - uses: actions/upload-artifact@v7
         with:
           name: binaries-${{ matrix.platform }}

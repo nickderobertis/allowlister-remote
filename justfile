@@ -8,6 +8,7 @@ prune_superseded_version := "0.1.1"
 
 bootstrap:
     npm ci
+    npm ci --prefix .github --ignore-scripts
     cargo fetch
     @[ "$(cargo-prune-superseded --version 2>/dev/null)" = "cargo-prune-superseded {{prune_superseded_version}}" ] || cargo install --locked cargo-prune-superseded --version {{prune_superseded_version}}
 
@@ -63,7 +64,7 @@ typecheck:
 # Unit/integration tests plus the repo-level Rust coverage aggregate (the crates'
 # `test` targets write raw profiles; `coverage` merges and enforces the floor).
 test tier="affected":
-    {{ if tier == "all" { "npx nx run-many" } else if tier == "affected" { _affected } else { error("unknown tier '" + tier + "' — use 'affected' (the default) or 'all'") } }} -t test coverage
+    {{ if tier == "all" { "npx nx run-many" } else if tier == "affected" { _affected } else { error("unknown tier '" + tier + "' — use 'affected' (the default) or 'all'") } }} -t test coverage budgets test-release
 
 build:
     {{ _affected }} -t build

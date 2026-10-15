@@ -1,0 +1,310 @@
+import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { readFileSync, readdirSync, writeFileSync, rmSync, mkdtempSync, cpSync, mkdirSync } from "node:fs";
+import { spawnSync, execFileSync } from "node:child_process";
+import { isAbsolute, join } from "node:path";
+import { pathToFileURL } from "node:url";
+import { test } from "node:test";
+import { parse, stringify } from "yaml";
+import { load, root, evaluate } from "../workflow-graph.mjs";
+const scratchRoot = process.env.ONEPIPELINE_NODE_SCRATCH_DIR ?? join(root, ".github/.telemetry");
+assert.ok(typeof scratchRoot === "string" && isAbsolute(scratchRoot), "scratch directory must be absolute");
+mkdirSync(scratchRoot, { recursive: true });
+const publish = load(".github/workflows/publish.yml");
+function releaseFixture() {
+  const fixture = JSON.parse(readFileSync(join(root, ".github/tests/fixtures/release-platforms.json")));
+  assert.ok(fixture && typeof fixture === "object");
+  assert.equal(fixture.schemaVersion, 1);
+  assert.match(fixture.sourceCommit, /^[a-f0-9]{40}$/);
+  assert.ok(Array.isArray(fixture.platforms) && fixture.platforms.length > 0);
+  for (const row of fixture.platforms) {
+    assert.ok(row && typeof row === "object");
+    assert.ok(publish.jobs["build-binary"].strategy.matrix.include.some(
+      (declared) => row.platform === declared.platform && row.target === declared.target && row.exe === declared.exe,
+    ), "fixture platform/target/suffix must match a declared release target");
+    for (const key of ["artifacts", "npmPayloads"]) {
+      assert.ok(Array.isArray(row[key]) && row[key].length > 0);
+      for (const path of row[key])
+        assert.ok(typeof path === "string" && /^[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)*$/.test(path) &&
+          !path.split("/").includes(".."), "release payload paths must be relative without traversal");
+    }
+  }
+  assert.equal(fixture.webPackage, "@nickderobertis/allowlister-remote-web");
+  return fixture;
+}
+test("all release platforms retain three binaries, npm carriers, checksums and native Mac smoke before native npm publication", () => {
+  const build = publish.jobs["build-binary"];
+  const golden = releaseFixture();
+  assert.deepEqual(
+    build.strategy.matrix.include.map(({ platform, target, exe }) => ({ platform, target, exe })),
+    golden.platforms.map(({ platform, target, exe }) => ({ platform, target, exe })),
+  );
+
+  const toolchain = readFileSync(join(root, "rust-toolchain.toml"), "utf8");
+  const targets = [...toolchain.match(/^targets.*$/m)[0].matchAll(/"([^"]+)"/g)].map(
+    (match) => match[1],
+  );
+  assert.deepEqual(build.strategy.matrix.include.map((row) => row.target).sort(), targets.sort());
+  // Only Darwin binaries run natively in the release (the macOS builder's smoke);
+  // Windows is proved by real staging/packing of inert payloads in the carrier
+  // journey below, and the separate Linux builder journey runs genuine binaries.
+  const builder = readFileSync(
+    join(root, "packages/allowlister-remote-plugin/scripts/build-release-binaries.sh"),
+    "utf8",
+  );
+  for (const binary of ["plugin", "daemon", "broker"])
+    assert.ok(builder.includes(`allowlister-remote-${binary}`));
+  assert.match(
+    builder,
+    /cp "target\/\$target\/release\/\$binary\$exe" "dist\/artifacts\/\$binary-\$platform\$exe"/,
+  );
+  const stage = readFileSync(join(root, "scripts/stage-npm-package.mjs"), "utf8");
+  for (const row of build.strategy.matrix.include) {
+    const manifest = JSON.parse(
+      readFileSync(join(root, `packages/allowlister-remote-plugin-${row.platform}/package.json`)),
+    );
+    const [os, cpu] = row.platform.split("-");
+    assert.deepEqual(manifest.os, [os]);
+    assert.deepEqual(manifest.cpu, [cpu]);
+    assert.ok(stage.includes(`target: "${row.platform}"`));
+    assert.ok(
+      row.target.includes(
+        os === "darwin" ? "apple-darwin" : os === "win32" ? "windows-msvc" : "linux-musl",
+      ),
+    );
+  }
+  const buildStep = build.steps.find((step) => step.run?.includes("npm run release:build-binaries --"));
+  const nativeSmoke = build.steps.find((step) => step.run?.includes("npm run release:smoke-native --"));
+  assert.ok(buildStep, "release builder must use the npm release command surface");
+  assert.ok(nativeSmoke, "native smoke must use the npm release command surface");
+  const scripts = JSON.parse(readFileSync(join(root, "package.json"))).scripts;
+  assert.equal(scripts["release:build-binaries"], "bash packages/allowlister-remote-plugin/scripts/build-release-binaries.sh");
+  assert.equal(scripts["release:smoke-native"], "bash packages/allowlister-remote-plugin/scripts/smoke-native-release.sh");
+  assert.ok(build.steps.indexOf(nativeSmoke) > build.steps.indexOf(buildStep));
+  assert.ok(
+    build.steps.indexOf(nativeSmoke) <
+      build.steps.findIndex((step) => step.uses?.startsWith("actions/upload-artifact")),
+  );
+  assert.equal(evaluate(nativeSmoke.if, { runner: { os: "macOS" } }), true);
+  assert.equal(evaluate(nativeSmoke.if, { runner: { os: "Linux" } }), false);
+  for (const id of ["github-release", "npm-publish", "web-publish"])
+    assert.equal(publish.jobs[id]["runs-on"], "ubuntu-latest");
+  assert.equal(publish.jobs["github-release"].needs, "build-binary");
+  assert.deepEqual(publish.jobs["npm-publish"].needs, ["build-binary", "github-release"]);
+  assert.ok(
+    build.steps.some((step) =>
+      step.run?.includes("ALLOWLISTER_REMOTE_PLUGIN_VERSION=${GITHUB_REF_NAME#v}"),
+    ),
+  );
+  for (const binary of ["plugin", "daemon", "broker"])
+    assert.ok(
+      publish.jobs["github-release"].steps.some((step) =>
+        step.with?.files?.includes(`allowlister-remote-${binary}-*`),
+      ),
+    );
+  assert.ok(publish.jobs["github-release"].steps.some((step) => step.run?.includes("SHA256SUMS")));
+  const smoke = load(".github/workflows/e2e-smoke.yml");
+  assert.deepEqual(smoke.on.workflow_run.workflows, ["publish"]);
+  assert.equal(smoke.jobs["e2e-smoke"]["runs-on"], "ubuntu-latest");
+  assert.ok(
+    smoke.jobs["e2e-smoke"].steps.some((step) =>
+      step.run?.includes("scripts/install-broker.sh --version"),
+    ),
+  );
+  assert.ok(smoke.jobs["e2e-smoke"].steps.some((step) => step.run?.includes("release:smoke-e2e")));
+});
+test("macOS releases target Apple Silicon only, with no Intel target or Rosetta step", async () => {
+  const intelMac = /x86_64-apple-darwin|darwin-x64|macos-13|macos-[0-9]+-(?:large|intel)|rosetta|arch -x86_64/i;
+  const darwin = publish.jobs["build-binary"].strategy.matrix.include.filter((row) =>
+    row.target.endsWith("-apple-darwin"),
+  );
+  assert.deepEqual(
+    darwin.map(({ platform, target }) => ({ platform, target })),
+    [{ platform: "darwin-arm64", target: "aarch64-apple-darwin" }],
+  );
+  for (const workflow of readdirSync(join(root, ".github/workflows")))
+    assert.doesNotMatch(readFileSync(join(root, ".github/workflows", workflow), "utf8"), intelMac, workflow);
+  for (const declaration of [
+    "rust-toolchain.toml",
+    "scripts/install-broker.sh",
+    "packages/allowlister-remote-plugin/scripts/build-release-binaries.sh",
+    "packages/allowlister-remote-plugin/scripts/smoke-native-release.sh",
+    ".github/tests/fixtures/release-platforms.json",
+  ])
+    assert.doesNotMatch(readFileSync(join(root, declaration), "utf8"), intelMac, declaration);
+  const darwinPackages = readdirSync(join(root, "packages"))
+    .filter((dir) => dir.startsWith("allowlister-remote-plugin-"))
+    .map((dir) => JSON.parse(readFileSync(join(root, "packages", dir, "package.json"), "utf8")))
+    .filter((manifest) => manifest.os.includes("darwin"));
+  assert.deepEqual(
+    darwinPackages.map(({ name, cpu }) => ({ name, cpu })),
+    [{ name: "@nickderobertis/allowlister-remote-plugin-darwin-arm64", cpu: ["arm64"] }],
+  );
+  const { platformPackage } = await import(
+    pathToFileURL(join(root, "packages/allowlister-remote-plugin/lib/platform.mjs")).href
+  );
+  assert.throws(() => platformPackage("darwin", "x64"), /Intel macOS \(darwin-x64\) is no longer supported/);
+  assert.equal(platformPackage("darwin", "arm64").name, darwinPackages[0].name);
+});
+test("pinned reusable workflow fixture has exact source provenance", () => {
+  const fixture = JSON.parse(readFileSync(join(root, ".github/tests/fixtures/provenance.json")));
+  assert.equal(load(".github/workflows/visual-docs.yml").jobs["visual-docs"].uses, fixture.call);
+  assert.equal(fixture.schemaVersion, 1);
+  assert.equal(fixture.sourcePath, ".github/tests/fixtures/visual-docs-source.json");
+  assert.equal(fixture.path, ".github/tests/fixtures/visual-docs-reusable.yml");
+  const raw = JSON.parse(readFileSync(join(root, fixture.sourcePath))).source;
+  assert.equal(createHash("sha256").update(raw).digest("hex"), fixture.sourceSha256);
+  assert.equal(stringify(parse(raw)), readFileSync(join(root, fixture.path), "utf8"));
+
+  assert.equal(
+    createHash("sha256")
+      .update(readFileSync(join(root, fixture.path)))
+      .digest("hex"),
+    fixture.sha256,
+  );
+});
+
+test("downstream smoke follows the exact release tag and refuses failed publication", () => {
+  const smoke = load(".github/workflows/e2e-smoke.yml");
+  const job = smoke.jobs["e2e-smoke"];
+  assert.equal(
+    evaluate(job.if, {
+      github: { event_name: "workflow_run", event: { workflow_run: { conclusion: "failure" } } },
+    }),
+    false,
+  );
+  assert.equal(
+    evaluate(job.if, {
+      github: { event_name: "workflow_run", event: { workflow_run: { conclusion: "success" } } },
+    }),
+    true,
+  );
+  const resolve = job.steps.find((step) => step.id === "version");
+  const output = join(
+    mkdtempSync(
+      join(
+        scratchRoot,
+        "smoke-tag-",
+      ),
+    ),
+    "output",
+  );
+  writeFileSync(output, "");
+  try {
+    const run = spawnSync("bash", ["-e", "-c", resolve.run], {
+      encoding: "utf8",
+      env: { ...process.env, INPUT_VERSION: "", TRIGGER_REF: "v0.2.0", GITHUB_OUTPUT: output },
+    });
+    assert.equal(run.status, 0, run.stderr);
+    assert.equal(readFileSync(output, "utf8"), "version=0.2.0\n");
+  } finally {
+    rmSync(output, { force: true });
+  }
+});
+
+test("production staging and npm packing preserve every platform payload and version without executing foreign binaries", () => {
+  // A Linux dispatch cannot execute Darwin/Windows binaries. The production
+  // native build/install journey covers real execution; this boundary proves
+  // staging and carrier compatibility using distinguishable inert payloads.
+  const scratch = mkdtempSync(
+    join(
+      scratchRoot,
+      "carrier-contract-",
+    ),
+  );
+  try {
+    cpSync(join(root, "packages"), join(scratch, "packages"), { recursive: true });
+    const artifacts = join(scratch, "artifacts");
+    mkdirSync(artifacts);
+    const golden = releaseFixture();
+    for (const row of golden.platforms)
+      for (const name of row.artifacts)
+        writeFileSync(join(artifacts, name), `Inert contract payload: ${row.target} / ${name}\n`);
+    execFileSync("node", [join(root, "scripts/set-npm-package-version.mjs"), "0.2.0"], {
+      cwd: scratch,
+    });
+    execFileSync("node", [join(root, "scripts/stage-npm-package.mjs"), artifacts], {
+      cwd: scratch,
+    });
+    for (const row of golden.platforms) {
+      const validate = spawnSync(
+        "bash",
+        [
+          join(root, "packages/allowlister-remote-plugin/scripts/build-release-binaries.sh"),
+          row.target,
+          row.platform,
+          row.exe,
+          "--validate",
+        ],
+        { encoding: "utf8" },
+      );
+      assert.equal(validate.status, 0, validate.stderr);
+      const carrier = join(scratch, `packages/allowlister-remote-plugin-${row.platform}`);
+      const response = JSON.parse(
+        execFileSync("npm", ["pack", carrier, "--json", "--pack-destination", scratch], {
+          encoding: "utf8",
+        }),
+      );
+      assert.ok(Array.isArray(response) && response.length === 1, "npm pack must return one archive");
+      const packed = response[0];
+      assert.ok(packed && typeof packed === "object", "npm pack archive must be a record");
+      assert.ok(
+        typeof packed.filename === "string" && /^[A-Za-z0-9_.-]+\.tgz$/.test(packed.filename),
+        "npm pack archive must be a local tarball filename",
+      );
+      assert.ok(Array.isArray(packed.files), "npm pack must list archive entries");
+      for (const file of packed.files)
+        assert.ok(
+          file && typeof file === "object" && typeof file.path === "string" &&
+            /^[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)*$/.test(file.path) &&
+            !file.path.split("/").includes(".."),
+          "npm pack entries must be relative paths without traversal",
+        );
+      const unpacked = join(scratch, row.platform);
+      mkdirSync(unpacked);
+      execFileSync("tar", ["xf", join(scratch, packed.filename), "-C", unpacked]);
+      const manifest = JSON.parse(readFileSync(join(unpacked, "package/package.json")));
+      assert.equal(manifest.version, "0.2.0");
+      assert.equal(manifest.name, `@nickderobertis/allowlister-remote-plugin-${row.platform}`);
+      const expected = Object.fromEntries(
+        row.npmPayloads.map((payload, index) => [payload, row.artifacts[index]]),
+      );
+      const payloads = packed.files
+        .filter((file) => file.path.startsWith("bin/"))
+        .map((file) => file.path)
+        .sort();
+      assert.deepEqual(payloads, Object.keys(expected).sort());
+      for (const [payload, artifact] of Object.entries(expected))
+        assert.deepEqual(
+          readFileSync(join(unpacked, "package", payload)),
+          readFileSync(join(artifacts, artifact)),
+        );
+    }
+    const web = JSON.parse(
+      readFileSync(join(root, "packages/allowlister-remote-web/package.json")),
+    );
+    assert.equal(web.name, golden.webPackage);
+    const invalid = spawnSync(
+      "bash",
+      [
+        join(root, "packages/allowlister-remote-plugin/scripts/build-release-binaries.sh"),
+        "../bad",
+        "linux-x64",
+        "",
+        "--validate",
+      ],
+      { encoding: "utf8" },
+    );
+    assert.notEqual(invalid.status, 0);
+    assert.match(invalid.stderr, /Invalid release target/);
+    rmSync(join(artifacts, golden.platforms[0].artifacts[0]));
+    const missing = spawnSync("node", [join(root, "scripts/stage-npm-package.mjs"), artifacts], {
+      cwd: scratch,
+      encoding: "utf8",
+    });
+    assert.notEqual(missing.status, 0);
+    assert.match(missing.stderr, /Missing release artifact/);
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
+});
