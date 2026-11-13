@@ -7,8 +7,15 @@
 # each unit's newest build plus every build modified within those 2 days, so
 # rebuilds stay warm. Without this file onevcs maintains none of this
 # repository's slots.
-schema_version = 1
+schema_version = 2
 
 [pool.maintain]
 command = ["just", "pool-maintenance"]
 timeout = "30m"
+
+[policy]
+publication = "change-auto"
+approvals = "none"
+
+[policy.checks]
+wait_seconds = 3900  # recorded max 3015 s (run 38754715610) + 25% margin

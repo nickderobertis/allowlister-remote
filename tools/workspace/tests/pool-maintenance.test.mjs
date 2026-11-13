@@ -47,8 +47,8 @@ function recipeBody(name) {
 describe("onevcs.toml", () => {
   const declaration = readFileSync(join(root, "onevcs.toml"), "utf8");
 
-  it("declares schema 1 and a pool maintenance command naming a real recipe", () => {
-    assert.match(declaration, /^schema_version = 1$/m);
+  it("declares schema 2 and a pool maintenance command naming a real recipe", () => {
+    assert.match(declaration, /^schema_version = 2$/m);
     assert.match(declaration, /^\[pool\.maintain\]$/m);
     assert.match(declaration, /^command = \["just", "pool-maintenance"\]$/m);
     assert.match(declaration, /^timeout = "30m"$/m);
